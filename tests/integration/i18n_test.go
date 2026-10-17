@@ -2,11 +2,15 @@ package integration
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/pmaxis/helpic/internal/mail"
+	notifs "github.com/pmaxis/helpic/internal/notifications"
 )
 
 // inUkrainian does a request as a client whose interface is in Ukrainian.
@@ -86,6 +90,28 @@ func TestI18n_AccountLanguage(t *testing.T) {
 	forgot(t, srv.URL, "olena@example.com")
 	if e := lastEmailTo(t, "olena@example.com"); e.Subject != "Скидання пароля в Helpic" || !strings.Contains(e.Text, "Задати новий пароль") || !strings.Contains(e.HTML, "Або відкрийте посилання") {
 		t.Fatalf("Ukrainian reset email = %+v", e)
+	}
+}
+
+func TestI18n_NotificationEmailInRecipientLanguage(t *testing.T) {
+	srv, _ := newAPI(t)
+	freelancer := signUpFreelancer(t, srv, "free@example.com")
+	resp := do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/me/locale", map[string]string{"locale": "uk"})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
+	newTask(t, srv, client, map[string]any{"freelancer_id": myID(t, srv, freelancer), "title": "Logo"})
+
+	ctx := context.Background()
+	if _, err := testPool.Exec(ctx, `UPDATE notifications SET created_at = created_at - interval '6 minutes' WHERE emailed_at IS NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if err := notifs.NewEmailer(testPool, mail.NewOutbox(testPool, mail.Log{}), "http://app.test").Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	e := lastEmailTo(t, "free@example.com")
+	if e.Subject != "2 оновлення у Helpic" || !strings.Contains(e.Text, "Нова задача від Acme Inc: “Logo”") || !strings.Contains(e.HTML, `lang="uk"`) {
+		t.Fatalf("Ukrainian digest = %q\n%s", e.Subject, e.Text)
 	}
 }
 

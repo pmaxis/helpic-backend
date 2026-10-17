@@ -319,6 +319,32 @@ definitions:
       task_id:
         type: string
     type: object
+  notifications.EmailKindsRequest:
+    properties:
+      kinds:
+        items:
+          type: string
+        type: array
+    type: object
+  notifications.EmailPrefsDTO:
+    properties:
+      available:
+        description: |-
+          Available are the kinds that can be emailed; DefaultKinds those on
+          until the user chooses.
+        items:
+          type: string
+        type: array
+      default_kinds:
+        items:
+          type: string
+        type: array
+      kinds:
+        description: Kinds are emailed; none means no email.
+        items:
+          type: string
+        type: array
+    type: object
   notifications.ListResponse:
     properties:
       notifications:
@@ -2064,6 +2090,58 @@ paths:
       summary: Change your sign-in email
       tags:
       - account
+  /me/email-notifications:
+    get:
+      description: Notifications are emailed a few minutes late, together, and not
+        once read in the app.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: email_notifications
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/notifications.EmailPrefsDTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: What you get by email
+      tags:
+      - notifications
+    put:
+      consumes:
+      - application/json
+      description: The notification kinds to email; an empty list turns email off.
+        See "available".
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/notifications.EmailKindsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: email_notifications
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/notifications.EmailPrefsDTO'
+            type: object
+        "400":
+          description: Unknown kind
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Choose what you get by email
+      tags:
+      - notifications
   /me/locale:
     put:
       consumes:

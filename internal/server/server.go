@@ -96,6 +96,8 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	// --- notifications: what the other side of shared work did -------------
 	notifier := notifications.NewService(notifications.NewRepository(pool))
 	notificationsHandler := notifications.NewHandler(notifier)
+	emailer := notifications.NewEmailer(pool, outbox, cfg.AppURL)
+	emailPrefsHandler := notifications.NewEmailHandler(emailer)
 
 	// --- the same notifications in the user's Telegram chat -----------------
 	var bot *telegram.Client
@@ -197,6 +199,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			projectsHandler.Routes(r)
 			boardHandler.Routes(r)
 			notificationsHandler.Routes(r)
+			emailPrefsHandler.Routes(r)
 			telegramHandler.Routes(r)
 			reportsHandler.Routes(r)
 
@@ -227,6 +230,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	return &App{Handler: r, background: []func(context.Context){
 		telegramSvc.Run,
 		func(ctx context.Context) { jobs.Every(ctx, "email", 5*time.Second, outbox.Run) },
+		func(ctx context.Context) { jobs.Every(ctx, "notification emails", time.Minute, emailer.Run) },
 		func(ctx context.Context) { jobs.Every(ctx, "deadline reminders", 15*time.Minute, remindersSvc.Run) },
 		func(ctx context.Context) { jobs.Every(ctx, "cleanup", time.Hour, cleanup) },
 		func(ctx context.Context) { jobs.Every(ctx, "rate limit sweep", time.Minute, lim.sweep) },
