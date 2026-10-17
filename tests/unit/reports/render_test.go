@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/reports"
 )
 
@@ -34,7 +35,7 @@ func sample() reports.Report {
 }
 
 func TestRender(t *testing.T) {
-	html, err := reports.Render(sample(), reports.ModePDF)
+	html, err := reports.Render(sample(), reports.ModePDF, i18n.EN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +58,7 @@ func TestRender(t *testing.T) {
 		t.Error("the report has no From or To block")
 	}
 
-	preview, _ := reports.Render(sample(), reports.ModePreview)
+	preview, _ := reports.Render(sample(), reports.ModePreview, i18n.EN)
 	if !strings.Contains(string(preview), "<span>Olena Petrenko (olena@example.com)</span>") {
 		t.Error("the preview's footer lacks the sender")
 	}
@@ -67,7 +68,7 @@ func TestRender_PersonalAndSent(t *testing.T) {
 	r := sample()
 	r.Client = nil
 	r.Projects = []reports.ProjectRef{{ID: "p1", Name: "Portfolio"}}
-	html, _ := reports.Render(r, reports.ModePreview)
+	html, _ := reports.Render(r, reports.ModePreview, i18n.EN)
 	s := string(html)
 	if strings.Contains(s, ">To<") || strings.Contains(s, ">Draft<") {
 		t.Error("a personal report has no recipient and no draft mark")
@@ -80,7 +81,7 @@ func TestRender_PersonalAndSent(t *testing.T) {
 	r.Status = reports.StatusSent
 	sent := day("2026-11-01")
 	r.SentAt = &sent
-	html, _ = reports.Render(r, reports.ModePDF)
+	html, _ = reports.Render(r, reports.ModePDF, i18n.EN)
 	if s := string(html); strings.Contains(s, ">Draft<") || !strings.Contains(s, "sent 1 Nov 2026") {
 		t.Error("a sent report shows when it was sent and no draft mark")
 	}
@@ -90,7 +91,7 @@ func TestRender_SeveralProjects(t *testing.T) {
 	r := sample()
 	r.Projects = []reports.ProjectRef{{ID: "p1", Name: "Website"}, {ID: "p2", Name: "Branding"}}
 	r.Items[1].ProjectName = "Branding"
-	html, _ := reports.Render(r, reports.ModePDF)
+	html, _ := reports.Render(r, reports.ModePDF, i18n.EN)
 	s := string(html)
 	if !strings.Contains(s, "<span>Website, Branding</span>") || !strings.Contains(s, `<th class="project">Project</th>`) {
 		t.Error("a report on several projects names them and has a project column")
@@ -99,7 +100,7 @@ func TestRender_SeveralProjects(t *testing.T) {
 
 func TestRender_Prices(t *testing.T) {
 	r := sample()
-	html, _ := reports.Render(r, reports.ModePDF)
+	html, _ := reports.Render(r, reports.ModePDF, i18n.EN)
 	if s := string(html); strings.Contains(s, ">Price<") || strings.Contains(s, ">Total<") {
 		t.Error("a report without prices has no price column and no total")
 	}
@@ -107,7 +108,7 @@ func TestRender_Prices(t *testing.T) {
 	price := int64(120050)
 	r.Currency = "EUR"
 	r.Items[0].PriceCents = &price
-	html, _ = reports.Render(r, reports.ModePDF)
+	html, _ = reports.Render(r, reports.ModePDF, i18n.EN)
 	s := string(html)
 	for _, want := range []string{">Price<", "€1,200.50", ">Total<", `<td class="price none">—</td>`} {
 		if !strings.Contains(s, want) {
@@ -121,13 +122,13 @@ func TestRender_Detailed(t *testing.T) {
 	r.Items[0].Notes = "Built the hero block"
 	r.Items[1].Notes = "- Monthly and yearly plans\n- A <b>comparison</b> table"
 
-	html, _ := reports.Render(r, reports.ModePDF)
+	html, _ := reports.Render(r, reports.ModePDF, i18n.EN)
 	if strings.Contains(string(html), "Built the hero block") {
 		t.Error("a basic report shows no notes")
 	}
 
 	r.Kind = reports.KindDetailed
-	html, _ = reports.Render(r, reports.ModePDF)
+	html, _ = reports.Render(r, reports.ModePDF, i18n.EN)
 	s := string(html)
 	for _, want := range []string{
 		`<p class="notes">Built the hero block</p>`,
@@ -147,7 +148,7 @@ func TestPeriodLabel(t *testing.T) {
 		{"2026-10-16", "2026-10-16"}: "16 Oct 2026",
 	}
 	for in, want := range cases {
-		if got := reports.PeriodLabel(reports.Report{From: day(in[0]), To: day(in[1])}); got != want {
+		if got := reports.PeriodLabel(reports.Report{From: day(in[0]), To: day(in[1])}, i18n.EN); got != want {
 			t.Errorf("periodLabel(%v) = %q, want %q", in, got, want)
 		}
 	}
@@ -163,7 +164,7 @@ func TestPDF(t *testing.T) {
 	if !r.Available() {
 		t.Skip("no Chrome found")
 	}
-	html, err := reports.Render(sample(), reports.ModePDF)
+	html, err := reports.Render(sample(), reports.ModePDF, i18n.EN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,5 +174,20 @@ func TestPDF(t *testing.T) {
 	}
 	if !bytes.HasPrefix(pdf, []byte("%PDF")) {
 		t.Fatal("not a PDF")
+	}
+}
+
+func TestRender_Ukrainian(t *testing.T) {
+	html, err := reports.Render(sample(), reports.ModePreview, i18n.UK)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`lang="uk"`, "Звіт про роботу", "Виконані задачі", ">Задача<"} {
+		if !bytes.Contains(html, []byte(want)) {
+			t.Errorf("Ukrainian report lacks %q", want)
+		}
+	}
+	if got := reports.PeriodLabel(reports.Report{From: day("2026-10-01"), To: day("2026-10-31")}, i18n.UK); got != "1 – 31 жовтня 2026" {
+		t.Errorf("Ukrainian period = %q", got)
 	}
 }

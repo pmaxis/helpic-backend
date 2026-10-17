@@ -20,11 +20,13 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
-const linkColumns = `user_id, chat_id, username, kinds, linked_at`
+// linkColumns reads a telegram_links row with its user's language.
+const linkColumns = `user_id, chat_id, username, kinds, linked_at,
+	coalesce((SELECT u.locale FROM users u WHERE u.id = telegram_links.user_id), 'en')`
 
 func scanLink(row pgx.Row) (Link, error) {
 	var l Link
-	err := row.Scan(&l.UserID, &l.ChatID, &l.Username, &l.Kinds, &l.LinkedAt)
+	err := row.Scan(&l.UserID, &l.ChatID, &l.Username, &l.Kinds, &l.LinkedAt, &l.Locale)
 	return l, err
 }
 
@@ -57,21 +59,21 @@ func (r *Repository) NewCode(ctx context.Context, userID string, hash []byte, ex
 	return tx.Commit(ctx)
 }
 
-// TakeCode uses up a connect code and returns the user it was for and their
-// name. ok is false for an unknown or expired code.
-func (r *Repository) TakeCode(ctx context.Context, hash []byte) (userID, name string, ok bool, err error) {
+// TakeCode uses up a connect code and returns the user it was for, their
+// name and language. ok is false for an unknown or expired code.
+func (r *Repository) TakeCode(ctx context.Context, hash []byte) (userID, name, locale string, ok bool, err error) {
 	var live bool
 	err = r.db.QueryRow(ctx, `
 		DELETE FROM telegram_link_codes c USING users u
 		WHERE c.code_hash = $1 AND u.id = c.user_id
-		RETURNING c.user_id, u.name, c.expires_at > now()`, hash).Scan(&userID, &name, &live)
+		RETURNING c.user_id, u.name, u.locale, c.expires_at > now()`, hash).Scan(&userID, &name, &locale, &live)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", false, nil
+		return "", "", "", false, nil
 	}
 	if err != nil {
-		return "", "", false, fmt.Errorf("take telegram code: %w", err)
+		return "", "", "", false, fmt.Errorf("take telegram code: %w", err)
 	}
-	return userID, name, live, nil
+	return userID, name, locale, live, nil
 }
 
 // Connect ties the chat to the user. Reconnecting keeps the kinds they chose.

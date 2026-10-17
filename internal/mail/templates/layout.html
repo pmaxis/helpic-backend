@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{if .Locale}}{{.Locale}}{{else}}en{{end}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -18,11 +18,11 @@
         {{with .Button}}<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 8px;"><tr><td style="border-radius:8px;background:#171717;">
           <a href="{{.URL}}" style="display:inline-block;padding:11px 20px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">{{.Text}}</a>
         </td></tr></table>
-        <p style="margin:16px 0 0;font-size:12px;line-height:1.5;color:#a3a3a3;word-break:break-all;">Or open this link: <a href="{{.URL}}" style="color:#737373;">{{.URL}}</a></p>
+        <p style="margin:16px 0 0;font-size:12px;line-height:1.5;color:#a3a3a3;word-break:break-all;">{{$.OrOpen}} <a href="{{.URL}}" style="color:#737373;">{{.URL}}</a></p>
         {{end}}
         {{with .Note}}<p style="margin:16px 0 0;font-size:13px;line-height:1.5;color:#737373;">{{.}}</p>{{end}}
       </td></tr>
-      <tr><td style="padding:16px 4px 0;font-size:12px;line-height:1.5;color:#a3a3a3;">You got this email because of your Helpic account. Freelancers and their clients, on the same page.</td></tr>
+      <tr><td style="padding:16px 4px 0;font-size:12px;line-height:1.5;color:#a3a3a3;">{{.Footer}}</td></tr>
     </table>
   </td></tr>
 </table>

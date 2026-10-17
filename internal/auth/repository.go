@@ -28,11 +28,11 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 // CreateUser inserts a new account and returns the persisted row. The single
 // name typed at sign-up (a person's or a company's) becomes the first name. A
 // unique constraint violation on email is translated to ErrEmailExists.
-func (r *Repository) CreateUser(ctx context.Context, email, name, role, passwordHash string) (user.User, error) {
+func (r *Repository) CreateUser(ctx context.Context, email, name, role, passwordHash, locale string) (user.User, error) {
 	u, err := user.Scan(r.db.QueryRow(ctx, `
-		INSERT INTO users (email, first_name, role, password_hash)
-		VALUES ($1, $2, $3, $4)
-		RETURNING `+user.Columns, email, name, role, passwordHash))
+		INSERT INTO users (email, first_name, role, password_hash, locale)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING `+user.Columns, email, name, role, passwordHash, locale))
 
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode {

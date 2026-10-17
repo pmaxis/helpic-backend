@@ -47,6 +47,8 @@ type User struct {
 	ID        int64  `json:"id"`
 	Username  string `json:"username"`
 	FirstName string `json:"first_name"`
+	// LanguageCode is the language their Telegram is in, e.g. "uk".
+	LanguageCode string `json:"language_code"`
 }
 
 // Chat is where a message was sent.

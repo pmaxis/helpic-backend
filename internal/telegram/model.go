@@ -31,37 +31,12 @@ var (
 // codeTTL is how long a connect link works.
 const codeTTL = 15 * time.Minute
 
-// Kinds are the notification kinds that can go to Telegram.
-var Kinds = []string{
-	notifications.KindTaskCreated,
-	notifications.KindTaskStatus,
-	notifications.KindTaskUpdated,
-	notifications.KindTaskDeleted,
-	notifications.KindTaskDueSoon,
-	notifications.KindTaskOverdue,
-	notifications.KindCommentAdded,
-	notifications.KindAttachmentAdded,
-	notifications.KindProjectCreated,
-	notifications.KindReportSent,
-	notifications.KindReportPaid,
-	notifications.KindClientJoined,
-	notifications.KindMemberJoined,
-}
-
-// DefaultKinds are the important ones, on when a chat is connected: new
-// work, its progress and deadlines, the discussion, money and new people.
-// Edits, deleted tasks, files and new projects stay in the app.
-var DefaultKinds = []string{
-	notifications.KindTaskCreated,
-	notifications.KindTaskStatus,
-	notifications.KindTaskDueSoon,
-	notifications.KindTaskOverdue,
-	notifications.KindCommentAdded,
-	notifications.KindReportSent,
-	notifications.KindReportPaid,
-	notifications.KindClientJoined,
-	notifications.KindMemberJoined,
-}
+// Kinds are the notification kinds that can go to Telegram; DefaultKinds
+// are on when a chat is connected.
+var (
+	Kinds        = notifications.Kinds
+	DefaultKinds = notifications.DefaultKinds
+)
 
 // Link is a user's connected chat.
 type Link struct {
@@ -70,6 +45,8 @@ type Link struct {
 	Username string
 	Kinds    []string
 	LinkedAt time.Time
+	// Locale is the user's language, for what the bot says to them.
+	Locale string
 }
 
 // Wants reports whether the user wants this kind of notification in Telegram.

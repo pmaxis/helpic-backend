@@ -8,13 +8,13 @@
 package ratelimit
 
 import (
-	"fmt"
 	"math"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/response"
 )
 
@@ -128,26 +128,17 @@ func Middleware(l *Limiter, key func(*http.Request) string) func(http.Handler) h
 	}
 }
 
-// TooMany answers 429, saying when to try again.
+// TooMany answers 429, saying when to try again, in the response's language.
 func TooMany(w http.ResponseWriter, retry time.Duration) {
 	seconds := int(math.Ceil(retry.Seconds()))
 	if seconds < 1 {
 		seconds = 1
 	}
 	w.Header().Set("Retry-After", strconv.Itoa(seconds))
-	response.Error(w, http.StatusTooManyRequests, response.CodeRateLimited, "Too many attempts. Try again in "+humanize(seconds)+".")
-}
-
-func humanize(seconds int) string {
-	if seconds < 60 {
-		return plural(seconds, "second")
+	locale := i18n.Default
+	if l, ok := w.(interface{ Locale() string }); ok {
+		locale = l.Locale()
 	}
-	return plural(int(math.Ceil(float64(seconds)/60)), "minute")
-}
-
-func plural(n int, unit string) string {
-	if n == 1 {
-		return "1 " + unit
-	}
-	return fmt.Sprintf("%d %ss", n, unit)
+	response.Error(w, http.StatusTooManyRequests, response.CodeRateLimited,
+		i18n.T(locale, "Too many attempts. Try again in %s.", i18n.Duration(locale, time.Duration(seconds)*time.Second)))
 }

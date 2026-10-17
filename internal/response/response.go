@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+
+	"github.com/pmaxis/helpic/internal/i18n"
 )
 
 // Error codes used across the API. Every error response carries one of these.
@@ -48,18 +50,39 @@ func JSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-// Error writes a unified error envelope. Database errors and stack traces must
-// never be passed here as the message.
-func Error(w http.ResponseWriter, status int, code, message string) {
-	JSON(w, status, ErrorEnvelope{Error: APIError{Code: code, Message: message}})
+// localized is a ResponseWriter that knows the language of its response
+// (see middleware.Locale).
+type localized interface {
+	Locale() string
 }
 
-// ValidationError writes a 400 with per-field messages.
+// localeOf is the language the response goes out in.
+func localeOf(w http.ResponseWriter) string {
+	if l, ok := w.(localized); ok {
+		return l.Locale()
+	}
+	return i18n.Default
+}
+
+// Error writes a unified error envelope, the message in the response's
+// language. Database errors and stack traces must never be passed here as the
+// message.
+func Error(w http.ResponseWriter, status int, code, message string) {
+	JSON(w, status, ErrorEnvelope{Error: APIError{Code: code, Message: i18n.T(localeOf(w), message)}})
+}
+
+// ValidationError writes a 400 with per-field messages, in the response's
+// language.
 func ValidationError(w http.ResponseWriter, fields map[string]string) {
+	locale := localeOf(w)
+	translated := make(map[string]string, len(fields))
+	for k, v := range fields {
+		translated[k] = i18n.T(locale, v)
+	}
 	JSON(w, http.StatusBadRequest, ErrorEnvelope{Error: APIError{
 		Code:    CodeValidation,
-		Message: "The request contains invalid fields",
-		Fields:  fields,
+		Message: i18n.T(locale, "The request contains invalid fields"),
+		Fields:  translated,
 	}})
 }
 

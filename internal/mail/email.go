@@ -12,11 +12,15 @@ import (
 	"fmt"
 	htmltemplate "html/template"
 	texttemplate "text/template"
+
+	"github.com/pmaxis/helpic/internal/i18n"
 )
 
-// Email is what to say to someone.
+// Email is what to say to someone, already in their language.
 type Email struct {
-	To      string
+	To string
+	// Locale is the email's language, for the layout's own words.
+	Locale  string
 	Subject string
 	Heading string
 	// Paragraphs are plain text; each becomes a paragraph.
@@ -48,13 +52,25 @@ var (
 	textLayout = texttemplate.Must(texttemplate.ParseFS(templates, "templates/layout.txt"))
 )
 
+// page is what the layout reads: the email and the layout's own words.
+type page struct {
+	Email
+	OrOpen string
+	Footer string
+}
+
 // Render turns the email into HTML and plain text.
 func Render(e Email) (Message, error) {
+	p := page{
+		Email:  e,
+		OrOpen: i18n.T(e.Locale, "Or open this link:"),
+		Footer: i18n.T(e.Locale, "You got this email because of your Helpic account. Freelancers and their clients, on the same page."),
+	}
 	var h, t bytes.Buffer
-	if err := htmlLayout.Execute(&h, e); err != nil {
+	if err := htmlLayout.Execute(&h, p); err != nil {
 		return Message{}, fmt.Errorf("render email html: %w", err)
 	}
-	if err := textLayout.Execute(&t, e); err != nil {
+	if err := textLayout.Execute(&t, p); err != nil {
 		return Message{}, fmt.Errorf("render email text: %w", err)
 	}
 	return Message{To: e.To, Subject: e.Subject, HTML: h.String(), Text: t.String()}, nil

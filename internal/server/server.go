@@ -151,6 +151,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP(cfg.TrustedProxies))
+	r.Use(middleware.Locale)
 	r.Use(middleware.Recovery(!cfg.IsProduction()))
 	r.Use(middleware.CORS(cfg.CORSOrigin))
 

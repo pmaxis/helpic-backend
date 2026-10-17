@@ -5,31 +5,36 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/mail"
 )
 
-// emailInvitation sends the invitation's link to the client. The freelancer
-// can still copy the link, so a failure is only logged.
+// emailInvitation sends the invitation's link to the client, in the
+// freelancer's language (the client has no account to have one yet). The
+// freelancer can still copy the link, so a failure is only logged.
 func (s *Service) emailInvitation(ctx context.Context, freelancerID string, inv Invitation) {
 	from, err := s.repo.PersonName(ctx, freelancerID)
 	if err != nil {
 		slog.Error("failed to email invitation", "error", err)
 		return
 	}
-	greeting := "Hi,"
+	locale := i18n.FromContext(ctx)
+	t := func(text string, args ...any) string { return i18n.T(locale, text, args...) }
+	greeting := t("Hi,")
 	if inv.Name != "" {
-		greeting = "Hi " + inv.Name + ","
+		greeting = t("Hi %s,", inv.Name)
 	}
 	if err := s.mail.Send(ctx, mail.Email{
 		To:      inv.Email,
-		Subject: from + " invited you to Helpic",
-		Heading: from + " wants to work with you on Helpic",
+		Locale:  locale,
+		Subject: t("%s invited you to Helpic", from),
+		Heading: t("%s wants to work with you on Helpic", from),
 		Paragraphs: []string{
 			greeting,
-			from + " uses Helpic to keep client work in one place. Accept the invitation to give them tasks, follow the progress and get their reports.",
+			t("%s uses Helpic to keep client work in one place. Accept the invitation to give them tasks, follow the progress and get their reports.", from),
 		},
-		Button: &mail.Button{Text: "Accept the invitation", URL: s.appURL + "/invite/" + inv.Token},
-		Note:   fmt.Sprintf("The link works once, until %s. If you weren't expecting this, ignore this email.", inv.ExpiresAt.Format("2 Jan 2006")),
+		Button: &mail.Button{Text: t("Accept the invitation"), URL: s.appURL + "/invite/" + inv.Token},
+		Note:   t("The link works once, until %s. If you weren't expecting this, ignore this email.", i18n.Date(locale, inv.ExpiresAt)),
 	}); err != nil {
 		slog.Error("failed to email invitation", "error", err)
 	}

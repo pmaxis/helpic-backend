@@ -9,13 +9,14 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/user"
 )
 
 // repository is the persistence contract the service depends on. It is defined
 // here (consumer side) but implemented by *Repository.
 type repository interface {
-	CreateUser(ctx context.Context, email, name, role, passwordHash string) (user.User, error)
+	CreateUser(ctx context.Context, email, name, role, passwordHash, locale string) (user.User, error)
 	GetByEmail(ctx context.Context, email string) (user.User, error)
 
 	CreateSession(ctx context.Context, userID string, refreshHash []byte, c Client, expiresAt time.Time) (Session, error)
@@ -29,7 +30,7 @@ type repository interface {
 	DeleteExpiredSessions(ctx context.Context) error
 
 	CreateReset(ctx context.Context, userID string, hash []byte, expiresAt time.Time) error
-	TakeReset(ctx context.Context, hash []byte) (userID, email string, err error)
+	TakeReset(ctx context.Context, hash []byte) (userID, email, locale string, err error)
 	SetPasswordAndSignOut(ctx context.Context, userID, passwordHash string) error
 	DeleteExpiredResets(ctx context.Context) error
 }
@@ -62,15 +63,15 @@ func NewService(repo repository, tokens tokenIssuer, refreshTTL time.Duration, m
 
 // Register creates a new account with the given role. Public sign-up always
 // passes user.RoleFreelancer; invitations create clients. The email is expected
-// to be normalized by the caller's validation step. Returns ErrEmailExists on a
-// duplicate.
+// to be normalized by the caller's validation step. The account speaks the
+// request's language. Returns ErrEmailExists on a duplicate.
 func (s *Service) Register(ctx context.Context, p RegisterParams, role string) (user.User, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(p.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return user.User{}, fmt.Errorf("hash password: %w", err)
 	}
 
-	u, err := s.repo.CreateUser(ctx, p.Email, p.Name, role, string(hash))
+	u, err := s.repo.CreateUser(ctx, p.Email, p.Name, role, string(hash), i18n.FromContext(ctx))
 	if errors.Is(err, ErrEmailExists) {
 		return user.User{}, ErrEmailExists
 	}

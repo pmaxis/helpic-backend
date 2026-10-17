@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/notifications"
 )
 
@@ -65,7 +66,7 @@ func (s *Service) Create(ctx context.Context, freelancerID string, p CreateParam
 		if len(projects) == 1 {
 			head = projects[0].Name
 		}
-		p.Title = DefaultTitle(head, p.From, p.To)
+		p.Title = DefaultTitle(head, p.From, p.To, i18n.FromContext(ctx))
 	}
 	id, err := s.repo.Create(ctx, freelancerID, p, projects)
 	if err != nil {
@@ -75,18 +76,22 @@ func (s *Service) Create(ctx context.Context, freelancerID string, p CreateParam
 	return s.repo.Get(ctx, freelancerID, id)
 }
 
-// DefaultTitle names a report after its project (if any) and period:
-// "Website — Oct 2026", or "Work report — 1 Oct – 15 Oct 2026".
-func DefaultTitle(project string, from, to time.Time) string {
-	head := "Work report"
+// DefaultTitle names a report after its project (if any) and period, in the
+// locale: "Website — Oct 2026", or "Work report — 1 Oct – 15 Oct 2026"
+// ("Звіт про роботу — 1 жовтня – 15 жовтня 2026").
+func DefaultTitle(project string, from, to time.Time, locale string) string {
+	head := i18n.T(locale, "Work report")
 	if project != "" {
 		head = project
 	}
 	lastDay := time.Date(from.Year(), from.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
 	if from.Day() == 1 && to.Year() == from.Year() && to.Month() == from.Month() && to.Day() == lastDay {
+		if locale == i18n.UK {
+			return head + " — " + i18n.Month(locale, from)
+		}
 		return head + " — " + from.Format("Jan 2006")
 	}
-	return head + " — " + from.Format("2 Jan") + " – " + to.Format("2 Jan 2006")
+	return head + " — " + i18n.DayMonth(locale, from) + " – " + i18n.Date(locale, to)
 }
 
 // owned loads a draft the freelancer owns: ErrNotFound for anyone else,

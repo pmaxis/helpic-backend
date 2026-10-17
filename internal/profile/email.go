@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/pmaxis/helpic/internal/auth"
+	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/mail"
 	"github.com/pmaxis/helpic/internal/user"
 )
@@ -60,15 +61,17 @@ func (s *Service) RequestEmailChange(ctx context.Context, userID, email, current
 	if err := s.repo.CreateEmailChange(ctx, userID, hashToken(raw), email, time.Now().Add(emailChangeTTL)); err != nil {
 		return err
 	}
+	t := func(text string, args ...any) string { return i18n.T(u.Locale, text, args...) }
 	return s.mail.Send(ctx, mail.Email{
 		To:      email,
-		Subject: "Confirm your new Helpic email",
-		Heading: "Confirm your new email",
+		Locale:  u.Locale,
+		Subject: t("Confirm your new Helpic email"),
+		Heading: t("Confirm your new email"),
 		Paragraphs: []string{
-			"You asked to sign in to Helpic with " + email + " instead of " + u.Email + ". Confirm it's yours, and it becomes your sign-in email.",
+			t("You asked to sign in to Helpic with %s instead of %s. Confirm it's yours, and it becomes your sign-in email.", email, u.Email),
 		},
-		Button: &mail.Button{Text: "Confirm email", URL: s.appURL + "/confirm-email/" + raw},
-		Note:   "The link works for 24 hours. If you didn't ask for this, ignore this email: nothing changes.",
+		Button: &mail.Button{Text: t("Confirm email"), URL: s.appURL + "/confirm-email/" + raw},
+		Note:   t("The link works for 24 hours. If you didn't ask for this, ignore this email: nothing changes."),
 	})
 }
 
@@ -88,13 +91,15 @@ func (s *Service) ConfirmEmailChange(ctx context.Context, raw string) (user.User
 	if err != nil {
 		return user.User{}, err
 	}
+	t := func(text string, args ...any) string { return i18n.T(u.Locale, text, args...) }
 	if err := s.mail.Send(ctx, mail.Email{
 		To:      before.Email,
-		Subject: "Your Helpic sign-in email was changed",
-		Heading: "Your sign-in email was changed",
+		Locale:  u.Locale,
+		Subject: t("Your Helpic sign-in email was changed"),
+		Heading: t("Your sign-in email was changed"),
 		Paragraphs: []string{
-			"Your Helpic account now signs in with " + u.Email + " instead of this address, " + before.Email + ".",
-			"If that was you, there's nothing to do. If it wasn't, someone else may have your password.",
+			t("Your Helpic account now signs in with %s instead of this address, %s.", u.Email, before.Email),
+			t("If that was you, there's nothing to do. If it wasn't, someone else may have your password."),
 		},
 	}); err != nil {
 		slog.Error("failed to queue email changed notice", "error", err)

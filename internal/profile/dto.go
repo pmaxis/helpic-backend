@@ -26,8 +26,11 @@ type Name struct {
 func (r NameRequest) Validate() (Name, map[string]string) {
 	n := Name{First: strings.TrimSpace(r.FirstName), Last: strings.TrimSpace(r.LastName)}
 	fields := map[string]string{}
-	if msg := auth.ValidateName(n.First); msg != "" {
-		fields["first_name"] = strings.Replace(msg, "Name", "First name", 1)
+	switch {
+	case n.First == "":
+		fields["first_name"] = "First name is required"
+	case utf8.RuneCountInString(n.First) > auth.MaxNameLength:
+		fields["first_name"] = "First name is too long"
 	}
 	if utf8.RuneCountInString(n.Last) > auth.MaxNameLength {
 		fields["last_name"] = "Last name is too long"
@@ -83,7 +86,7 @@ func (r CurrencyRequest) Validate() (string, map[string]string) {
 	code := strings.ToUpper(strings.TrimSpace(r.Currency))
 	fields := map[string]string{}
 	if !money.ValidCurrency(code) {
-		fields["currency"] = "Choose one of: " + strings.Join(money.Currencies, ", ")
+		fields["currency"] = "Choose one of the currencies on the list"
 	}
 	return code, fields
 }
@@ -96,4 +99,9 @@ type PendingEmailDTO struct {
 // ConfirmEmailRequest is the JSON body for POST /api/v1/email-changes/confirm.
 type ConfirmEmailRequest struct {
 	Token string `json:"token"`
+}
+
+// LocaleRequest is the JSON body for PUT /api/v1/me/locale.
+type LocaleRequest struct {
+	Locale string `json:"locale"`
 }

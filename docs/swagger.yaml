@@ -345,6 +345,11 @@ definitions:
       email:
         type: string
     type: object
+  profile.LocaleRequest:
+    properties:
+      locale:
+        type: string
+    type: object
   profile.NameRequest:
     properties:
       first_name:
@@ -905,6 +910,9 @@ definitions:
       id:
         type: string
       last_name:
+        type: string
+      locale:
+        description: 'Locale is the language they read Helpic in: "en" or "uk".'
         type: string
       member_of:
         allOf:
@@ -2054,6 +2062,37 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Change your sign-in email
+      tags:
+      - account
+  /me/locale:
+    put:
+      consumes:
+      - application/json
+      description: '"en" or "uk": the interface, and the email and Telegram messages
+        you get.'
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/profile.LocaleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.Response'
+        "400":
+          description: Unknown language
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Set your language
       tags:
       - account
   /me/password:

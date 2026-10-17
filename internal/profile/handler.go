@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/pmaxis/helpic/internal/auth"
+	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/middleware"
 	"github.com/pmaxis/helpic/internal/request"
 	"github.com/pmaxis/helpic/internal/response"
@@ -35,6 +36,7 @@ func (h *Handler) Routes(r chi.Router, guard func(http.Handler) http.Handler) {
 	r.With(guard).Put("/me/email", h.ChangeEmail)
 	r.With(guard).Put("/me/password", h.ChangePassword)
 	r.Put("/me/currency", h.SetCurrency)
+	r.Put("/me/locale", h.SetLocale)
 }
 
 // UpdateName handles PUT /api/v1/me: the first and last name.
@@ -165,6 +167,35 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, err := h.svc.ChangePassword(r.Context(), userID, middleware.SessionID(r.Context()), req.CurrentPassword, req.Password)
+	writeUser(w, u, err)
+}
+
+// SetLocale handles PUT /api/v1/me/locale: the language they read Helpic in.
+//
+//	@Summary		Set your language
+//	@Description	"en" or "uk": the interface, and the email and Telegram messages you get.
+//	@Tags			account
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		LocaleRequest			true	"Request body"
+//	@Success		200		{object}	user.Response			"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Unknown language"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router			/me/locale [put]
+func (h *Handler) SetLocale(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req LocaleRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	if !i18n.Valid(req.Locale) {
+		response.ValidationError(w, map[string]string{"locale": "Choose English or Ukrainian"})
+		return
+	}
+	u, err := h.svc.SetLocale(r.Context(), userID, req.Locale)
 	writeUser(w, u, err)
 }
 
