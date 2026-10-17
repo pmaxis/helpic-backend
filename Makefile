@@ -1,0 +1,44 @@
+.DEFAULT_GOAL := help
+COMPOSE := docker compose
+
+.PHONY: help dev up down build logs test test-unit test-integration migrate-up migrate-down psql fmt
+
+help: ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+
+dev: ## Build and start postgres + backend in the foreground
+	$(COMPOSE) up --build
+
+up: ## Start postgres + backend in the background
+	$(COMPOSE) up -d --build
+
+down: ## Stop and remove the containers
+	$(COMPOSE) down
+
+build: ## Build the Docker image
+	$(COMPOSE) build
+
+logs: ## Follow container logs
+	$(COMPOSE) logs -f
+
+test: ## Run Go tests (needs a running Docker daemon for Testcontainers)
+	go test ./...
+
+test-unit: ## Run unit tests
+	go test ./tests/unit/...
+
+test-integration: ## Run integration tests (needs a running Docker daemon)
+	go test ./tests/integration/...
+
+migrate-up: ## Apply all database migrations
+	$(COMPOSE) run --rm backend migrate up
+
+migrate-down: ## Roll back all database migrations
+	$(COMPOSE) run --rm backend migrate down
+
+psql: ## Open a psql shell on the database
+	$(COMPOSE) exec postgres psql -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-helpic}
+
+fmt: ## Format Go code
+	go fmt ./...

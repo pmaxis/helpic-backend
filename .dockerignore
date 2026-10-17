@@ -1,0 +1,5 @@
+bin/
+server
+*.out
+.git
+.env
