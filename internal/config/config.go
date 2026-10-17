@@ -33,6 +33,10 @@ type Config struct {
 	// means auto-detect.
 	ChromePath string
 
+	// SwaggerEnabled serves the API docs at /api/docs; off in production
+	// unless SWAGGER_ENABLED says otherwise.
+	SwaggerEnabled bool
+
 	// UploadsDir holds task attachments; MaxUploadBytes caps one file.
 	UploadsDir     string
 	MaxUploadBytes int64
@@ -73,6 +77,7 @@ func Load() (Config, error) {
 	cfg.CookieSecure = getEnvBool("COOKIE_SECURE", false)
 	cfg.CookieSameSite = parseSameSite(getEnv("COOKIE_SAME_SITE", "lax"))
 	cfg.ChromePath = os.Getenv("CHROME_PATH")
+	cfg.SwaggerEnabled = getEnvBool("SWAGGER_ENABLED", !cfg.IsProduction())
 	cfg.UploadsDir = getEnv("UPLOADS_DIR", "uploads")
 	maxMB, err := strconv.Atoi(getEnv("MAX_UPLOAD_MB", "25"))
 	if err != nil || maxMB <= 0 {

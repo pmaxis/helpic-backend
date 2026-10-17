@@ -1,0 +1,4670 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Freelancers and their clients on the same page: tasks, projects, boards, reports.\n\nSign in with POST /auth/login: it sets an httpOnly cookie that every other call sends.\nIn this UI, sign in first and the cookie goes along with the next requests.\nErrors come as {\"error\": {\"code\", \"message\", \"fields\"}}.",
+        "title": "Helpic API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "basePath": "/api/v1",
+    "paths": {
+        "/attachments": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attachments"
+                ],
+                "summary": "A task's files",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "task",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/attachments.ListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Multipart, one \"file\" part, up to MAX_UPLOAD_MB. The type is read from the bytes.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attachments"
+                ],
+                "summary": "Attach a file to a task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "task",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "The file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "attachment",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/attachments.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "413": {
+                        "description": "Too large",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/attachments/{id}": {
+            "get": {
+                "description": "Always as a download, except PNG/JPEG/GIF/WebP images with inline=1.",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "attachments"
+                ],
+                "summary": "Download a file",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Attachment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "1 to show a safe image in place",
+                        "name": "inline",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The file",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Its uploader only.",
+                "tags": [
+                    "attachments"
+                ],
+                "summary": "Delete a file",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Attachment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/login": {
+            "post": {
+                "description": "Sets the httpOnly auth cookie that every other endpoint reads.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Sign in",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.LoginRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Wrong email or password",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/logout": {
+            "post": {
+                "description": "Clears the auth cookie.",
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Sign out",
+                "responses": {
+                    "204": {
+                        "description": "Signed out"
+                    }
+                }
+            }
+        },
+        "/auth/register": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Sign up as a freelancer",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.RegisterRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "The new account",
+                        "schema": {
+                            "$ref": "#/definitions/user.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "The email is taken",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/board": {
+            "get": {
+                "description": "One pair's board, a project's, or with=all: a freelancer's every task, the boards' columns merged by name.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "board"
+                ],
+                "summary": "A board with its tasks",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "A counterpart's ID, ",
+                        "name": "with",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "A project ID",
+                        "name": "project",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated project IDs; ",
+                        "name": "projects",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/board.BoardDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/board/columns": {
+            "get": {
+                "description": "The same query as /board, without tasks.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "board"
+                ],
+                "summary": "A board's columns",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "A counterpart's ID, or ",
+                        "name": "with",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "A project ID",
+                        "name": "project",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/board.BoardDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "board"
+                ],
+                "summary": "Reorder a board's columns",
+                "parameters": [
+                    {
+                        "description": "Every column ID, in the new order",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/board.OrderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "The board's freelancer only.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "board"
+                ],
+                "summary": "Add a column",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/board.ColumnRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created"
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/board/columns/{id}": {
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "board"
+                ],
+                "summary": "Rename a column or change its category",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Column ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/board.ColumnRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Its tasks move to another column of the same category.",
+                "tags": [
+                    "board"
+                ],
+                "summary": "Delete a column",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Column ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflicts with the current state",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/board/labels": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "summary": "A board's labels",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "A counterpart's ID, or ",
+                        "name": "with",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "A project ID",
+                        "name": "project",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/board.LabelsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Either side of the board.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "summary": "Make a label",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/board.LabelRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "label",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/board.LabelDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/board/labels/{id}": {
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "summary": "Rename or recolor a label",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Label ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/board.LabelRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "label",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/board.LabelDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Takes it off every task too.",
+                "tags": [
+                    "labels"
+                ],
+                "summary": "Delete a label",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Label ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/board/moves": {
+            "post": {
+                "description": "Into a column after a card (column_id, after_task_id), or on the all board into a lane (lane).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "board"
+                ],
+                "summary": "Move a card",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/board.MoveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "The move isn't allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/clients": {
+            "get": {
+                "description": "Freelancers only. Each with their open task count.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "people"
+                ],
+                "summary": "Your clients",
+                "responses": {
+                    "200": {
+                        "description": "clients",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/clients.LinkDTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/comments": {
+            "get": {
+                "description": "Oldest first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "comments"
+                ],
+                "summary": "A task's comments",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "task",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "comments",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/comments.DTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "comments"
+                ],
+                "summary": "Comment on a task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "task",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/comments.Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "comment",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/comments.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/comments/{id}": {
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "comments"
+                ],
+                "summary": "Edit your comment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Comment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/comments.Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "comment",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/comments.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "comments"
+                ],
+                "summary": "Delete your comment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Comment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/freelancers": {
+            "get": {
+                "description": "Clients only; a team member sees the company owner's.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "people"
+                ],
+                "summary": "Your freelancers",
+                "responses": {
+                    "200": {
+                        "description": "freelancers",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/clients.LinkDTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/invitations": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "people"
+                ],
+                "summary": "Pending client invitations",
+                "responses": {
+                    "200": {
+                        "description": "invitations",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/clients.InvitationDTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Returns the invitation with the token for its link (/invite/{token}).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "people"
+                ],
+                "summary": "Invite a client",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/clients.InviteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "invitation",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/clients.InvitationDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/invitations/{id}": {
+            "delete": {
+                "tags": [
+                    "people"
+                ],
+                "summary": "Revoke a client invitation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/invites/{token}": {
+            "get": {
+                "description": "Public: the invitation page.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitations"
+                ],
+                "summary": "Look up a client invitation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "invitation",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/clients.LookupDTO"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Invalid, used or expired",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/invites/{token}/accept": {
+            "post": {
+                "description": "Public. Creates the client account (name, password, confirmation) or signs in to the existing one (password), links it with the freelancer and sets the auth cookie.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitations"
+                ],
+                "summary": "Accept a client invitation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/clients.AcceptRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Invalid, used or expired",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "The signed-in user",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Change your name",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/profile.NameRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/currency": {
+            "put": {
+                "description": "What a freelancer bills in: USD, EUR, GBP, UAH, PLN or CAD.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Set the billing currency",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/profile.CurrencyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/email": {
+            "put": {
+                "description": "Needs the current password.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Change your sign-in email",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/profile.EmailRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/password": {
+            "put": {
+                "description": "Needs the current password.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Change your password",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/profile.PasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/notifications": {
+            "get": {
+                "description": "The latest 50, and how many are unread.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Your notifications",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/notifications.ListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/notifications/read-all": {
+            "post": {
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Mark all read",
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/notifications/unread-count": {
+            "get": {
+                "description": "Cheap enough to poll.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "How many are unread",
+                "responses": {
+                    "200": {
+                        "description": "unread",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/notifications/{id}/read": {
+            "post": {
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Mark one read",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Notification ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Your projects",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "A counterpart's ID, or ",
+                        "name": "with",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "projects",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/projects.DTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "A client names the freelancer; a freelancer the client, or none for a personal project.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Start a project",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/projects.Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "project",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/projects.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "A project",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "project",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/projects.DTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Its creator only.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Edit a project",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/projects.Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "project",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/projects.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Its creator only; its tasks stay, out of the project.",
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Delete a project",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/reports": {
+            "get": {
+                "description": "A freelancer's own; a client's once sent. Team members get none.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Your reports",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/reports.ListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Freelancers only. Snapshots the tasks completed in the period (in project_ids, if any), leaving out ones a paid report covers.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Make a report",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/reports.CreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/reports.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "A report with its tasks",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/reports.DTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Title, summary and kind.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Edit a draft",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/reports.UpdateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/reports.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Already sent",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Its freelancer, sent or not; a sent one is gone for the client too.",
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Delete a report",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/{id}/history": {
+            "get": {
+                "description": "Its client sees only the sending and the payment.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "A report's history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "events",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/reports.EventDTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/{id}/html": {
+            "get": {
+                "description": "For servers that can't print PDFs.",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "A report as an HTML sheet",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "HTML",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/{id}/items/{itemID}": {
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Rewrite a task's notes in a draft",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Report item ID",
+                        "name": "itemID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/reports.ItemRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/reports.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Already sent",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Drop a task from a draft",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Report item ID",
+                        "name": "itemID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/reports.DTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Already sent",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/{id}/paid": {
+            "post": {
+                "description": "The report's client only. Its tasks move to the board's Paid column; the freelancer is notified.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Mark a sent report paid",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/reports.DTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not the report's client",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Not sent, or already paid",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/{id}/pdf": {
+            "get": {
+                "description": "Printed by headless Chromium; 503 without it.",
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "A report as PDF",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "1 to save it rather than show it",
+                        "name": "download",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "PDF",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "503": {
+                        "description": "No Chromium on this server",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/{id}/send": {
+            "post": {
+                "description": "Freezes it, its prices and currency; the client is notified.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Send a draft to its client",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/reports.DTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Already sent, or personal",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks": {
+            "get": {
+                "description": "Open ones first, then by due date.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Your tasks",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Comma-separated: new,in_progress,done,cancelled",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "A counterpart's ID, or ",
+                        "name": "with",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "A project ID",
+                        "name": "project",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "tasks",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/tasks.DTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "A client names the freelancer; a freelancer the client, or none for a personal task. A project, or a board column (status_id), fixes who it's with.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Set a task",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/tasks.Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflicts with the current state",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "A task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Title, description, due date, project. Its creator or its freelancer, in any status.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Edit a task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/tasks.Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Its creator, while it's new.",
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Delete a task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflicts with the current state",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks/{id}/history": {
+            "get": {
+                "description": "Who changed what and when, oldest first. Team members don't see price changes.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "A task's history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "events",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/tasks.EventDTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks/{id}/labels": {
+            "put": {
+                "description": "Replaces them with labels of the task's board.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Set a task's labels",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/tasks.LabelsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks/{id}/price": {
+            "put": {
+                "description": "The task's freelancer only, in any status. A null price clears it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Price a task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/tasks.PriceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks/{id}/priority": {
+            "put": {
+                "description": "Either side, in any status.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Set a task's priority",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/tasks.PriorityRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks/{id}/status": {
+            "post": {
+                "description": "To an exact board column (status_id), or to the first column of a category (status), as the role rules allow.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Move a task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/tasks.StatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "The move isn't allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/team": {
+            "get": {
+                "description": "Clients only. The owner also gets the members and pending invitations.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "team"
+                ],
+                "summary": "Your company and its team",
+                "responses": {
+                    "200": {
+                        "description": "team",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/team.OverviewDTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "team"
+                ],
+                "summary": "Name your company",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/team.NameRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "team",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/team.OverviewDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Members don't run the team",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-invites/{token}": {
+            "get": {
+                "description": "Public: the join page.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitations"
+                ],
+                "summary": "Look up a team invitation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "invite",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/team.LookupDTO"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Invalid, used or expired",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-invites/{token}/accept": {
+            "post": {
+                "description": "Public. Creates the member's account, adds it to the company and sets the auth cookie.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitations"
+                ],
+                "summary": "Join a team",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/team.JoinRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Invalid, used or expired",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/team/invites": {
+            "post": {
+                "description": "They join with a new account through /join/{token}.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "team"
+                ],
+                "summary": "Invite someone to your team",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/team.InviteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "invite",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/team.InviteDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Members don't run the team",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/team/invites/{id}": {
+            "delete": {
+                "tags": [
+                    "team"
+                ],
+                "summary": "Revoke a team invitation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Invitation ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/team/members/{id}": {
+            "delete": {
+                "tags": [
+                    "team"
+                ],
+                "summary": "Remove a team member",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Member's user ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "attachments.DTO": {
+            "type": "object",
+            "properties": {
+                "can_delete": {
+                    "description": "CanDelete is true for the uploader.",
+                    "type": "boolean"
+                },
+                "content_type": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "file_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_image": {
+                    "description": "IsImage marks a picture the browser may preview.",
+                    "type": "boolean"
+                },
+                "size_bytes": {
+                    "type": "integer"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "uploaded_by": {
+                    "$ref": "#/definitions/attachments.UploaderDTO"
+                }
+            }
+        },
+        "attachments.ListResponse": {
+            "type": "object",
+            "properties": {
+                "attachments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/attachments.DTO"
+                    }
+                },
+                "max_size_bytes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "attachments.UploaderDTO": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.LoginRequest": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RegisterRequest": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "password_confirmation": {
+                    "type": "string"
+                }
+            }
+        },
+        "board.BoardDTO": {
+            "type": "object",
+            "properties": {
+                "can_manage": {
+                    "description": "CanManage is true for the freelancer, who manages the columns.",
+                    "type": "boolean"
+                },
+                "columns": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/board.ColumnDTO"
+                    }
+                },
+                "merged": {
+                    "description": "Merged is true for the all board: its columns are lanes merging the\npairs' columns of one name, moved to with MoveRequest.Lane.",
+                    "type": "boolean"
+                }
+            }
+        },
+        "board.ColumnDTO": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/tasks.DTO"
+                    }
+                }
+            }
+        },
+        "board.ColumnRequest": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "with": {
+                    "type": "string"
+                }
+            }
+        },
+        "board.LabelDTO": {
+            "type": "object",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "task_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "board.LabelRequest": {
+            "type": "object",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "with": {
+                    "type": "string"
+                }
+            }
+        },
+        "board.LabelsResponse": {
+            "type": "object",
+            "properties": {
+                "colors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "labels": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/board.LabelDTO"
+                    }
+                }
+            }
+        },
+        "board.MoveRequest": {
+            "type": "object",
+            "properties": {
+                "after_task_id": {
+                    "description": "AfterTaskID is the card the moved one goes right after; empty puts it\nat the top of the column.",
+                    "type": "string"
+                },
+                "column_id": {
+                    "type": "string"
+                },
+                "lane": {
+                    "description": "Lane, instead of ColumnID, moves the card to a lane of the all board.",
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "board.OrderRequest": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "clients.AcceptRequest": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "password_confirmation": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.InvitationDTO": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "expired": {
+                    "type": "boolean"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.InviteRequest": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.LinkDTO": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "linked_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "open_tasks": {
+                    "type": "integer"
+                }
+            }
+        },
+        "clients.LookupDTO": {
+            "type": "object",
+            "properties": {
+                "account_exists": {
+                    "type": "boolean"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "freelancer": {
+                    "$ref": "#/definitions/clients.PartyDTO"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.PartyDTO": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "comments.AuthorDTO": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "comments.DTO": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "$ref": "#/definitions/comments.AuthorDTO"
+                },
+                "body": {
+                    "type": "string"
+                },
+                "can_edit": {
+                    "description": "CanEdit is true for the author, who may edit and delete it.",
+                    "type": "boolean"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "edited": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "comments.Request": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string"
+                }
+            }
+        },
+        "notifications.ActorDTO": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "notifications.DTO": {
+            "type": "object",
+            "properties": {
+                "actor": {
+                    "$ref": "#/definitions/notifications.ActorDTO"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "detail": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "read": {
+                    "type": "boolean"
+                },
+                "report_id": {
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "notifications.ListResponse": {
+            "type": "object",
+            "properties": {
+                "notifications": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/notifications.DTO"
+                    }
+                },
+                "unread": {
+                    "type": "integer"
+                }
+            }
+        },
+        "profile.CurrencyRequest": {
+            "type": "object",
+            "properties": {
+                "currency": {
+                    "type": "string"
+                }
+            }
+        },
+        "profile.EmailRequest": {
+            "type": "object",
+            "properties": {
+                "current_password": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                }
+            }
+        },
+        "profile.NameRequest": {
+            "type": "object",
+            "properties": {
+                "first_name": {
+                    "type": "string"
+                },
+                "last_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "profile.PasswordRequest": {
+            "type": "object",
+            "properties": {
+                "current_password": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "password_confirmation": {
+                    "type": "string"
+                }
+            }
+        },
+        "projects.DTO": {
+            "type": "object",
+            "properties": {
+                "can_edit": {
+                    "type": "boolean"
+                },
+                "client": {
+                    "$ref": "#/definitions/projects.PartyDTO"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "freelancer": {
+                    "$ref": "#/definitions/projects.PartyDTO"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "open_tasks": {
+                    "type": "integer"
+                },
+                "total_tasks": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "projects.PartyDTO": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "projects.Request": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "freelancer_id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "reports.CreateRequest": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "kind": {
+                    "description": "Kind is \"basic\" (the default) or \"detailed\".",
+                    "type": "string"
+                },
+                "project_id": {
+                    "description": "ProjectID is the one-project form of ProjectIDs, still accepted.",
+                    "type": "string"
+                },
+                "project_ids": {
+                    "description": "ProjectIDs limits the report to these projects; none means all.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "reports.DTO": {
+            "type": "object",
+            "properties": {
+                "can_delete": {
+                    "description": "CanDelete is true for the freelancer, sent or not.",
+                    "type": "boolean"
+                },
+                "can_edit": {
+                    "description": "CanEdit is true for the freelancer while the report is a draft.",
+                    "type": "boolean"
+                },
+                "can_mark_paid": {
+                    "description": "CanMarkPaid is true for the client of a sent, unpaid report.",
+                    "type": "boolean"
+                },
+                "client": {
+                    "description": "Client is null for a report on personal work.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/reports.PartyDTO"
+                        }
+                    ]
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "freelancer": {
+                    "$ref": "#/definitions/reports.PartyDTO"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "item_count": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/reports.ItemDTO"
+                    }
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "paid_at": {
+                    "type": "string"
+                },
+                "projects": {
+                    "description": "Projects the report covers, named as they were; empty means all.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/reports.ProjectRef"
+                    }
+                },
+                "sent_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                },
+                "total_cents": {
+                    "description": "TotalCents sums the items' prices, on a list too; null when none\nhas a price.",
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "reports.EventDTO": {
+            "type": "object",
+            "properties": {
+                "actor": {
+                    "$ref": "#/definitions/reports.PartyDTO"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "data": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                }
+            }
+        },
+        "reports.ItemDTO": {
+            "type": "object",
+            "properties": {
+                "completed_on": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "notes": {
+                    "description": "Notes say what was done in the task (shown in a detailed report).",
+                    "type": "string"
+                },
+                "price_cents": {
+                    "description": "PriceCents is null for a task without a price.",
+                    "type": "integer"
+                },
+                "project_name": {
+                    "type": "string"
+                },
+                "status_name": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "reports.ItemRequest": {
+            "type": "object",
+            "properties": {
+                "notes": {
+                    "type": "string"
+                }
+            }
+        },
+        "reports.ListResponse": {
+            "type": "object",
+            "properties": {
+                "pdf_available": {
+                    "type": "boolean"
+                },
+                "reports": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/reports.DTO"
+                    }
+                }
+            }
+        },
+        "reports.PartyDTO": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "reports.ProjectRef": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "reports.UpdateRequest": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "description": "Kind switches between \"basic\" and \"detailed\"; omitted, it stays.",
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "response.APIError": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "fields": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "response.ErrorEnvelope": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "$ref": "#/definitions/response.APIError"
+                }
+            }
+        },
+        "tasks.DTO": {
+            "type": "object",
+            "properties": {
+                "can_delete": {
+                    "type": "boolean"
+                },
+                "can_edit": {
+                    "type": "boolean"
+                },
+                "can_see_price": {
+                    "description": "CanSeePrice is false for a member of the client's team: the price is\nleft out for them.",
+                    "type": "boolean"
+                },
+                "can_set_price": {
+                    "type": "boolean"
+                },
+                "client": {
+                    "description": "Client is null for a personal task.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/tasks.PartyDTO"
+                        }
+                    ]
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "creator": {
+                    "description": "Creator is who set the task — the freelancer, the client, or a member\nof the client's company.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/tasks.PartyDTO"
+                        }
+                    ]
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "due_on": {
+                    "type": "string"
+                },
+                "freelancer": {
+                    "$ref": "#/definitions/tasks.PartyDTO"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "labels": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/tasks.Label"
+                    }
+                },
+                "next_statuses": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "participants": {
+                    "description": "Participants are who took part: the freelancer first, then everyone who\nset, commented on, attached to or changed the task.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/tasks.PartyDTO"
+                    }
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "price_cents": {
+                    "description": "PriceCents is null while the task has no price; Currency is the\nfreelancer's.",
+                    "type": "integer"
+                },
+                "priority": {
+                    "type": "string"
+                },
+                "project": {
+                    "description": "Project is null for a task outside any project.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/tasks.ProjectDTO"
+                        }
+                    ]
+                },
+                "status": {
+                    "type": "string"
+                },
+                "status_id": {
+                    "description": "Status is the category; StatusID and StatusName the exact workflow\nstatus (board column), Position the card's place in it.",
+                    "type": "string"
+                },
+                "status_name": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "tasks.EventDTO": {
+            "type": "object",
+            "properties": {
+                "actor": {
+                    "$ref": "#/definitions/tasks.PartyDTO"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "data": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                }
+            }
+        },
+        "tasks.Label": {
+            "type": "object",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "tasks.LabelsRequest": {
+            "type": "object",
+            "properties": {
+                "label_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "tasks.PartyDTO": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "tasks.PriceRequest": {
+            "type": "object",
+            "properties": {
+                "price": {
+                    "type": "string"
+                }
+            }
+        },
+        "tasks.PriorityRequest": {
+            "type": "object",
+            "properties": {
+                "priority": {
+                    "type": "string"
+                }
+            }
+        },
+        "tasks.ProjectDTO": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "tasks.Request": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "due_on": {
+                    "type": "string"
+                },
+                "freelancer_id": {
+                    "type": "string"
+                },
+                "price": {
+                    "description": "Price is an amount like \"1200.50\", set by a freelancer on create only;\nPUT /api/v1/tasks/{id}/price changes it later.",
+                    "type": "string"
+                },
+                "priority": {
+                    "description": "Priority is set on create only (\"none\" when left out); PUT\n/api/v1/tasks/{id}/priority changes it later.",
+                    "type": "string"
+                },
+                "project_id": {
+                    "description": "ProjectID puts the task in a project; on edit null keeps the current\nproject and \"\" takes the task out of it.",
+                    "type": "string"
+                },
+                "status_id": {
+                    "description": "StatusID creates the task straight in a board column (create only).",
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "tasks.StatusRequest": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "description": "Status moves the task to the first column of a category; StatusID to an\nexact column.",
+                    "type": "string"
+                },
+                "status_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "team.InviteDTO": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "expired": {
+                    "type": "boolean"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "team.InviteRequest": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "team.JoinRequest": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "password_confirmation": {
+                    "type": "string"
+                }
+            }
+        },
+        "team.LookupDTO": {
+            "type": "object",
+            "properties": {
+                "company": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner": {
+                    "$ref": "#/definitions/team.PersonDTO"
+                }
+            }
+        },
+        "team.MemberDTO": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "joined_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "team.NameRequest": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "team.OverviewDTO": {
+            "type": "object",
+            "properties": {
+                "invites": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/team.InviteDTO"
+                    }
+                },
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/team.MemberDTO"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner": {
+                    "$ref": "#/definitions/team.PersonDTO"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "team.PersonDTO": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "user.DTO": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "first_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_name": {
+                    "type": "string"
+                },
+                "member_of": {
+                    "description": "MemberOf is set for a member of a client's company; null otherwise.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/user.TeamDTO"
+                        }
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "user.Response": {
+            "type": "object",
+            "properties": {
+                "user": {
+                    "$ref": "#/definitions/user.DTO"
+                }
+            }
+        },
+        "user.TeamDTO": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "owner_id": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

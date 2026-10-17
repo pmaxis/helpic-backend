@@ -9,7 +9,7 @@ import (
 	"github.com/pmaxis/helpic/internal/money"
 )
 
-// NameRequest is the JSON body for PUT /api/me.
+// NameRequest is the JSON body for PUT /api/v1/me.
 type NameRequest struct {
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
@@ -35,7 +35,7 @@ func (r NameRequest) Validate() (Name, map[string]string) {
 	return n, fields
 }
 
-// EmailRequest is the JSON body for PUT /api/me/email.
+// EmailRequest is the JSON body for PUT /api/v1/me/email.
 type EmailRequest struct {
 	Email           string `json:"email"`
 	CurrentPassword string `json:"current_password"`
@@ -56,7 +56,7 @@ func (r EmailRequest) Validate() (string, map[string]string) {
 	return email, fields
 }
 
-// PasswordRequest is the JSON body for PUT /api/me/password.
+// PasswordRequest is the JSON body for PUT /api/v1/me/password.
 type PasswordRequest struct {
 	CurrentPassword      string `json:"current_password"`
 	Password             string `json:"password"`
@@ -73,7 +73,7 @@ func (r PasswordRequest) Validate() map[string]string {
 	return fields
 }
 
-// CurrencyRequest is the JSON body for PUT /api/me/currency.
+// CurrencyRequest is the JSON body for PUT /api/v1/me/currency.
 type CurrencyRequest struct {
 	Currency string `json:"currency"`
 }

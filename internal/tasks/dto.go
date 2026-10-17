@@ -31,10 +31,10 @@ type Request struct {
 	Description string  `json:"description"`
 	DueOn       *string `json:"due_on"`
 	// Price is an amount like "1200.50", set by a freelancer on create only;
-	// PUT /api/tasks/{id}/price changes it later.
+	// PUT /api/v1/tasks/{id}/price changes it later.
 	Price *string `json:"price"`
 	// Priority is set on create only ("none" when left out); PUT
-	// /api/tasks/{id}/priority changes it later.
+	// /api/v1/tasks/{id}/priority changes it later.
 	Priority string `json:"priority"`
 }
 
@@ -108,7 +108,7 @@ func (r Request) Validate(creatorRole string) (Params, map[string]string) {
 	return p, fields
 }
 
-// PriceRequest is the JSON body for PUT /api/tasks/{id}/price; a null or
+// PriceRequest is the JSON body for PUT /api/v1/tasks/{id}/price; a null or
 // empty price clears it.
 type PriceRequest struct {
 	Price *string `json:"price"`
@@ -126,7 +126,7 @@ func (r PriceRequest) Validate() (*int64, map[string]string) {
 	return &cents, nil
 }
 
-// PriorityRequest is the JSON body for PUT /api/tasks/{id}/priority.
+// PriorityRequest is the JSON body for PUT /api/v1/tasks/{id}/priority.
 type PriorityRequest struct {
 	Priority string `json:"priority"`
 }
@@ -140,7 +140,7 @@ func (r PriorityRequest) Validate() (string, map[string]string) {
 	return p, nil
 }
 
-// LabelsRequest is the JSON body for PUT /api/tasks/{id}/labels: the task's
+// LabelsRequest is the JSON body for PUT /api/v1/tasks/{id}/labels: the task's
 // whole set of labels.
 type LabelsRequest struct {
 	LabelIDs []string `json:"label_ids"`
@@ -163,7 +163,7 @@ func (r LabelsRequest) Validate() ([]string, map[string]string) {
 	return ids, nil
 }
 
-// StatusRequest is the JSON body for POST /api/tasks/{id}/status.
+// StatusRequest is the JSON body for POST /api/v1/tasks/{id}/status.
 type StatusRequest struct {
 	// Status moves the task to the first column of a category; StatusID to an
 	// exact column.

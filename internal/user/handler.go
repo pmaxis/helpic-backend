@@ -18,8 +18,15 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// Me handles GET /api/me. It requires the auth middleware to have populated the
+// Me handles GET /api/v1/me. It requires the auth middleware to have populated the
 // request context with the authenticated user ID.
+//
+//	@Summary	The signed-in user
+//	@Tags		account
+//	@Produce	json
+//	@Success	200	{object}	Response				"OK"
+//	@Failure	401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router		/me [get]
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.UserID(r.Context())
 	if !ok {

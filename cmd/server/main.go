@@ -5,6 +5,18 @@
 //	server              start the HTTP server (runs pending migrations first)
 //	server migrate up    apply all pending migrations and exit
 //	server migrate down   roll back all migrations and exit
+//
+// The API description below feeds Swagger (make swagger); the UI is served at
+// /api/docs.
+//
+//	@title			Helpic API
+//	@version		1.0
+//	@description	Freelancers and their clients on the same page: tasks, projects, boards, reports.
+//	@description
+//	@description	Sign in with POST /auth/login: it sets an httpOnly cookie that every other call sends.
+//	@description	In this UI, sign in first and the cookie goes along with the next requests.
+//	@description	Errors come as {"error": {"code", "message", "fields"}}.
+//	@BasePath		/api/v1
 package main
 
 import (

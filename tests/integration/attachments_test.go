@@ -21,7 +21,7 @@ func upload(t *testing.T, srv *httptest.Server, c *http.Client, taskID, name str
 	}
 	part.Write(content)
 	mw.Close()
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/attachments?task="+taskID, &body)
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/attachments?task="+taskID, &body)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	resp, err := c.Do(req)
 	if err != nil {
@@ -47,7 +47,7 @@ func TestAttachments(t *testing.T) {
 	if img["file_name"] != "mockup.png" || img["content_type"] != "image/png" || img["is_image"] != true || img["can_delete"] != true {
 		t.Fatalf("image = %v", img)
 	}
-	imgURL := srv.URL + "/api/attachments/" + img["id"].(string)
+	imgURL := srv.URL + "/api/v1/attachments/" + img["id"].(string)
 
 	// A page posing as an image is still a page: never previewed, never run.
 	resp = upload(t, srv, client, taskID, `C:\docs\page.png`, []byte("<!doctype html><script>alert(1)</script>"))
@@ -56,7 +56,7 @@ func TestAttachments(t *testing.T) {
 	if page["file_name"] != "page.png" || page["is_image"] != false || !strings.HasPrefix(page["content_type"].(string), "text/html") {
 		t.Fatalf("page = %v", page)
 	}
-	resp = get(t, freelancer, srv.URL+"/api/attachments/"+page["id"].(string)+"?inline=1")
+	resp = get(t, freelancer, srv.URL+"/api/v1/attachments/"+page["id"].(string)+"?inline=1")
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 	if d := resp.Header.Get("Content-Disposition"); !strings.HasPrefix(d, "attachment;") || resp.Header.Get("X-Content-Type-Options") != "nosniff" {
@@ -64,7 +64,7 @@ func TestAttachments(t *testing.T) {
 	}
 
 	// The client sees both and downloads the image; only an image shows inline.
-	resp = get(t, client, srv.URL+"/api/attachments?task="+taskID)
+	resp = get(t, client, srv.URL+"/api/v1/attachments?task="+taskID)
 	wantStatus(t, resp, http.StatusOK)
 	list, _ := decode(t, resp)["attachments"].([]any)
 	if len(list) != 2 || list[0].(map[string]any)["can_delete"] != false {
@@ -91,7 +91,7 @@ func TestAttachments(t *testing.T) {
 	}
 
 	// Someone outside the task sees nothing.
-	wantStatus(t, get(t, outsider, srv.URL+"/api/attachments?task="+taskID), http.StatusNotFound)
+	wantStatus(t, get(t, outsider, srv.URL+"/api/v1/attachments?task="+taskID), http.StatusNotFound)
 	wantStatus(t, get(t, outsider, imgURL), http.StatusNotFound)
 	resp = upload(t, srv, outsider, taskID, "x.txt", []byte("hi"))
 	wantStatus(t, resp, http.StatusNotFound)
@@ -115,8 +115,8 @@ func TestAttachments(t *testing.T) {
 	wantStatus(t, get(t, freelancer, imgURL), http.StatusNotFound)
 
 	// Deleting the task takes its files along.
-	pageURL := srv.URL + "/api/attachments/" + page["id"].(string)
-	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/tasks/"+taskID, nil)
+	pageURL := srv.URL + "/api/v1/attachments/" + page["id"].(string)
+	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/v1/tasks/"+taskID, nil)
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
 	wantStatus(t, get(t, client, pageURL), http.StatusNotFound)

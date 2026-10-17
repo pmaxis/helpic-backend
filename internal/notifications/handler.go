@@ -31,6 +31,12 @@ func (h *Handler) Routes(r chi.Router) {
 	})
 }
 
+// ListResponse is the latest notifications and how many are unread.
+type ListResponse struct {
+	Notifications []DTO `json:"notifications"`
+	Unread        int   `json:"unread"`
+}
+
 // ActorDTO is who did the thing.
 type ActorDTO struct {
 	ID    string `json:"id"`
@@ -74,7 +80,15 @@ func toDTO(n Notification) DTO {
 	return d
 }
 
-// List handles GET /api/notifications.
+// List handles GET /api/v1/notifications.
+//
+//	@Summary		Your notifications
+//	@Description	The latest 50, and how many are unread.
+//	@Tags			notifications
+//	@Produce		json
+//	@Success		200	{object}	ListResponse			"OK"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router			/notifications [get]
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -89,10 +103,18 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	for _, n := range list {
 		out = append(out, toDTO(n))
 	}
-	response.JSON(w, http.StatusOK, map[string]any{"notifications": out, "unread": unread})
+	response.JSON(w, http.StatusOK, ListResponse{Notifications: out, Unread: unread})
 }
 
-// UnreadCount handles GET /api/notifications/unread-count — cheap enough to poll.
+// UnreadCount handles GET /api/v1/notifications/unread-count — cheap enough to poll.
+//
+//	@Summary		How many are unread
+//	@Description	Cheap enough to poll.
+//	@Tags			notifications
+//	@Produce		json
+//	@Success		200	{object}	map[string]int			"unread"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router			/notifications/unread-count [get]
 func (h *Handler) UnreadCount(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -106,7 +128,15 @@ func (h *Handler) UnreadCount(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]int{"unread": n})
 }
 
-// MarkRead handles POST /api/notifications/{id}/read.
+// MarkRead handles POST /api/v1/notifications/{id}/read.
+//
+//	@Summary	Mark one read
+//	@Tags		notifications
+//	@Param		id	path	string	true	"Notification ID"
+//	@Success	204	"No content"
+//	@Failure	401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router		/notifications/{id}/read [post]
 func (h *Handler) MarkRead(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -124,7 +154,13 @@ func (h *Handler) MarkRead(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// MarkAllRead handles POST /api/notifications/read-all.
+// MarkAllRead handles POST /api/v1/notifications/read-all.
+//
+//	@Summary	Mark all read
+//	@Tags		notifications
+//	@Success	204	"No content"
+//	@Failure	401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router		/notifications/read-all [post]
 func (h *Handler) MarkAllRead(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {

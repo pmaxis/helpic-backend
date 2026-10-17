@@ -40,12 +40,12 @@ func (r ColumnRequest) Validate() (ColumnParams, map[string]string) {
 	return p, fields
 }
 
-// OrderRequest is the JSON body for PUT /api/board/columns.
+// OrderRequest is the JSON body for PUT /api/v1/board/columns.
 type OrderRequest struct {
 	IDs []string `json:"ids"`
 }
 
-// MoveRequest is the JSON body for POST /api/board/moves.
+// MoveRequest is the JSON body for POST /api/v1/board/moves.
 type MoveRequest struct {
 	TaskID   string `json:"task_id"`
 	ColumnID string `json:"column_id"`

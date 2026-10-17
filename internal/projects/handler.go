@@ -32,7 +32,15 @@ func (h *Handler) Routes(r chi.Router) {
 	})
 }
 
-// List handles GET /api/projects?with={userID|personal}.
+// List handles GET /api/v1/projects?with={userID|personal}.
+//
+//	@Summary	Your projects
+//	@Tags		projects
+//	@Produce	json
+//	@Param		with	query		string					false	"A counterpart's ID, or "personal""
+//	@Success	200		{object}	map[string][]DTO		"projects"
+//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router		/projects [get]
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -50,7 +58,16 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string][]DTO{"projects": out})
 }
 
-// Get handles GET /api/projects/{id}.
+// Get handles GET /api/v1/projects/{id}.
+//
+//	@Summary	A project
+//	@Tags		projects
+//	@Produce	json
+//	@Param		id	path		string					true	"Project ID"
+//	@Success	200	{object}	map[string]DTO			"project"
+//	@Failure	401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router		/projects/{id} [get]
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := request.UserRole(w, r)
 	if !ok {
@@ -60,7 +77,18 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	writeProject(w, http.StatusOK, p, userID, err)
 }
 
-// Create handles POST /api/projects.
+// Create handles POST /api/v1/projects.
+//
+//	@Summary		Start a project
+//	@Description	A client names the freelancer; a freelancer the client, or none for a personal project.
+//	@Tags			projects
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		Request					true	"Request body"
+//	@Success		201		{object}	map[string]DTO			"project"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router			/projects [post]
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -87,7 +115,21 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	writeProject(w, http.StatusCreated, p, userID, err)
 }
 
-// Update handles PUT /api/projects/{id}.
+// Update handles PUT /api/v1/projects/{id}.
+//
+//	@Summary		Edit a project
+//	@Description	Its creator only.
+//	@Tags			projects
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Project ID"
+//	@Param			body	body		Request					true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"project"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/projects/{id} [put]
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := request.UserRole(w, r)
 	if !ok {
@@ -106,7 +148,17 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	writeProject(w, http.StatusOK, p, userID, err)
 }
 
-// Delete handles DELETE /api/projects/{id}.
+// Delete handles DELETE /api/v1/projects/{id}.
+//
+//	@Summary		Delete a project
+//	@Description	Its creator only; its tasks stay, out of the project.
+//	@Tags			projects
+//	@Param			id	path	string	true	"Project ID"
+//	@Success		204	"No content"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/projects/{id} [delete]
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := request.UserRole(w, r)
 	if !ok {

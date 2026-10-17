@@ -30,7 +30,8 @@ type APIError struct {
 	Fields  map[string]string `json:"fields,omitempty"`
 }
 
-type errorEnvelope struct {
+// ErrorEnvelope is the body of every error response: {"error": {...}}.
+type ErrorEnvelope struct {
 	Error APIError `json:"error"`
 }
 
@@ -49,12 +50,12 @@ func JSON(w http.ResponseWriter, status int, v any) {
 // Error writes a unified error envelope. Database errors and stack traces must
 // never be passed here as the message.
 func Error(w http.ResponseWriter, status int, code, message string) {
-	JSON(w, status, errorEnvelope{Error: APIError{Code: code, Message: message}})
+	JSON(w, status, ErrorEnvelope{Error: APIError{Code: code, Message: message}})
 }
 
 // ValidationError writes a 400 with per-field messages.
 func ValidationError(w http.ResponseWriter, fields map[string]string) {
-	JSON(w, http.StatusBadRequest, errorEnvelope{Error: APIError{
+	JSON(w, http.StatusBadRequest, ErrorEnvelope{Error: APIError{
 		Code:    CodeValidation,
 		Message: "The request contains invalid fields",
 		Fields:  fields,

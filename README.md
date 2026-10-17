@@ -17,7 +17,8 @@ make up                   # or: docker compose up -d --build
 
 | Service | URL |
 |---|---|
-| API | http://localhost:8090/api |
+| API | http://localhost:8090/api/v1 |
+| API docs (Swagger) | http://localhost:8090/api/docs |
 | Health | http://localhost:8090/health |
 | PostgreSQL | `localhost:5435` |
 
@@ -59,57 +60,14 @@ The role is carried in the JWT; `middleware.RequireRole` guards role-only routes
 
 ## API
 
-| Method | Path | Who |
-|---|---|---|
-| POST | `/api/auth/register` | public (creates a freelancer) |
-| POST | `/api/auth/login`, `/api/auth/logout` | public |
-| GET | `/api/me` | signed in |
-| PUT | `/api/me` (name), `/api/me/email`, `/api/me/password` | signed in; email and password need `current_password` |
-| PUT | `/api/me/currency` `{currency}` (USD, EUR, GBP, UAH, PLN, CAD) | signed in; a freelancer's billing currency |
-| GET, PUT | `/api/team` (PUT `{name}`) | client; PUT the company's owner |
-| POST | `/api/team/invites` `{email, name?}` | the company's owner |
-| DELETE | `/api/team/invites/{id}`, `/api/team/members/{id}` | the company's owner |
-| GET, POST | `/api/team-invites/{token}` (POST `…/accept` `{name, password, password_confirmation}`) | public: the join page |
-| GET | `/api/invites/{token}` | public — invitation page |
-| POST | `/api/invites/{token}/accept` | public — creates/signs in the client |
-| GET, POST | `/api/invitations` | freelancer |
-| DELETE | `/api/invitations/{id}` | freelancer |
-| GET | `/api/clients` | freelancer |
-| GET | `/api/freelancers` | client |
-| GET, POST | `/api/projects` (`?with={userID\|personal}`) | both — create like a task: `freelancer_id` / `client_id` |
-| GET | `/api/projects/{id}` | both |
-| PUT, DELETE | `/api/projects/{id}` | the project's creator |
-| GET | `/api/tasks?status=new,in_progress&with={userID\|personal}&project={id}` | both |
-| GET | `/api/tasks/{id}` | both |
-| POST | `/api/tasks` | both — a client sends `freelancer_id`, a freelancer `client_id` (omit it for a personal task); with `project_id` the project decides both |
-| PUT, DELETE | `/api/tasks/{id}` | PUT: the task's creator or freelancer; DELETE: the creator, while it's new |
-| PUT | `/api/tasks/{id}/price` `{price: "1200.50" \| null}` | the task's freelancer (a freelancer may also pass `price` on create) |
-| GET, POST | `/api/comments?task={id}` (POST `{body}`) | the task's sides |
-| PUT, DELETE | `/api/comments/{id}` (PUT `{body}`) | the comment's author |
-| GET, POST | `/api/attachments?task={id}` (POST: multipart, one `file` part) | the task's sides |
-| GET, DELETE | `/api/attachments/{id}` (GET `?inline=1` previews an image) | the task's sides; DELETE the uploader |
-| GET | `/api/tasks/{id}/history` | the task's sides |
-| PUT | `/api/tasks/{id}/priority` `{priority}`, `/api/tasks/{id}/labels` `{label_ids}` | the task's sides |
-| GET, POST | `/api/board/labels?with=…&project=…` (POST `{with?, project_id?, name, color}`) | the board's sides |
-| PUT, DELETE | `/api/board/labels/{id}` (PUT `{name, color}`) | the board's sides |
-| POST | `/api/tasks/{id}/status` `{status_id}` (or `{status}`: a category's first column) | both, per the rules above |
-| GET | `/api/board?with={clientID\|personal\|freelancerID}` or `?project={id}` | both — the shared board's columns (statuses) with tasks; `can_manage` for the freelancer |
-| GET | `/api/board/columns` (same query) | both — columns only |
-| POST | `/api/board/columns` `{with \| project_id, name, category}` | freelancer |
-| PUT | `/api/board/columns` `{"ids": [...]}` (reorder) | freelancer |
-| PUT, DELETE | `/api/board/columns/{id}` | freelancer |
-| POST | `/api/board/moves` `{task_id, column_id, after_task_id}` | both |
-| GET | `/api/reports`, `/api/reports/{id}` | both — a client sees sent reports only |
-| POST | `/api/reports` `{client_id, project_ids?, from, to, title?, summary?, kind?: basic\|detailed}` | freelancer |
-| PUT | `/api/reports/{id}` `{title, summary, kind?}` | freelancer, drafts only |
-| DELETE | `/api/reports/{id}` | freelancer, sent or not — a sent report is gone for the client too |
-| PUT, DELETE | `/api/reports/{id}/items/{itemID}` (PUT `{notes}`) | freelancer, drafts only |
-| POST | `/api/reports/{id}/send` | freelancer |
-| POST | `/api/reports/{id}/paid` | the report's client, once it's sent |
-| GET | `/api/reports/{id}/history` | the report's sides (a client sees sent and paid) |
-| GET | `/api/notifications` (latest 50 + `unread`) | both |
-| GET | `/api/notifications/unread-count` | both — cheap, for polling |
-| POST | `/api/notifications/{id}/read`, `/api/notifications/read-all` | both |
+The API is versioned in the path: everything lives under **`/api/v1`**. A breaking change gets `/api/v2` next to it, so clients move over when they're ready. `/health` stays unversioned.
+
+The endpoints, their parameters, bodies, responses and errors are described with **Swagger**, generated from the handlers' comments:
+
+- UI: http://localhost:8090/api/docs — sign in with `POST /auth/login` first; the auth cookie goes along with the next requests
+- spec: `/api/docs/doc.json`, and `docs/swagger.yaml` in the repo
+
+After changing a handler or its comment, run `make swagger` to regenerate `docs/`. The UI is on outside production; set `SWAGGER_ENABLED` to override.
 
 ## Commands
 
@@ -123,6 +81,7 @@ make test-integration # integration tests only (needs Docker)
 make psql           # database shell
 make migrate-up     # apply migrations manually
 make fmt            # go fmt
+make swagger        # regenerate the API docs (docs/)
 ```
 
 ## Configuration

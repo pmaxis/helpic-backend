@@ -46,7 +46,16 @@ func (h *Handler) ClientRoutes(r chi.Router) {
 	r.Get("/freelancers", h.ListFreelancers)
 }
 
-// ListClients handles GET /api/clients.
+// ListClients handles GET /api/v1/clients.
+//
+//	@Summary		Your clients
+//	@Description	Freelancers only. Each with their open task count.
+//	@Tags			people
+//	@Produce		json
+//	@Success		200	{object}	map[string][]LinkDTO	"clients"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Router			/clients [get]
 func (h *Handler) ListClients(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -60,7 +69,16 @@ func (h *Handler) ListClients(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string][]LinkDTO{"clients": toLinkDTOs(links)})
 }
 
-// ListFreelancers handles GET /api/freelancers.
+// ListFreelancers handles GET /api/v1/freelancers.
+//
+//	@Summary		Your freelancers
+//	@Description	Clients only; a team member sees the company owner's.
+//	@Tags			people
+//	@Produce		json
+//	@Success		200	{object}	map[string][]LinkDTO	"freelancers"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Router			/freelancers [get]
 func (h *Handler) ListFreelancers(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -74,7 +92,15 @@ func (h *Handler) ListFreelancers(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string][]LinkDTO{"freelancers": toLinkDTOs(links)})
 }
 
-// ListInvitations handles GET /api/invitations.
+// ListInvitations handles GET /api/v1/invitations.
+//
+//	@Summary	Pending client invitations
+//	@Tags		people
+//	@Produce	json
+//	@Success	200	{object}	map[string][]InvitationDTO	"invitations"
+//	@Failure	401	{object}	response.ErrorEnvelope		"Not signed in"
+//	@Failure	403	{object}	response.ErrorEnvelope		"Not allowed"
+//	@Router		/invitations [get]
 func (h *Handler) ListInvitations(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -92,7 +118,19 @@ func (h *Handler) ListInvitations(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string][]InvitationDTO{"invitations": out})
 }
 
-// Invite handles POST /api/invitations.
+// Invite handles POST /api/v1/invitations.
+//
+//	@Summary		Invite a client
+//	@Description	Returns the invitation with the token for its link (/invite/{token}).
+//	@Tags			people
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		InviteRequest				true	"Request body"
+//	@Success		201		{object}	map[string]InvitationDTO	"invitation"
+//	@Failure		400		{object}	response.ErrorEnvelope		"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope		"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope		"Not allowed"
+//	@Router			/invitations [post]
 func (h *Handler) Invite(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -127,7 +165,16 @@ func (h *Handler) Invite(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// DeleteInvitation handles DELETE /api/invitations/{id}.
+// DeleteInvitation handles DELETE /api/v1/invitations/{id}.
+//
+//	@Summary	Revoke a client invitation
+//	@Tags		people
+//	@Param		id	path	string	true	"Invitation ID"
+//	@Success	204	"No content"
+//	@Failure	401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure	404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router		/invitations/{id} [delete]
 func (h *Handler) DeleteInvitation(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -145,7 +192,16 @@ func (h *Handler) DeleteInvitation(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// FindInvite handles GET /api/invites/{token}.
+// FindInvite handles GET /api/v1/invites/{token}.
+//
+//	@Summary		Look up a client invitation
+//	@Description	Public: the invitation page.
+//	@Tags			invitations
+//	@Produce		json
+//	@Param			token	path		string					true	"Invitation token"
+//	@Success		200		{object}	map[string]LookupDTO	"invitation"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Invalid, used or expired"
+//	@Router			/invites/{token} [get]
 func (h *Handler) FindInvite(w http.ResponseWriter, r *http.Request) {
 	l, ok := h.lookup(w, r)
 	if !ok {
@@ -160,9 +216,21 @@ func (h *Handler) FindInvite(w http.ResponseWriter, r *http.Request) {
 	}})
 }
 
-// AcceptInvite handles POST /api/invites/{token}/accept. It creates the client
+// AcceptInvite handles POST /api/v1/invites/{token}/accept. It creates the client
 // account (or signs in to the existing one), links it with the freelancer and
 // starts a session.
+//
+//	@Summary		Accept a client invitation
+//	@Description	Public. Creates the client account (name, password, confirmation) or signs in to the existing one (password), links it with the freelancer and sets the auth cookie.
+//	@Tags			invitations
+//	@Accept			json
+//	@Produce		json
+//	@Param			token	path		string					true	"Invitation token"
+//	@Param			body	body		AcceptRequest			true	"Request body"
+//	@Success		200		{object}	user.Response			"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Invalid, used or expired"
+//	@Router			/invites/{token}/accept [post]
 func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	var req AcceptRequest
 	if !request.Decode(w, r, &req) {

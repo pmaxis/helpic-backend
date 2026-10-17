@@ -37,7 +37,18 @@ func (h *Handler) Routes(r chi.Router) {
 	})
 }
 
-// List handles GET /api/tasks?status=new,in_progress&with={userID|personal}&project={id}.
+// List handles GET /api/v1/tasks?status=new,in_progress&with={userID|personal}&project={id}.
+//
+//	@Summary		Your tasks
+//	@Description	Open ones first, then by due date.
+//	@Tags			tasks
+//	@Produce		json
+//	@Param			status	query		string					false	"Comma-separated: new,in_progress,done,cancelled"
+//	@Param			with	query		string					false	"A counterpart's ID, or "personal""
+//	@Param			project	query		string					false	"A project ID"
+//	@Success		200		{object}	map[string][]DTO		"tasks"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router			/tasks [get]
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -60,7 +71,16 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string][]DTO{"tasks": out})
 }
 
-// Get handles GET /api/tasks/{id}.
+// Get handles GET /api/v1/tasks/{id}.
+//
+//	@Summary	A task
+//	@Tags		tasks
+//	@Produce	json
+//	@Param		id	path		string					true	"Task ID"
+//	@Success	200	{object}	map[string]DTO			"task"
+//	@Failure	401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router		/tasks/{id} [get]
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -70,7 +90,19 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	writeTask(w, http.StatusOK, t, role, userID, err)
 }
 
-// Create handles POST /api/tasks.
+// Create handles POST /api/v1/tasks.
+//
+//	@Summary		Set a task
+//	@Description	A client names the freelancer; a freelancer the client, or none for a personal task. A project, or a board column (status_id), fixes who it's with.
+//	@Tags			tasks
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		Request					true	"Request body"
+//	@Success		201		{object}	map[string]DTO			"task"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		409		{object}	response.ErrorEnvelope	"Conflicts with the current state"
+//	@Router			/tasks [post]
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -97,7 +129,21 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	writeTask(w, http.StatusCreated, t, role, userID, err)
 }
 
-// Update handles PUT /api/tasks/{id}.
+// Update handles PUT /api/v1/tasks/{id}.
+//
+//	@Summary		Edit a task
+//	@Description	Title, description, due date, project. Its creator or its freelancer, in any status.
+//	@Tags			tasks
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Task ID"
+//	@Param			body	body		Request					true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"task"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/tasks/{id} [put]
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -116,7 +162,17 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	writeTask(w, http.StatusOK, t, role, userID, err)
 }
 
-// Delete handles DELETE /api/tasks/{id}.
+// Delete handles DELETE /api/v1/tasks/{id}.
+//
+//	@Summary		Delete a task
+//	@Description	Its creator, while it's new.
+//	@Tags			tasks
+//	@Param			id	path	string	true	"Task ID"
+//	@Success		204	"No content"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409	{object}	response.ErrorEnvelope	"Conflicts with the current state"
+//	@Router			/tasks/{id} [delete]
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := request.UserRole(w, r)
 	if !ok {
@@ -130,7 +186,21 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// SetPrice handles PUT /api/tasks/{id}/price.
+// SetPrice handles PUT /api/v1/tasks/{id}/price.
+//
+//	@Summary		Price a task
+//	@Description	The task's freelancer only, in any status. A null price clears it.
+//	@Tags			tasks
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Task ID"
+//	@Param			body	body		PriceRequest			true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"task"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/tasks/{id}/price [put]
 func (h *Handler) SetPrice(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -149,7 +219,20 @@ func (h *Handler) SetPrice(w http.ResponseWriter, r *http.Request) {
 	writeTask(w, http.StatusOK, t, role, userID, err)
 }
 
-// SetPriority handles PUT /api/tasks/{id}/priority.
+// SetPriority handles PUT /api/v1/tasks/{id}/priority.
+//
+//	@Summary		Set a task's priority
+//	@Description	Either side, in any status.
+//	@Tags			tasks
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Task ID"
+//	@Param			body	body		PriorityRequest			true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"task"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/tasks/{id}/priority [put]
 func (h *Handler) SetPriority(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -168,7 +251,20 @@ func (h *Handler) SetPriority(w http.ResponseWriter, r *http.Request) {
 	writeTask(w, http.StatusOK, t, role, userID, err)
 }
 
-// SetLabels handles PUT /api/tasks/{id}/labels.
+// SetLabels handles PUT /api/v1/tasks/{id}/labels.
+//
+//	@Summary		Set a task's labels
+//	@Description	Replaces them with labels of the task's board.
+//	@Tags			tasks
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Task ID"
+//	@Param			body	body		LabelsRequest			true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"task"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/tasks/{id}/labels [put]
 func (h *Handler) SetLabels(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -187,7 +283,17 @@ func (h *Handler) SetLabels(w http.ResponseWriter, r *http.Request) {
 	writeTask(w, http.StatusOK, t, role, userID, err)
 }
 
-// History handles GET /api/tasks/{id}/history: who changed what and when.
+// History handles GET /api/v1/tasks/{id}/history: who changed what and when.
+//
+//	@Summary		A task's history
+//	@Description	Who changed what and when, oldest first. Team members don't see price changes.
+//	@Tags			tasks
+//	@Produce		json
+//	@Param			id	path		string					true	"Task ID"
+//	@Success		200	{object}	map[string][]EventDTO	"events"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/tasks/{id}/history [get]
 func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := request.UserRole(w, r)
 	if !ok {
@@ -205,7 +311,21 @@ func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string][]EventDTO{"events": out})
 }
 
-// SetStatus handles POST /api/tasks/{id}/status.
+// SetStatus handles POST /api/v1/tasks/{id}/status.
+//
+//	@Summary		Move a task
+//	@Description	To an exact board column (status_id), or to the first column of a category (status), as the role rules allow.
+//	@Tags			tasks
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Task ID"
+//	@Param			body	body		StatusRequest			true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"task"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409		{object}	response.ErrorEnvelope	"The move isn't allowed"
+//	@Router			/tasks/{id}/status [post]
 func (h *Handler) SetStatus(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {

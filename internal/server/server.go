@@ -7,7 +7,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 
+	_ "github.com/pmaxis/helpic/docs" // the generated Swagger spec (make swagger)
 	"github.com/pmaxis/helpic/internal/attachments"
 	"github.com/pmaxis/helpic/internal/auth"
 	"github.com/pmaxis/helpic/internal/board"
@@ -97,7 +99,16 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		response.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	r.Route("/api", func(r chi.Router) {
+	// The Swagger UI and the spec it reads, generated from the handlers' comments.
+	if cfg.SwaggerEnabled {
+		r.Get("/api/docs", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/api/docs/index.html", http.StatusMovedPermanently)
+		})
+		r.Get("/api/docs/*", httpSwagger.Handler(httpSwagger.URL("/api/docs/doc.json")))
+	}
+
+	// The API is versioned in the path: a breaking change gets /api/v1/v2 next to it.
+	r.Route("/api/v1", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", authHandler.Register)
 			r.Post("/login", authHandler.Login)

@@ -18,7 +18,7 @@ type boardView struct {
 
 func getBoard(t *testing.T, srv *httptest.Server, c *http.Client, query string) boardView {
 	t.Helper()
-	resp := get(t, c, srv.URL+"/api/board"+query)
+	resp := get(t, c, srv.URL+"/api/v1/board"+query)
 	wantStatus(t, resp, http.StatusOK)
 	body := decode(t, resp)
 	out := boardView{CanManage: body["can_manage"] == true}
@@ -44,7 +44,7 @@ func column(b boardView, name string) boardColumn {
 
 func newTask(t *testing.T, srv *httptest.Server, c *http.Client, body map[string]any) map[string]any {
 	t.Helper()
-	resp := post(t, c, srv.URL+"/api/tasks", body)
+	resp := post(t, c, srv.URL+"/api/v1/tasks", body)
 	wantStatus(t, resp, http.StatusCreated)
 	return field(decode(t, resp), "task")
 }
@@ -63,17 +63,17 @@ func TestBoard_SharedWorkflow(t *testing.T) {
 	}
 
 	// The freelancer adds "Review"; the client can't touch the columns.
-	resp := post(t, freelancer, srv.URL+"/api/board/columns", map[string]string{"with": clientID, "name": "Review", "category": "in_progress"})
+	resp := post(t, freelancer, srv.URL+"/api/v1/board/columns", map[string]string{"with": clientID, "name": "Review", "category": "in_progress"})
 	wantStatus(t, resp, http.StatusCreated)
 	resp.Body.Close()
-	resp = post(t, client, srv.URL+"/api/board/columns", map[string]string{"with": freelancerID, "name": "Mine", "category": "new"})
+	resp = post(t, client, srv.URL+"/api/v1/board/columns", map[string]string{"with": freelancerID, "name": "Mine", "category": "new"})
 	wantStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 	review := column(getBoard(t, srv, client, "?with="+freelancerID), "Review")
 	if review.ID == "" {
 		t.Fatal("client doesn't see the Review column")
 	}
-	resp = do(t, client, http.MethodPut, srv.URL+"/api/board/columns/"+review.ID, map[string]string{"name": "X", "category": "in_progress"})
+	resp = do(t, client, http.MethodPut, srv.URL+"/api/v1/board/columns/"+review.ID, map[string]string{"name": "X", "category": "in_progress"})
 	wantStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 
@@ -82,13 +82,13 @@ func TestBoard_SharedWorkflow(t *testing.T) {
 	if task["status_name"] != "New" {
 		t.Fatalf("new task status = %v", task["status_name"])
 	}
-	resp = post(t, freelancer, srv.URL+"/api/board/moves", map[string]string{"task_id": task["id"].(string), "column_id": review.ID})
+	resp = post(t, freelancer, srv.URL+"/api/v1/board/moves", map[string]string{"task_id": task["id"].(string), "column_id": review.ID})
 	wantStatus(t, resp, http.StatusOK)
 	moved := field(decode(t, resp), "task")
 	if moved["status_name"] != "Review" || moved["status"] != "in_progress" {
 		t.Fatalf("moved = %v", moved)
 	}
-	resp = get(t, client, srv.URL+"/api/tasks/"+task["id"].(string))
+	resp = get(t, client, srv.URL+"/api/v1/tasks/"+task["id"].(string))
 	wantStatus(t, resp, http.StatusOK)
 	if got := field(decode(t, resp), "task")["status_name"]; got != "Review" {
 		t.Fatalf("client sees status %v", got)
@@ -96,15 +96,15 @@ func TestBoard_SharedWorkflow(t *testing.T) {
 
 	// Role rules follow the category: the client can't put it in Done.
 	done := column(getBoard(t, srv, client, "?with="+freelancerID), "Done")
-	resp = post(t, client, srv.URL+"/api/board/moves", map[string]string{"task_id": task["id"].(string), "column_id": done.ID})
+	resp = post(t, client, srv.URL+"/api/v1/board/moves", map[string]string{"task_id": task["id"].(string), "column_id": done.ID})
 	wantStatus(t, resp, http.StatusConflict)
 	resp.Body.Close()
 
 	// Renaming a column renames the task's status; re-categorising changes its category.
-	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/board/columns/"+review.ID, map[string]string{"name": "QA", "category": "done"})
+	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/board/columns/"+review.ID, map[string]string{"name": "QA", "category": "done"})
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
-	resp = get(t, client, srv.URL+"/api/tasks/"+task["id"].(string))
+	resp = get(t, client, srv.URL+"/api/v1/tasks/"+task["id"].(string))
 	wantStatus(t, resp, http.StatusOK)
 	got := field(decode(t, resp), "task")
 	if got["status_name"] != "QA" || got["status"] != "done" {
@@ -112,13 +112,13 @@ func TestBoard_SharedWorkflow(t *testing.T) {
 	}
 
 	// Deleting the column moves its tasks to the other column of the category.
-	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/board/columns/"+review.ID, nil)
+	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/v1/board/columns/"+review.ID, nil)
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
 	if got := column(getBoard(t, srv, freelancer, "?with="+clientID), "Done").Tasks; len(got) != 1 || got[0] != "Logo" {
 		t.Fatalf("Done after delete = %v", got)
 	}
-	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/board/columns/"+done.ID, nil)
+	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/v1/board/columns/"+done.ID, nil)
 	wantStatus(t, resp, http.StatusConflict)
 	resp.Body.Close()
 }
@@ -133,7 +133,7 @@ func TestBoard_PersonalAndOrdering(t *testing.T) {
 	second := newTask(t, srv, freelancer, map[string]any{"title": "Second", "status_id": todo.ID})
 
 	// Put First below Second.
-	resp := post(t, freelancer, srv.URL+"/api/board/moves", map[string]string{
+	resp := post(t, freelancer, srv.URL+"/api/v1/board/moves", map[string]string{
 		"task_id": first["id"].(string), "column_id": todo.ID, "after_task_id": second["id"].(string),
 	})
 	wantStatus(t, resp, http.StatusOK)
@@ -156,7 +156,7 @@ func TestBoard_PersonalAndOrdering(t *testing.T) {
 			ids = append(ids, c.ID)
 		}
 	}
-	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/board/columns", map[string]any{"ids": ids})
+	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/board/columns", map[string]any{"ids": ids})
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
 	if got := getBoard(t, srv, freelancer, "?with=personal").Columns[0].Name; got != "Done" {
@@ -165,10 +165,10 @@ func TestBoard_PersonalAndOrdering(t *testing.T) {
 
 	// Someone else's board is off limits.
 	other := signUpFreelancer(t, srv, "other@example.com")
-	resp = do(t, other, http.MethodDelete, srv.URL+"/api/board/columns/"+done.ID, nil)
+	resp = do(t, other, http.MethodDelete, srv.URL+"/api/v1/board/columns/"+done.ID, nil)
 	wantStatus(t, resp, http.StatusNotFound)
 	resp.Body.Close()
-	resp = post(t, other, srv.URL+"/api/tasks", map[string]any{"title": "Sneaky", "status_id": done.ID})
+	resp = post(t, other, srv.URL+"/api/v1/tasks", map[string]any{"title": "Sneaky", "status_id": done.ID})
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 }
@@ -180,7 +180,7 @@ func TestBoard_DeletingColumns(t *testing.T) {
 
 	del := func(name string, want int) {
 		t.Helper()
-		resp := do(t, freelancer, http.MethodDelete, srv.URL+"/api/board/columns/"+column(b, name).ID, nil)
+		resp := do(t, freelancer, http.MethodDelete, srv.URL+"/api/v1/board/columns/"+column(b, name).ID, nil)
 		wantStatus(t, resp, want)
 		resp.Body.Close()
 	}
@@ -199,12 +199,12 @@ func TestBoard_DeletingColumns(t *testing.T) {
 	}
 
 	// Moving a task into a category the board has no column for is refused cleanly.
-	resp := post(t, freelancer, srv.URL+"/api/tasks/"+task["id"].(string)+"/status", map[string]string{"status": "cancelled"})
+	resp := post(t, freelancer, srv.URL+"/api/v1/tasks/"+task["id"].(string)+"/status", map[string]string{"status": "cancelled"})
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 
 	// The last column can't go.
-	resp = post(t, freelancer, srv.URL+"/api/board/moves", map[string]string{"task_id": task["id"].(string), "column_id": column(b, "In progress").ID})
+	resp = post(t, freelancer, srv.URL+"/api/v1/board/moves", map[string]string{"task_id": task["id"].(string), "column_id": column(b, "In progress").ID})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 	b = getBoard(t, srv, freelancer, "?with=personal")
@@ -213,7 +213,7 @@ func TestBoard_DeletingColumns(t *testing.T) {
 			del(c.Name, http.StatusNoContent)
 		}
 	}
-	resp = post(t, freelancer, srv.URL+"/api/board/moves", map[string]string{"task_id": task["id"].(string), "column_id": column(b, "In progress").ID})
+	resp = post(t, freelancer, srv.URL+"/api/v1/board/moves", map[string]string{"task_id": task["id"].(string), "column_id": column(b, "In progress").ID})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 	del("In progress", http.StatusConflict)

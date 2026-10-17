@@ -13,12 +13,12 @@ func TestPrices_TasksAndReports(t *testing.T) {
 	clientID, freelancerID := myID(t, srv, client), myID(t, srv, freelancer)
 
 	// The freelancer bills in euros.
-	resp := do(t, freelancer, http.MethodPut, srv.URL+"/api/me/currency", map[string]string{"currency": "eur"})
+	resp := do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/me/currency", map[string]string{"currency": "eur"})
 	wantStatus(t, resp, http.StatusOK)
 	if u := field(decode(t, resp), "user"); u["currency"] != "EUR" {
 		t.Fatalf("user = %v", u)
 	}
-	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/me/currency", map[string]string{"currency": "XYZ"})
+	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/me/currency", map[string]string{"currency": "XYZ"})
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 
@@ -27,17 +27,17 @@ func TestPrices_TasksAndReports(t *testing.T) {
 	if logo["price_cents"] != float64(120050) || logo["currency"] != "EUR" || logo["can_set_price"] != true {
 		t.Fatalf("priced task = %v", logo)
 	}
-	resp = post(t, client, srv.URL+"/api/tasks", map[string]any{"freelancer_id": freelancerID, "title": "Cheap", "price": "1"})
+	resp = post(t, client, srv.URL+"/api/v1/tasks", map[string]any{"freelancer_id": freelancerID, "title": "Cheap", "price": "1"})
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 
 	// The freelancer prices a client's task, even once it's done; the client
 	// sees the price but can't change it.
 	landing := newTask(t, srv, client, map[string]any{"freelancer_id": freelancerID, "title": "Landing"})
-	landingURL := srv.URL + "/api/tasks/" + landing["id"].(string)
+	landingURL := srv.URL + "/api/v1/tasks/" + landing["id"].(string)
 	newTask(t, srv, client, map[string]any{"freelancer_id": freelancerID, "title": "Unpriced"})
 	for _, id := range []string{logo["id"].(string), landing["id"].(string)} {
-		resp = post(t, freelancer, srv.URL+"/api/tasks/"+id+"/status", map[string]string{"status": "done"})
+		resp = post(t, freelancer, srv.URL+"/api/v1/tasks/"+id+"/status", map[string]string{"status": "done"})
 		wantStatus(t, resp, http.StatusOK)
 		resp.Body.Close()
 	}
@@ -58,16 +58,16 @@ func TestPrices_TasksAndReports(t *testing.T) {
 
 	// The report sums the priced tasks.
 	today := time.Now().Format("2006-01-02")
-	resp = post(t, freelancer, srv.URL+"/api/reports", map[string]string{"client_id": clientID, "from": today, "to": today})
+	resp = post(t, freelancer, srv.URL+"/api/v1/reports", map[string]string{"client_id": clientID, "from": today, "to": today})
 	wantStatus(t, resp, http.StatusCreated)
 	rep := field(decode(t, resp), "report")
-	reportURL := srv.URL + "/api/reports/" + rep["id"].(string)
+	reportURL := srv.URL + "/api/v1/reports/" + rep["id"].(string)
 	if rep["total_cents"] != float64(150050) || rep["currency"] != "EUR" {
 		t.Fatalf("report = %v", rep)
 	}
 
 	// The list carries the total too.
-	resp = get(t, freelancer, srv.URL+"/api/reports")
+	resp = get(t, freelancer, srv.URL+"/api/v1/reports")
 	wantStatus(t, resp, http.StatusOK)
 	if list := decode(t, resp)["reports"].([]any); len(list) != 1 || list[0].(map[string]any)["total_cents"] != float64(150050) {
 		t.Fatalf("report list = %v", list)
@@ -88,7 +88,7 @@ func TestPrices_TasksAndReports(t *testing.T) {
 	resp = do(t, freelancer, http.MethodPut, landingURL+"/price", map[string]any{"price": nil})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
-	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/me/currency", map[string]string{"currency": "USD"})
+	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/me/currency", map[string]string{"currency": "USD"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 	resp = get(t, client, reportURL)
