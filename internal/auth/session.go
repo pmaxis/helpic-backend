@@ -7,12 +7,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/pmaxis/helpic/internal/middleware"
 	"github.com/pmaxis/helpic/internal/user"
 )
 
@@ -44,18 +44,14 @@ type Client struct {
 	IP        string
 }
 
-// ClientOf reads the device from a request. The IP is the connection's peer:
-// forwarded headers can be forged, so they aren't trusted.
+// ClientOf reads the device from a request. The IP is the connection's peer,
+// or the client behind a trusted proxy (see middleware.RealIP).
 func ClientOf(r *http.Request) Client {
 	ua := r.UserAgent()
 	if len(ua) > maxUserAgent {
 		ua = ua[:maxUserAgent]
 	}
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		ip = r.RemoteAddr
-	}
-	return Client{UserAgent: ua, IP: ip}
+	return Client{UserAgent: ua, IP: middleware.ClientIP(r)}
 }
 
 // Session is a signed-in device.

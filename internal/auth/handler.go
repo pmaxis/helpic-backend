@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/pmaxis/helpic/internal/middleware"
+	"github.com/pmaxis/helpic/internal/ratelimit"
 	"github.com/pmaxis/helpic/internal/request"
 	"github.com/pmaxis/helpic/internal/response"
 	"github.com/pmaxis/helpic/internal/user"
@@ -33,11 +34,19 @@ type CookieConfig struct {
 type Handler struct {
 	svc    *Service
 	cookie CookieConfig
+	// failures counts wrong passwords per email; nil doesn't limit them.
+	failures *ratelimit.Limiter
 }
 
 // NewHandler creates an auth Handler.
 func NewHandler(svc *Service, cookie CookieConfig) *Handler {
 	return &Handler{svc: svc, cookie: cookie}
+}
+
+// LimitFailedLogins refuses sign-ins to an email once l runs out: each wrong
+// password takes a token, a right one takes none.
+func (h *Handler) LimitFailedLogins(l *ratelimit.Limiter) {
+	h.failures = l
 }
 
 // Register handles POST /api/v1/auth/register.
@@ -50,6 +59,7 @@ func NewHandler(svc *Service, cookie CookieConfig) *Handler {
 //	@Success	201		{object}	user.Response			"The new account"
 //	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
 //	@Failure	409		{object}	response.ErrorEnvelope	"The email is taken"
+//	@Failure	429		{object}	response.ErrorEnvelope	"Too many sign-ups from this address"
 //	@Router		/auth/register [post]
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
@@ -87,6 +97,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 //	@Success		200		{object}	user.Response			"OK"
 //	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
 //	@Failure		401		{object}	response.ErrorEnvelope	"Wrong email or password"
+//	@Failure		429		{object}	response.ErrorEnvelope	"Too many attempts from this address, or wrong passwords for this email"
 //	@Router			/auth/login [post]
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
@@ -100,8 +111,18 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.failures != nil {
+		if ok, retry := h.failures.Check(params.Email); !ok {
+			ratelimit.TooMany(w, retry)
+			return
+		}
+	}
+
 	u, tokens, err := h.svc.Login(r.Context(), params, ClientOf(r))
 	if errors.Is(err, ErrInvalidCredentials) {
+		if h.failures != nil {
+			h.failures.Take(params.Email)
+		}
 		response.Error(w, http.StatusUnauthorized, response.CodeInvalidCredential, "Invalid email or password")
 		return
 	}
@@ -121,6 +142,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 //	@Tags			auth
 //	@Success		204	"Refreshed"
 //	@Failure		401	{object}	response.ErrorEnvelope	"No session, or it ended"
+//	@Failure		429	{object}	response.ErrorEnvelope	"Too many refreshes from this address"
 //	@Router			/auth/refresh [post]
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	tokens, err := h.svc.Refresh(r.Context(), h.cookie.refreshToken(r))

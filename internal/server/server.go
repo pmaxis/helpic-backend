@@ -68,6 +68,12 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	}
 	authHandler := auth.NewHandler(authSvc, cookie)
 
+	// --- rate limits: slow down password guessing and sign-up spam -----------
+	lim := newLimits(cfg.RateLimit)
+	if lim.loginFailures != nil {
+		authHandler.LimitFailedLogins(lim.loginFailures)
+	}
+
 	// --- notifications: what the other side of shared work did -------------
 	notifier := notifications.NewService(notifications.NewRepository(pool))
 	notificationsHandler := notifications.NewHandler(notifier)
@@ -121,6 +127,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	authMiddleware := middleware.Auth(tokens, cfg.CookieName)
 
 	r := chi.NewRouter()
+	r.Use(middleware.RealIP(cfg.TrustedProxies))
 	r.Use(middleware.Recovery(!cfg.IsProduction()))
 	r.Use(middleware.CORS(cfg.CORSOrigin))
 
@@ -139,18 +146,22 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	// The API is versioned in the path: a breaking change gets /api/v1/v2 next to it.
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
-			r.Post("/register", authHandler.Register)
-			r.Post("/login", authHandler.Login)
-			r.Post("/refresh", authHandler.Refresh)
+			r.With(byIP(lim.signIn), byIP(lim.signUp)).Post("/register", authHandler.Register)
+			r.With(byIP(lim.signIn)).Post("/login", authHandler.Login)
+			r.With(byIP(lim.refresh)).Post("/refresh", authHandler.Refresh)
 			r.Post("/logout", authHandler.Logout)
 		})
-		clientsHandler.PublicRoutes(r)
-		teamHandler.PublicRoutes(r)
+		// Accepting an invitation signs in or makes an account.
+		r.Group(func(r chi.Router) {
+			r.Use(byIP(lim.signIn))
+			clientsHandler.PublicRoutes(r)
+			teamHandler.PublicRoutes(r)
+		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware)
 			r.Get("/me", userHandler.Me)
-			profileHandler.Routes(r)
+			profileHandler.Routes(r, byUser(lim.passwordChecks))
 			authHandler.SessionRoutes(r)
 			tasksHandler.Routes(r)
 			attachmentsHandler.Routes(r)
@@ -180,5 +191,5 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		response.Error(w, http.StatusMethodNotAllowed, response.CodeMethodNotAllowed, "Method not allowed")
 	})
 
-	return &App{Handler: r, background: []func(context.Context){telegramSvc.Run}}, nil
+	return &App{Handler: r, background: []func(context.Context){telegramSvc.Run, lim.sweep}}, nil
 }
