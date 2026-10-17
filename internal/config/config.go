@@ -47,6 +47,14 @@ type Config struct {
 	// UploadsDir holds task attachments; MaxUploadBytes caps one file.
 	UploadsDir     string
 	MaxUploadBytes int64
+
+	// AppURL is the frontend's address, for links sent outside the app.
+	AppURL string
+
+	// TelegramBotToken turns on notifications in Telegram; empty leaves them
+	// off. TelegramAPIURL is the Bot API.
+	TelegramBotToken string
+	TelegramAPIURL   string
 }
 
 // IsProduction reports whether the app runs in a production environment.
@@ -100,6 +108,9 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("invalid MAX_UPLOAD_MB")
 	}
 	cfg.MaxUploadBytes = int64(maxMB) << 20
+	cfg.AppURL = getEnv("APP_URL", cfg.CORSOrigin)
+	cfg.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
+	cfg.TelegramAPIURL = getEnv("TELEGRAM_API_URL", "https://api.telegram.org")
 
 	return cfg, nil
 }

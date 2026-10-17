@@ -3,7 +3,9 @@
 package server
 
 import (
+	"context"
 	"net/http"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,6 +26,7 @@ import (
 	"github.com/pmaxis/helpic/internal/response"
 	"github.com/pmaxis/helpic/internal/tasks"
 	"github.com/pmaxis/helpic/internal/team"
+	"github.com/pmaxis/helpic/internal/telegram"
 	"github.com/pmaxis/helpic/internal/token"
 	"github.com/pmaxis/helpic/internal/user"
 )
@@ -31,6 +34,21 @@ import (
 // App is the assembled application.
 type App struct {
 	Handler http.Handler
+	// background is the work that runs beside the HTTP server.
+	background []func(ctx context.Context)
+}
+
+// Run does the application's background work until ctx ends.
+func (a *App) Run(ctx context.Context) {
+	var wg sync.WaitGroup
+	for _, run := range a.background {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			run(ctx)
+		}()
+	}
+	wg.Wait()
 }
 
 // New builds the fully wired application.
@@ -53,6 +71,15 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	// --- notifications: what the other side of shared work did -------------
 	notifier := notifications.NewService(notifications.NewRepository(pool))
 	notificationsHandler := notifications.NewHandler(notifier)
+
+	// --- the same notifications in the user's Telegram chat -----------------
+	var bot *telegram.Client
+	if cfg.TelegramBotToken != "" {
+		bot = telegram.NewClient(cfg.TelegramAPIURL, cfg.TelegramBotToken)
+	}
+	telegramSvc := telegram.NewService(telegram.NewRepository(pool), bot, cfg.AppURL)
+	notifier.OnCreate(telegramSvc.Enqueue)
+	telegramHandler := telegram.NewHandler(telegramSvc)
 
 	userRepo := user.NewRepository(pool)
 	userHandler := user.NewHandler(user.NewService(userRepo))
@@ -131,6 +158,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			projectsHandler.Routes(r)
 			boardHandler.Routes(r)
 			notificationsHandler.Routes(r)
+			telegramHandler.Routes(r)
 			reportsHandler.Routes(r)
 
 			r.Group(func(r chi.Router) {
@@ -152,5 +180,5 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		response.Error(w, http.StatusMethodNotAllowed, response.CodeMethodNotAllowed, "Method not allowed")
 	})
 
-	return &App{Handler: r}, nil
+	return &App{Handler: r, background: []func(context.Context){telegramSvc.Run}}, nil
 }

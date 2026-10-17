@@ -101,6 +101,14 @@ func TestMain(m *testing.M) {
 
 func newAPI(t *testing.T) (*httptest.Server, *http.Client) {
 	t.Helper()
+	srv, c, _ := newAPIWith(t, nil)
+	return srv, c
+}
+
+// newAPIWith is newAPI with the config adjusted first, also returning the app
+// (to run its background work).
+func newAPIWith(t *testing.T, adjust func(*config.Config)) (*httptest.Server, *http.Client, *server.App) {
+	t.Helper()
 	if _, err := testPool.Exec(context.Background(),
 		"TRUNCATE users RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("truncate: %v", err)
@@ -109,6 +117,9 @@ func newAPI(t *testing.T) (*httptest.Server, *http.Client) {
 	cfg.UploadsDir = t.TempDir()
 	cfg.MaxUploadBytes = 1 << 20
 	cfg.SwaggerEnabled = true
+	if adjust != nil {
+		adjust(&cfg)
+	}
 	app, err := server.New(cfg, testPool)
 	if err != nil {
 		t.Fatalf("build app: %v", err)
@@ -117,7 +128,7 @@ func newAPI(t *testing.T) (*httptest.Server, *http.Client) {
 	t.Cleanup(srv.Close)
 
 	jar, _ := cookiejar.New(nil)
-	return srv, &http.Client{Jar: jar}
+	return srv, &http.Client{Jar: jar}, app
 }
 
 func post(t *testing.T, c *http.Client, url string, body any) *http.Response {

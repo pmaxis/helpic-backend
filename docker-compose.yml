@@ -36,6 +36,8 @@ services:
       REFRESH_COOKIE_NAME: ${REFRESH_COOKIE_NAME:-refresh_token}
       REFRESH_COOKIE_PATH: ${REFRESH_COOKIE_PATH:-/api/v1/auth}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+      APP_URL: ${APP_URL:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     volumes:
       - uploads:/app/uploads
     ports:

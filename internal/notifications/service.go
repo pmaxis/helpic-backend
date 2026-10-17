@@ -5,9 +5,20 @@ import (
 	"log/slog"
 )
 
+// CreateHook hears of every notification once it is stored, e.g. to send it
+// on to another channel. It must not block: it runs in the request that
+// caused the notification.
+type CreateHook func(n Notification)
+
 // Service stores notifications and serves them to their recipients.
 type Service struct {
-	repo *Repository
+	repo     *Repository
+	onCreate []CreateHook
+}
+
+// OnCreate registers a hook called after each notification is stored.
+func (s *Service) OnCreate(h CreateHook) {
+	s.onCreate = append(s.onCreate, h)
 }
 
 // NewService creates a notifications Service.
@@ -22,8 +33,13 @@ func (s *Service) Notify(ctx context.Context, n Notification) {
 	if n.UserID == "" || n.UserID == n.ActorID {
 		return
 	}
-	if err := s.repo.Create(ctx, n); err != nil {
+	stored, err := s.repo.Create(ctx, n)
+	if err != nil {
 		slog.Error("failed to store notification", "kind", n.Kind, "error", err)
+		return
+	}
+	for _, h := range s.onCreate {
+		h(stored)
 	}
 }
 

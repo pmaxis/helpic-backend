@@ -86,6 +86,9 @@ func run(cfg config.Config) error {
 		return err
 	}
 
+	// Background work (the Telegram bot) stops with ctx.
+	go app.Run(ctx)
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.AppPort,
 		Handler:           app.Handler,

@@ -1680,6 +1680,147 @@ const docTemplate = `{
                 }
             }
         },
+        "/me/telegram": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "telegram"
+                ],
+                "summary": "Your Telegram connection",
+                "responses": {
+                    "200": {
+                        "description": "telegram",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/telegram.StatusDTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "telegram"
+                ],
+                "summary": "Disconnect Telegram",
+                "responses": {
+                    "204": {
+                        "description": "Disconnected"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Telegram is not connected",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/telegram/kinds": {
+            "put": {
+                "description": "The notification kinds sent to the connected chat; see \"available\" in GET /me/telegram.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "telegram"
+                ],
+                "summary": "Choose what goes to Telegram",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/telegram.KindsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "telegram",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/telegram.StatusDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown kind",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Telegram is not connected",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/telegram/link": {
+            "post": {
+                "description": "A one-time t.me link to the bot, good for 15 minutes: opening it in Telegram connects that chat.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "telegram"
+                ],
+                "summary": "Get a link that connects Telegram",
+                "responses": {
+                    "200": {
+                        "description": "link",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/telegram.ConnectDTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "503": {
+                        "description": "No bot on this server, or it isn't ready",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/notifications": {
             "get": {
                 "description": "The latest 50, and how many are unread.",
@@ -4742,6 +4883,66 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "telegram.ConnectDTO": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "telegram.KindsRequest": {
+            "type": "object",
+            "properties": {
+                "kinds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "telegram.StatusDTO": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "description": "Available are the kinds that can go to Telegram; DefaultKinds those on\nwhen a chat is connected.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "connected": {
+                    "type": "boolean"
+                },
+                "default_kinds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "enabled": {
+                    "description": "Enabled is false when the server has no bot.",
+                    "type": "boolean"
+                },
+                "kinds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "linked_at": {
+                    "type": "string"
+                },
+                "username": {
+                    "description": "Username is the connected Telegram account's @handle, or its first name.",
                     "type": "string"
                 }
             }
