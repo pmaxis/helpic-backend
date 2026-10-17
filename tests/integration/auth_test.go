@@ -74,6 +74,7 @@ func TestMain(m *testing.M) {
 		// Never fall back to a browser installed on the machine: PDF export
 		// answers 503 here. The real PDF test is opt-in (HELPIC_PDF_TEST=1).
 		ChromePath:   "/nonexistent/helpic-test-chrome",
+		AppURL:       "http://app.test",
 		Location:     time.UTC,
 		ReminderHour: 9,
 	}
@@ -112,7 +113,7 @@ func newAPI(t *testing.T) (*httptest.Server, *http.Client) {
 func newAPIWith(t *testing.T, adjust func(*config.Config)) (*httptest.Server, *http.Client, *server.App) {
 	t.Helper()
 	if _, err := testPool.Exec(context.Background(),
-		"TRUNCATE users RESTART IDENTITY CASCADE"); err != nil {
+		"TRUNCATE users, emails RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	cfg := testCfg

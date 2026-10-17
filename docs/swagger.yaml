@@ -41,6 +41,11 @@ definitions:
       name:
         type: string
     type: object
+  auth.ForgotRequest:
+    properties:
+      email:
+        type: string
+    type: object
   auth.LoginRequest:
     properties:
       email:
@@ -57,6 +62,15 @@ definitions:
       password:
         type: string
       password_confirmation:
+        type: string
+    type: object
+  auth.ResetRequest:
+    properties:
+      password:
+        type: string
+      password_confirmation:
+        type: string
+      token:
         type: string
     type: object
   auth.SessionDTO:
@@ -314,6 +328,11 @@ definitions:
       unread:
         type: integer
     type: object
+  profile.ConfirmEmailRequest:
+    properties:
+      token:
+        type: string
+    type: object
   profile.CurrencyRequest:
     properties:
       currency:
@@ -340,6 +359,11 @@ definitions:
       password:
         type: string
       password_confirmation:
+        type: string
+    type: object
+  profile.PendingEmailDTO:
+    properties:
+      pending_email:
         type: string
     type: object
   projects.DTO:
@@ -1085,6 +1109,60 @@ paths:
       summary: Sign out
       tags:
       - auth
+  /auth/password/forgot:
+    post:
+      consumes:
+      - application/json
+      description: Emails a one-time link to the account with this email. The answer
+        is the same whether there is one or not.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.ForgotRequest'
+      responses:
+        "204":
+          description: Sent, if there is such an account
+        "400":
+          description: Invalid email
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many attempts from this address
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Ask for a password reset link
+      tags:
+      - auth
+  /auth/password/reset:
+    post:
+      consumes:
+      - application/json
+      description: Signs out every device; sign in with the new password.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.ResetRequest'
+      responses:
+        "204":
+          description: Password set
+        "400":
+          description: Invalid password, or the link is invalid, used or expired (field
+            token)
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many attempts from this address
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Set a new password with a reset link
+      tags:
+      - auth
   /auth/refresh:
     post:
       description: Swaps the refresh cookie for a new one and sets a new access cookie.
@@ -1665,6 +1743,38 @@ paths:
       summary: Edit your comment
       tags:
       - comments
+  /email-changes/confirm:
+    post:
+      consumes:
+      - application/json
+      description: Opened from the link emailed to the new address; needs no signed-in
+        user.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/profile.ConfirmEmailRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The account, with its new email
+          schema:
+            $ref: '#/definitions/user.Response'
+        "400":
+          description: The link is invalid, used or expired, or the email was taken
+            since (field token)
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many attempts from this address
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Confirm a new sign-in email
+      tags:
+      - account
   /freelancers:
     get:
       description: Clients only; a team member sees the company owner's.
@@ -1915,7 +2025,8 @@ paths:
     put:
       consumes:
       - application/json
-      description: Needs the current password.
+      description: Needs the current password. Emails a confirmation link to the new
+        address; the email changes once it is opened (POST /email-changes/confirm).
       parameters:
       - description: Request body
         in: body
@@ -1926,12 +2037,12 @@ paths:
       produces:
       - application/json
       responses:
-        "200":
-          description: OK
+        "202":
+          description: Confirmation sent
           schema:
-            $ref: '#/definitions/user.Response'
+            $ref: '#/definitions/profile.PendingEmailDTO'
         "400":
-          description: Invalid input
+          description: Invalid input, the same email, or taken
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
         "401":

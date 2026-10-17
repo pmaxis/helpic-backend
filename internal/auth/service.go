@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -26,6 +27,11 @@ type repository interface {
 	DeleteUserSession(ctx context.Context, userID, id string) error
 	DeleteOtherSessions(ctx context.Context, userID, keepID string) error
 	DeleteExpiredSessions(ctx context.Context) error
+
+	CreateReset(ctx context.Context, userID string, hash []byte, expiresAt time.Time) error
+	TakeReset(ctx context.Context, hash []byte) (userID, email string, err error)
+	SetPasswordAndSignOut(ctx context.Context, userID, passwordHash string) error
+	DeleteExpiredResets(ctx context.Context) error
 }
 
 // tokenIssuer issues signed access JWTs. Implemented by *token.Manager.
@@ -44,11 +50,14 @@ type Service struct {
 	tokens tokenIssuer
 	// refreshTTL is how long a session lasts unused; every refresh extends it.
 	refreshTTL time.Duration
+	// mail sends reset links; appURL is the frontend they point to.
+	mail   Mailer
+	appURL string
 }
 
 // NewService creates an auth Service.
-func NewService(repo repository, tokens tokenIssuer, refreshTTL time.Duration) *Service {
-	return &Service{repo: repo, tokens: tokens, refreshTTL: refreshTTL}
+func NewService(repo repository, tokens tokenIssuer, refreshTTL time.Duration, mail Mailer, appURL string) *Service {
+	return &Service{repo: repo, tokens: tokens, refreshTTL: refreshTTL, mail: mail, appURL: strings.TrimRight(appURL, "/")}
 }
 
 // Register creates a new account with the given role. Public sign-up always

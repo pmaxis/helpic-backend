@@ -120,3 +120,39 @@ func ToSessionDTO(s Session, current string) SessionDTO {
 		ExpiresAt:  s.ExpiresAt,
 	}
 }
+
+// ForgotRequest is the JSON body for POST /api/v1/auth/password/forgot.
+type ForgotRequest struct {
+	Email string `json:"email"`
+}
+
+// Validate returns the normalized email and per-field errors.
+func (r ForgotRequest) Validate() (string, map[string]string) {
+	email := NormalizeEmail(r.Email)
+	switch {
+	case email == "":
+		return "", map[string]string{"email": "Email is required"}
+	case !validEmail(email):
+		return "", map[string]string{"email": "Enter a valid email address"}
+	}
+	return email, nil
+}
+
+// ResetRequest is the JSON body for POST /api/v1/auth/password/reset.
+type ResetRequest struct {
+	Token                string `json:"token"`
+	Password             string `json:"password"`
+	PasswordConfirmation string `json:"password_confirmation"`
+}
+
+// Validate returns per-field errors.
+func (r ResetRequest) Validate() map[string]string {
+	fields := map[string]string{}
+	ValidateNewPassword(fields, r.Password, r.PasswordConfirmation)
+	return fields
+}
+
+func validEmail(email string) bool {
+	_, err := mail.ParseAddress(email)
+	return err == nil
+}

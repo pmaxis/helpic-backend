@@ -19,6 +19,7 @@ make up                   # or: docker compose up -d --build
 | API docs (Swagger) | http://localhost:8090/api/docs |
 | Health | http://localhost:8090/health |
 | PostgreSQL | `localhost:5435` |
+| Mailpit (every email sent in development) | http://localhost:8025 |
 
 Migrations run when the server starts.
 

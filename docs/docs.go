@@ -271,6 +271,86 @@ const docTemplate = `{
                 }
             }
         },
+        "/auth/password/forgot": {
+            "post": {
+                "description": "Emails a one-time link to the account with this email. The answer is the same whether there is one or not.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Ask for a password reset link",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.ForgotRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Sent, if there is such an account"
+                    },
+                    "400": {
+                        "description": "Invalid email",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many attempts from this address",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/password/reset": {
+            "post": {
+                "description": "Signs out every device; sign in with the new password.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Set a new password with a reset link",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.ResetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Password set"
+                    },
+                    "400": {
+                        "description": "Invalid password, or the link is invalid, used or expired (field token)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many attempts from this address",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/refresh": {
             "post": {
                 "description": "Swaps the refresh cookie for a new one and sets a new access cookie. A refresh token used again after it was replaced ends the session.",
@@ -1150,6 +1230,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/email-changes/confirm": {
+            "post": {
+                "description": "Opened from the link emailed to the new address; needs no signed-in user.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Confirm a new sign-in email",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/profile.ConfirmEmailRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The account, with its new email",
+                        "schema": {
+                            "$ref": "#/definitions/user.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "The link is invalid, used or expired, or the email was taken since (field token)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many attempts from this address",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/freelancers": {
             "get": {
                 "description": "Clients only; a team member sees the company owner's.",
@@ -1525,7 +1651,7 @@ const docTemplate = `{
         },
         "/me/email": {
             "put": {
-                "description": "Needs the current password.",
+                "description": "Needs the current password. Emails a confirmation link to the new address; the email changes once it is opened (POST /email-changes/confirm).",
                 "consumes": [
                     "application/json"
                 ],
@@ -1548,14 +1674,14 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "202": {
+                        "description": "Confirmation sent",
                         "schema": {
-                            "$ref": "#/definitions/user.Response"
+                            "$ref": "#/definitions/profile.PendingEmailDTO"
                         }
                     },
                     "400": {
-                        "description": "Invalid input",
+                        "description": "Invalid input, the same email, or taken",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -3756,6 +3882,14 @@ const docTemplate = `{
                 }
             }
         },
+        "auth.ForgotRequest": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                }
+            }
+        },
         "auth.LoginRequest": {
             "type": "object",
             "properties": {
@@ -3780,6 +3914,20 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "password_confirmation": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.ResetRequest": {
+            "type": "object",
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "password_confirmation": {
+                    "type": "string"
+                },
+                "token": {
                     "type": "string"
                 }
             }
@@ -4167,6 +4315,14 @@ const docTemplate = `{
                 }
             }
         },
+        "profile.ConfirmEmailRequest": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
         "profile.CurrencyRequest": {
             "type": "object",
             "properties": {
@@ -4207,6 +4363,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "password_confirmation": {
+                    "type": "string"
+                }
+            }
+        },
+        "profile.PendingEmailDTO": {
+            "type": "object",
+            "properties": {
+                "pending_email": {
                     "type": "string"
                 }
             }

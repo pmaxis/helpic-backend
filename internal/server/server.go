@@ -21,6 +21,7 @@ import (
 	"github.com/pmaxis/helpic/internal/comments"
 	"github.com/pmaxis/helpic/internal/config"
 	"github.com/pmaxis/helpic/internal/jobs"
+	"github.com/pmaxis/helpic/internal/mail"
 	"github.com/pmaxis/helpic/internal/middleware"
 	"github.com/pmaxis/helpic/internal/notifications"
 	"github.com/pmaxis/helpic/internal/profile"
@@ -59,9 +60,22 @@ func (a *App) Run(ctx context.Context) {
 func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	tokens := token.NewManager(cfg.JWTSecret, cfg.JWTExpiration)
 
+	// --- outgoing email, sent in the background ------------------------------
+	var sender mail.Sender = mail.Log{}
+	if cfg.SMTPHost != "" {
+		smtp, err := mail.NewSMTP(mail.SMTPConfig{
+			Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.MailFrom,
+		})
+		if err != nil {
+			return nil, err
+		}
+		sender = smtp
+	}
+	outbox := mail.NewOutbox(pool, sender)
+
 	// --- auth + user ----------------------------------------------------------
 	authRepo := auth.NewRepository(pool)
-	authSvc := auth.NewService(authRepo, tokens, cfg.RefreshExpiration)
+	authSvc := auth.NewService(authRepo, tokens, cfg.RefreshExpiration, outbox, cfg.AppURL)
 	cookie := auth.CookieConfig{
 		Name:        cfg.CookieName,
 		Path:        cfg.CookiePath,
@@ -76,6 +90,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	lim := newLimits(cfg.RateLimit)
 	if lim.loginFailures != nil {
 		authHandler.LimitFailedLogins(lim.loginFailures)
+		authHandler.LimitResetRequests(lim.resetRequests)
 	}
 
 	// --- notifications: what the other side of shared work did -------------
@@ -93,14 +108,15 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 
 	userRepo := user.NewRepository(pool)
 	userHandler := user.NewHandler(user.NewService(userRepo))
-	profileHandler := profile.NewHandler(profile.NewService(profile.NewRepository(pool), authSvc))
+	profileSvc := profile.NewService(profile.NewRepository(pool), authSvc, outbox, cfg.AppURL)
+	profileHandler := profile.NewHandler(profileSvc)
 
 	// --- clients: invitations and freelancer–client links ---------------------
 	clientsRepo := clients.NewRepository(pool)
-	clientsHandler := clients.NewHandler(clients.NewService(clientsRepo, authSvc, notifier), clientsRepo, cookie)
+	clientsHandler := clients.NewHandler(clients.NewService(clientsRepo, authSvc, notifier, outbox, cfg.AppURL), clientsRepo, cookie)
 
 	// --- a client's company and its members -----------------------------------
-	teamHandler := team.NewHandler(team.NewService(team.NewRepository(pool), authSvc, notifier), cookie)
+	teamHandler := team.NewHandler(team.NewService(team.NewRepository(pool), authSvc, notifier, outbox, cfg.AppURL), cookie)
 
 	// --- projects grouping tasks ---------------------------------------------
 	projectsHandler := projects.NewHandler(projects.NewService(projects.NewRepository(pool), notifier))
@@ -156,6 +172,8 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			r.With(byIP(lim.signIn), byIP(lim.signUp)).Post("/register", authHandler.Register)
 			r.With(byIP(lim.signIn)).Post("/login", authHandler.Login)
 			r.With(byIP(lim.refresh)).Post("/refresh", authHandler.Refresh)
+			r.With(byIP(lim.signIn)).Post("/password/forgot", authHandler.Forgot)
+			r.With(byIP(lim.signIn)).Post("/password/reset", authHandler.Reset)
 			r.Post("/logout", authHandler.Logout)
 		})
 		// Accepting an invitation signs in or makes an account.
@@ -163,6 +181,8 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			r.Use(byIP(lim.signIn))
 			clientsHandler.PublicRoutes(r)
 			teamHandler.PublicRoutes(r)
+			// Confirming a new email signs nobody in, but guesses at links count.
+			profileHandler.PublicRoutes(r)
 		})
 
 		r.Group(func(r chi.Router) {
@@ -200,11 +220,12 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 
 	// Expired sessions, connect links nobody opened and old reminders.
 	cleanup := func(ctx context.Context) error {
-		return errors.Join(authSvc.Cleanup(ctx), telegramSvc.Cleanup(ctx), remindersSvc.Cleanup(ctx))
+		return errors.Join(authSvc.Cleanup(ctx), profileSvc.Cleanup(ctx), telegramSvc.Cleanup(ctx), remindersSvc.Cleanup(ctx), outbox.Cleanup(ctx))
 	}
 
 	return &App{Handler: r, background: []func(context.Context){
 		telegramSvc.Run,
+		func(ctx context.Context) { jobs.Every(ctx, "email", 5*time.Second, outbox.Run) },
 		func(ctx context.Context) { jobs.Every(ctx, "deadline reminders", 15*time.Minute, remindersSvc.Run) },
 		func(ctx context.Context) { jobs.Every(ctx, "cleanup", time.Hour, cleanup) },
 		func(ctx context.Context) { jobs.Every(ctx, "rate limit sweep", time.Minute, lim.sweep) },

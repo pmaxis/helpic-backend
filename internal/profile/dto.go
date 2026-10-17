@@ -87,3 +87,13 @@ func (r CurrencyRequest) Validate() (string, map[string]string) {
 	}
 	return code, fields
 }
+
+// PendingEmailDTO answers an email change: where the confirmation went.
+type PendingEmailDTO struct {
+	PendingEmail string `json:"pending_email"`
+}
+
+// ConfirmEmailRequest is the JSON body for POST /api/v1/email-changes/confirm.
+type ConfirmEmailRequest struct {
+	Token string `json:"token"`
+}

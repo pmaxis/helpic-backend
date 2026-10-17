@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>{{.Subject}}</title>
+</head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Helvetica,Arial,sans-serif;color:#171717;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 16px;">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">
+      <tr><td style="padding:0 4px 16px;font-size:18px;font-weight:700;letter-spacing:-0.02em;color:#171717;">helpic<span style="color:#10b981;">.</span></td></tr>
+      <tr><td style="background:#ffffff;border:1px solid #e5e5e5;border-radius:12px;padding:32px 28px;">
+        <h1 style="margin:0 0 16px;font-size:20px;line-height:1.3;font-weight:600;color:#171717;">{{.Heading}}</h1>
+        {{range .Paragraphs}}<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#404040;">{{.}}</p>
+        {{end}}
+        {{with .Button}}<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 8px;"><tr><td style="border-radius:8px;background:#171717;">
+          <a href="{{.URL}}" style="display:inline-block;padding:11px 20px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">{{.Text}}</a>
+        </td></tr></table>
+        <p style="margin:16px 0 0;font-size:12px;line-height:1.5;color:#a3a3a3;word-break:break-all;">Or open this link: <a href="{{.URL}}" style="color:#737373;">{{.URL}}</a></p>
+        {{end}}
+        {{with .Note}}<p style="margin:16px 0 0;font-size:13px;line-height:1.5;color:#737373;">{{.}}</p>{{end}}
+      </td></tr>
+      <tr><td style="padding:16px 4px 0;font-size:12px;line-height:1.5;color:#a3a3a3;">You got this email because of your Helpic account. Freelancers and their clients, on the same page.</td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>

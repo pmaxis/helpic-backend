@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pmaxis/helpic/internal/auth"
@@ -32,11 +33,14 @@ type Service struct {
 	repo     *Repository
 	accounts accounts
 	notify   notifier
+	// mail sends invitations; appURL is the frontend their links open.
+	mail   auth.Mailer
+	appURL string
 }
 
 // NewService creates a clients Service.
-func NewService(repo *Repository, accounts accounts, notify notifier) *Service {
-	return &Service{repo: repo, accounts: accounts, notify: notify}
+func NewService(repo *Repository, accounts accounts, notify notifier, mail auth.Mailer, appURL string) *Service {
+	return &Service{repo: repo, accounts: accounts, notify: notify, mail: mail, appURL: strings.TrimRight(appURL, "/")}
 }
 
 // joined tells the freelancer that the client accepted their invitation.
@@ -81,7 +85,12 @@ func (s *Service) Invite(ctx context.Context, freelancerID string, p InviteParam
 	if err != nil {
 		return Invitation{}, err
 	}
-	return s.repo.CreateInvitation(ctx, freelancerID, p.Email, p.Name, token, time.Now().Add(InvitationTTL))
+	inv, err := s.repo.CreateInvitation(ctx, freelancerID, p.Email, p.Name, token, time.Now().Add(InvitationTTL))
+	if err != nil {
+		return Invitation{}, err
+	}
+	s.emailInvitation(ctx, freelancerID, inv)
+	return inv, nil
 }
 
 // Lookup is what the invitation page shows before the client accepts.
