@@ -1,0 +1,257 @@
+package tasks
+
+import (
+	"errors"
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/pmaxis/helpic/internal/request"
+	"github.com/pmaxis/helpic/internal/response"
+	"github.com/pmaxis/helpic/internal/user"
+)
+
+// Handler exposes the task endpoints over HTTP.
+type Handler struct {
+	svc *Service
+}
+
+// NewHandler creates a tasks Handler.
+func NewHandler(svc *Service) *Handler {
+	return &Handler{svc: svc}
+}
+
+// Routes mounts the endpoints. Must be called inside an authenticated group.
+func (h *Handler) Routes(r chi.Router) {
+	r.Route("/tasks", func(r chi.Router) {
+		r.Get("/", h.List)
+		r.Post("/", h.Create)
+		r.Get("/{id}", h.Get)
+		r.Put("/{id}", h.Update)
+		r.Delete("/{id}", h.Delete)
+		r.Post("/{id}/status", h.SetStatus)
+		r.Put("/{id}/price", h.SetPrice)
+		r.Put("/{id}/priority", h.SetPriority)
+		r.Put("/{id}/labels", h.SetLabels)
+		r.Get("/{id}/history", h.History)
+	})
+}
+
+// List handles GET /api/tasks?status=new,in_progress&with={userID|personal}&project={id}.
+func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	list, err := h.svc.List(r.Context(), userID, role, Filter{
+		Statuses:      ParseStatuses(q.Get("status")),
+		CounterpartID: q.Get("with"),
+		ProjectID:     q.Get("project"),
+	})
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	out := make([]DTO, 0, len(list))
+	for _, t := range list {
+		out = append(out, ToDTO(t, role, userID))
+	}
+	response.JSON(w, http.StatusOK, map[string][]DTO{"tasks": out})
+}
+
+// Get handles GET /api/tasks/{id}.
+func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	t, err := h.svc.Get(r.Context(), userID, chi.URLParam(r, "id"))
+	writeTask(w, http.StatusOK, t, role, userID, err)
+}
+
+// Create handles POST /api/tasks.
+func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	var req Request
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	params, fields := req.Validate(role)
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	t, err := h.svc.Create(r.Context(), userID, role, params)
+	if errors.Is(err, ErrNotLinked) {
+		if role == user.RoleFreelancer {
+			response.ValidationError(w, map[string]string{"client_id": "This isn't one of your clients"})
+		} else {
+			response.ValidationError(w, map[string]string{"freelancer_id": "You don't work with this freelancer"})
+		}
+		return
+	}
+	writeTask(w, http.StatusCreated, t, role, userID, err)
+}
+
+// Update handles PUT /api/tasks/{id}.
+func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	var req Request
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	params, fields := req.Validate("")
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	t, err := h.svc.Update(r.Context(), userID, chi.URLParam(r, "id"), params)
+	writeTask(w, http.StatusOK, t, role, userID, err)
+}
+
+// Delete handles DELETE /api/tasks/{id}.
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	err := h.svc.Delete(r.Context(), userID, chi.URLParam(r, "id"))
+	if err != nil {
+		writeTask(w, 0, Task{}, "", "", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// SetPrice handles PUT /api/tasks/{id}/price.
+func (h *Handler) SetPrice(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	var req PriceRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	cents, fields := req.Validate()
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	t, err := h.svc.SetPrice(r.Context(), userID, chi.URLParam(r, "id"), cents)
+	writeTask(w, http.StatusOK, t, role, userID, err)
+}
+
+// SetPriority handles PUT /api/tasks/{id}/priority.
+func (h *Handler) SetPriority(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	var req PriorityRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	priority, fields := req.Validate()
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	t, err := h.svc.SetPriority(r.Context(), userID, chi.URLParam(r, "id"), priority)
+	writeTask(w, http.StatusOK, t, role, userID, err)
+}
+
+// SetLabels handles PUT /api/tasks/{id}/labels.
+func (h *Handler) SetLabels(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	var req LabelsRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	ids, fields := req.Validate()
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	t, err := h.svc.SetLabels(r.Context(), userID, chi.URLParam(r, "id"), ids)
+	writeTask(w, http.StatusOK, t, role, userID, err)
+}
+
+// History handles GET /api/tasks/{id}/history: who changed what and when.
+func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	events, err := h.svc.History(r.Context(), userID, chi.URLParam(r, "id"))
+	if err != nil {
+		writeTask(w, 0, Task{}, "", "", err)
+		return
+	}
+	out := make([]EventDTO, 0, len(events))
+	for _, e := range events {
+		out = append(out, ToEventDTO(e))
+	}
+	response.JSON(w, http.StatusOK, map[string][]EventDTO{"events": out})
+}
+
+// SetStatus handles POST /api/tasks/{id}/status.
+func (h *Handler) SetStatus(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	var req StatusRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	var (
+		t   Task
+		err error
+	)
+	if req.StatusID != "" {
+		t, err = h.svc.MoveTo(r.Context(), userID, role, chi.URLParam(r, "id"), req.StatusID)
+	} else {
+		t, err = h.svc.SetStatus(r.Context(), userID, role, chi.URLParam(r, "id"), req.Status)
+	}
+	writeTask(w, http.StatusOK, t, role, userID, err)
+}
+
+func writeTask(w http.ResponseWriter, status int, t Task, role, viewerID string, err error) {
+	switch {
+	case errors.Is(err, ErrStatusNotFound):
+		response.ValidationError(w, map[string]string{"status_id": "Status not found"})
+	case errors.Is(err, ErrStatusMismatch):
+		response.ValidationError(w, map[string]string{"status_id": "This status is on another board"})
+	case errors.Is(err, ErrProjectNotFound):
+		response.ValidationError(w, map[string]string{"project_id": "Project not found"})
+	case errors.Is(err, ErrProjectMismatch):
+		response.ValidationError(w, map[string]string{"project_id": "This project is with someone else"})
+	case errors.Is(err, ErrNotFound):
+		response.Error(w, http.StatusNotFound, response.CodeNotFound, "Task not found")
+	case errors.Is(err, ErrEditNotAllowed):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only whoever created the task, or its freelancer, can edit it")
+	case errors.Is(err, ErrNotEditable):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "The task can't be changed in its current status")
+	case errors.Is(err, ErrLabelMismatch):
+		response.ValidationError(w, map[string]string{"label_ids": "These labels aren't on this task's board"})
+	case errors.Is(err, ErrPriceNotAllowed):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the freelancer sets the price")
+	case errors.Is(err, ErrTransition):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "This status change isn't allowed")
+	case err != nil:
+		response.Internal(w, err)
+	default:
+		response.JSON(w, status, map[string]DTO{"task": ToDTO(t, role, viewerID)})
+	}
+}
