@@ -1,0 +1,10 @@
+{{.Heading}}
+
+{{range .Paragraphs}}{{.}}
+
+{{end}}{{with .Button}}{{.Text}}: {{.URL}}
+
+{{end}}{{with .Note}}{{.}}
+
+{{end}}--
+Helpic: freelancers and their clients, on the same page.

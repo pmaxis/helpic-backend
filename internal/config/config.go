@@ -63,6 +63,14 @@ type Config struct {
 	RateLimit      bool
 	TrustedProxies []netip.Prefix
 
+	// SMTP sends email; without SMTPHost nothing is sent, only logged.
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
+	// MailFrom is the sender, e.g. "Helpic <no-reply@helpic.app>".
+	MailFrom string
+
 	// Location is the app's time zone: due dates are days there, and
 	// deadline reminders go out from ReminderHour on.
 	Location     *time.Location
@@ -124,6 +132,13 @@ func Load() (Config, error) {
 	cfg.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	cfg.TelegramAPIURL = getEnv("TELEGRAM_API_URL", "https://api.telegram.org")
 	cfg.RateLimit = getEnvBool("RATE_LIMIT", true)
+	cfg.SMTPHost = os.Getenv("SMTP_HOST")
+	if cfg.SMTPPort, err = strconv.Atoi(getEnv("SMTP_PORT", "587")); err != nil || cfg.SMTPPort <= 0 {
+		return Config{}, fmt.Errorf("invalid SMTP_PORT")
+	}
+	cfg.SMTPUsername = os.Getenv("SMTP_USERNAME")
+	cfg.SMTPPassword = os.Getenv("SMTP_PASSWORD")
+	cfg.MailFrom = getEnv("MAIL_FROM", "Helpic <no-reply@helpic.local>")
 	if cfg.Location, err = time.LoadLocation(getEnv("APP_TIMEZONE", "UTC")); err != nil {
 		return Config{}, fmt.Errorf("invalid APP_TIMEZONE: %w", err)
 	}

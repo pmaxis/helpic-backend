@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/pmaxis/helpic/internal/auth"
 	"github.com/pmaxis/helpic/internal/user"
 )
 
@@ -19,32 +22,23 @@ type sessions interface {
 }
 
 // Service holds the account-change rules: changing the email or the password
-// needs the current password.
+// needs the current password, and a new email needs confirming (email.go).
 type Service struct {
 	repo     *Repository
 	sessions sessions
+	// mail sends confirmation links and notices; appURL is the frontend.
+	mail   auth.Mailer
+	appURL string
 }
 
 // NewService creates a profile Service.
-func NewService(repo *Repository, sessions sessions) *Service {
-	return &Service{repo: repo, sessions: sessions}
+func NewService(repo *Repository, sessions sessions, mail auth.Mailer, appURL string) *Service {
+	return &Service{repo: repo, sessions: sessions, mail: mail, appURL: strings.TrimRight(appURL, "/")}
 }
 
 // UpdateName changes the user's first and last name.
 func (s *Service) UpdateName(ctx context.Context, userID string, n Name) (user.User, error) {
 	return s.repo.SetName(ctx, userID, n.First, n.Last)
-}
-
-// ChangeEmail changes the sign-in email after checking the current password.
-func (s *Service) ChangeEmail(ctx context.Context, userID, email, currentPassword string) (user.User, error) {
-	u, err := s.verify(ctx, userID, currentPassword)
-	if err != nil {
-		return user.User{}, err
-	}
-	if u.Email == email {
-		return u, nil
-	}
-	return s.repo.SetEmail(ctx, userID, email)
 }
 
 // ChangePassword sets a new password after checking the current one, and signs
@@ -64,6 +58,9 @@ func (s *Service) ChangePassword(ctx context.Context, userID, sessionID, current
 	}
 	if err := s.sessions.EndOtherSessions(ctx, userID, sessionID); err != nil {
 		return user.User{}, err
+	}
+	if err := s.mail.Send(ctx, auth.PasswordChangedEmail(u.Email)); err != nil {
+		slog.Error("failed to queue password changed email", "error", err)
 	}
 	return u, nil
 }

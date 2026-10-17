@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pmaxis/helpic/internal/auth"
@@ -30,11 +31,14 @@ type Service struct {
 	repo     *Repository
 	accounts accounts
 	notify   notifier
+	// mail sends invitations; appURL is the frontend their links open.
+	mail   auth.Mailer
+	appURL string
 }
 
 // NewService creates a team Service.
-func NewService(repo *Repository, accounts accounts, notify notifier) *Service {
-	return &Service{repo: repo, accounts: accounts, notify: notify}
+func NewService(repo *Repository, accounts accounts, notify notifier, mail auth.Mailer, appURL string) *Service {
+	return &Service{repo: repo, accounts: accounts, notify: notify, mail: mail, appURL: strings.TrimRight(appURL, "/")}
 }
 
 // Overview returns the team as the client sees it.
@@ -106,7 +110,12 @@ func (s *Service) Invite(ctx context.Context, userID string, p InviteParams) (In
 	if err != nil {
 		return Invite{}, err
 	}
-	return s.repo.CreateInvite(ctx, companyID, p.Email, p.Name, token, time.Now().Add(InviteTTL))
+	inv, err := s.repo.CreateInvite(ctx, companyID, p.Email, p.Name, token, time.Now().Add(InviteTTL))
+	if err != nil {
+		return Invite{}, err
+	}
+	s.emailInvite(ctx, userID, inv)
+	return inv, nil
 }
 
 // RevokeInvite deletes one of the owner's pending invitations.

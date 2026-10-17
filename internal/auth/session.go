@@ -183,9 +183,10 @@ func (s *Service) EndOtherSessions(ctx context.Context, userID, keepID string) e
 	return s.repo.DeleteOtherSessions(ctx, userID, keepID)
 }
 
-// Cleanup removes sessions that have expired; they can't be refreshed anyway.
+// Cleanup removes sessions that have expired (they can't be refreshed
+// anyway) and reset links nobody used in time.
 func (s *Service) Cleanup(ctx context.Context) error {
-	return s.repo.DeleteExpiredSessions(ctx)
+	return errors.Join(s.repo.DeleteExpiredSessions(ctx), s.repo.DeleteExpiredResets(ctx))
 }
 
 // --- repository ----------------------------------------------------------------

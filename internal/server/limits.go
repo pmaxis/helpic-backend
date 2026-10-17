@@ -22,6 +22,8 @@ type limits struct {
 	loginFailures *ratelimit.Limiter
 	// passwordChecks: changes that check the current password, per user.
 	passwordChecks *ratelimit.Limiter
+	// resetRequests: password reset emails per address asked for.
+	resetRequests *ratelimit.Limiter
 }
 
 func newLimits(on bool) limits {
@@ -34,12 +36,13 @@ func newLimits(on bool) limits {
 		refresh:        ratelimit.New(120, 5*time.Second),
 		loginFailures:  ratelimit.New(10, 3*time.Minute),
 		passwordChecks: ratelimit.New(5, time.Minute),
+		resetRequests:  ratelimit.New(3, 10*time.Minute),
 	}
 }
 
 // sweep forgets full buckets, so the maps don't grow without end.
 func (l limits) sweep(context.Context) error {
-	for _, lim := range []*ratelimit.Limiter{l.signIn, l.signUp, l.refresh, l.loginFailures, l.passwordChecks} {
+	for _, lim := range []*ratelimit.Limiter{l.signIn, l.signUp, l.refresh, l.loginFailures, l.passwordChecks, l.resetRequests} {
 		if lim != nil {
 			lim.Sweep()
 		}

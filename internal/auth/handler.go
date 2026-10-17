@@ -36,11 +36,19 @@ type Handler struct {
 	cookie CookieConfig
 	// failures counts wrong passwords per email; nil doesn't limit them.
 	failures *ratelimit.Limiter
+	// resets counts reset links asked for per email; nil doesn't limit them.
+	resets *ratelimit.Limiter
 }
 
 // NewHandler creates an auth Handler.
 func NewHandler(svc *Service, cookie CookieConfig) *Handler {
 	return &Handler{svc: svc, cookie: cookie}
+}
+
+// LimitResetRequests stops emailing reset links to an address once l runs
+// out. The answer stays the same, so it tells nothing and floods no inbox.
+func (h *Handler) LimitResetRequests(l *ratelimit.Limiter) {
+	h.resets = l
 }
 
 // LimitFailedLogins refuses sign-ins to an email once l runs out: each wrong
@@ -173,6 +181,72 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cookie.Clear(w)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Forgot handles POST /api/v1/auth/password/forgot.
+//
+//	@Summary		Ask for a password reset link
+//	@Description	Emails a one-time link to the account with this email. The answer is the same whether there is one or not.
+//	@Tags			auth
+//	@Accept			json
+//	@Param			body	body	ForgotRequest	true	"Request body"
+//	@Success		204		"Sent, if there is such an account"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid email"
+//	@Failure		429		{object}	response.ErrorEnvelope	"Too many attempts from this address"
+//	@Router			/auth/password/forgot [post]
+func (h *Handler) Forgot(w http.ResponseWriter, r *http.Request) {
+	var req ForgotRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	email, fields := req.Validate()
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	if h.resets != nil {
+		if ok, _ := h.resets.Allow(email); !ok {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	}
+	if err := h.svc.RequestReset(r.Context(), email); err != nil {
+		response.Internal(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Reset handles POST /api/v1/auth/password/reset.
+//
+//	@Summary		Set a new password with a reset link
+//	@Description	Signs out every device; sign in with the new password.
+//	@Tags			auth
+//	@Accept			json
+//	@Param			body	body	ResetRequest	true	"Request body"
+//	@Success		204		"Password set"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid password, or the link is invalid, used or expired (field token)"
+//	@Failure		429		{object}	response.ErrorEnvelope	"Too many attempts from this address"
+//	@Router			/auth/password/reset [post]
+func (h *Handler) Reset(w http.ResponseWriter, r *http.Request) {
+	var req ResetRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	if fields := req.Validate(); len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	err := h.svc.ResetPassword(r.Context(), req.Token, req.Password)
+	if errors.Is(err, ErrResetInvalid) {
+		response.ValidationError(w, map[string]string{"token": "This link has expired or was already used. Ask for a new one."})
+		return
+	}
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
