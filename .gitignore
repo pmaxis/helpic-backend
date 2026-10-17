@@ -1,0 +1,17 @@
+# Environment
+.env
+*.env.local
+
+# Local task attachments (UPLOADS_DIR)
+uploads/
+
+# Build (the binary at the root; not cmd/server or internal/server)
+/server
+bin/
+*.out
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
