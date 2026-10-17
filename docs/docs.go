@@ -1701,6 +1701,82 @@ const docTemplate = `{
                 }
             }
         },
+        "/me/email-notifications": {
+            "get": {
+                "description": "Notifications are emailed a few minutes late, together, and not once read in the app.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "What you get by email",
+                "responses": {
+                    "200": {
+                        "description": "email_notifications",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/notifications.EmailPrefsDTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "The notification kinds to email; an empty list turns email off. See \"available\".",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Choose what you get by email",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/notifications.EmailKindsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "email_notifications",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/notifications.EmailPrefsDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown kind",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/me/locale": {
             "put": {
                 "description": "\"en\" or \"uk\": the interface, and the email and Telegram messages you get.",
@@ -4344,6 +4420,42 @@ const docTemplate = `{
                 },
                 "task_id": {
                     "type": "string"
+                }
+            }
+        },
+        "notifications.EmailKindsRequest": {
+            "type": "object",
+            "properties": {
+                "kinds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "notifications.EmailPrefsDTO": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "description": "Available are the kinds that can be emailed; DefaultKinds those on\nuntil the user chooses.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "default_kinds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "kinds": {
+                    "description": "Kinds are emailed; none means no email.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },

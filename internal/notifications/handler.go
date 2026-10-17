@@ -174,3 +174,95 @@ func (h *Handler) MarkAllRead(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// EmailHandler exposes the user's choice of notifications by email.
+type EmailHandler struct {
+	emailer *Emailer
+}
+
+// NewEmailHandler creates an EmailHandler.
+func NewEmailHandler(emailer *Emailer) *EmailHandler {
+	return &EmailHandler{emailer: emailer}
+}
+
+// Routes mounts the endpoints. Must be called inside an authenticated group.
+func (h *EmailHandler) Routes(r chi.Router) {
+	r.Get("/me/email-notifications", h.Get)
+	r.Put("/me/email-notifications", h.Set)
+}
+
+// EmailPrefsDTO is what goes to the user by email.
+type EmailPrefsDTO struct {
+	// Kinds are emailed; none means no email.
+	Kinds []string `json:"kinds"`
+	// Available are the kinds that can be emailed; DefaultKinds those on
+	// until the user chooses.
+	Available    []string `json:"available"`
+	DefaultKinds []string `json:"default_kinds"`
+}
+
+// EmailKindsRequest is the JSON body for PUT /api/v1/me/email-notifications.
+type EmailKindsRequest struct {
+	Kinds []string `json:"kinds"`
+}
+
+func writeEmailPrefs(w http.ResponseWriter, kinds []string) {
+	response.JSON(w, http.StatusOK, map[string]EmailPrefsDTO{
+		"email_notifications": {Kinds: kinds, Available: Kinds, DefaultKinds: DefaultKinds},
+	})
+}
+
+// Get handles GET /api/v1/me/email-notifications.
+//
+//	@Summary		What you get by email
+//	@Description	Notifications are emailed a few minutes late, together, and not once read in the app.
+//	@Tags			notifications
+//	@Produce		json
+//	@Success		200	{object}	map[string]EmailPrefsDTO	"email_notifications"
+//	@Failure		401	{object}	response.ErrorEnvelope		"Not signed in"
+//	@Router			/me/email-notifications [get]
+func (h *EmailHandler) Get(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	kinds, err := h.emailer.Kinds(r.Context(), userID)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	writeEmailPrefs(w, kinds)
+}
+
+// Set handles PUT /api/v1/me/email-notifications.
+//
+//	@Summary		Choose what you get by email
+//	@Description	The notification kinds to email; an empty list turns email off. See "available".
+//	@Tags			notifications
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		EmailKindsRequest			true	"Request body"
+//	@Success		200		{object}	map[string]EmailPrefsDTO	"email_notifications"
+//	@Failure		400		{object}	response.ErrorEnvelope		"Unknown kind"
+//	@Failure		401		{object}	response.ErrorEnvelope		"Not signed in"
+//	@Router			/me/email-notifications [put]
+func (h *EmailHandler) Set(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req EmailKindsRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	kinds, err := h.emailer.SetKinds(r.Context(), userID, req.Kinds)
+	if errors.Is(err, ErrUnknownKind) {
+		response.ValidationError(w, map[string]string{"kinds": "Unknown notification kind"})
+		return
+	}
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	writeEmailPrefs(w, kinds)
+}
