@@ -177,6 +177,8 @@ func writeProject(w http.ResponseWriter, status int, p Project, viewerID string,
 		response.Error(w, http.StatusNotFound, response.CodeNotFound, "Project not found")
 	case errors.Is(err, ErrNotOwner):
 		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the project's creator can change it")
+	case errors.Is(err, ErrContractor):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Contractors can't start projects")
 	case err != nil:
 		response.Internal(w, err)
 	default:

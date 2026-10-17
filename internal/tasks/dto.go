@@ -190,6 +190,22 @@ type PartyDTO struct {
 	Email string `json:"email"`
 }
 
+// PersonDTO is someone on the task's client side who can be on the task.
+type PersonDTO struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	// Role is "owner", "member" or "contractor".
+	Role string `json:"role"`
+	// OnTask is whether they're a participant already.
+	OnTask bool `json:"on_task"`
+}
+
+// ParticipantRequest is the JSON body for POST /api/v1/tasks/{id}/participants.
+type ParticipantRequest struct {
+	UserID string `json:"user_id"`
+}
+
 // ProjectDTO names a task's project.
 type ProjectDTO struct {
 	ID   string `json:"id"`

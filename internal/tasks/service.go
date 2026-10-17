@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 
 	"github.com/pmaxis/helpic/internal/notifications"
@@ -37,8 +38,8 @@ func NewService(repo *Repository, notify notifier) *Service {
 }
 
 // Tell notifies the other side of the task — nobody for a personal task. The
-// client side is the company's owner, plus the member who set the task while
-// they're still in the company.
+// client side is the company's owner, plus their people on the task (who set
+// it, were added or took part) while they're still in the company.
 func (s *Service) Tell(ctx context.Context, actorID string, t Task, kind, detail string, withTask bool) {
 	if t.Client == nil {
 		return
@@ -46,11 +47,11 @@ func (s *Service) Tell(ctx context.Context, actorID string, t Task, kind, detail
 	recipients := []string{t.Freelancer.ID}
 	if actorID == t.Freelancer.ID {
 		recipients = []string{t.Client.ID}
-		if t.CreatedBy != t.Client.ID && t.CreatedBy != t.Freelancer.ID {
-			if acting, err := s.repo.ActingClient(ctx, t.CreatedBy); err == nil && acting == t.Client.ID {
-				recipients = append(recipients, t.CreatedBy)
-			}
+		people, err := s.repo.ClientSideParticipants(ctx, t.ID, t.Client.ID)
+		if err != nil {
+			slog.Error("failed to find who to notify", "task_id", t.ID, "error", err)
 		}
+		recipients = append(recipients, people...)
 	}
 	for _, to := range recipients {
 		n := notifications.Notification{UserID: to, ActorID: actorID, Kind: kind, Subject: t.Title, Detail: detail}
@@ -62,6 +63,88 @@ func (s *Service) Tell(ctx context.Context, actorID string, t Task, kind, detail
 		}
 		s.notify.Notify(ctx, n)
 	}
+}
+
+// People lists who on the task's client side can be on it, for the viewer to
+// pick from; a personal task has nobody.
+func (s *Service) People(ctx context.Context, userID, id string) ([]Person, error) {
+	t, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	if t.Client == nil {
+		return []Person{}, nil
+	}
+	return s.repo.ClientPeople(ctx, t.ID)
+}
+
+// canChangePeople reports whether the user may change who is on the task:
+// anyone who sees it, except a contractor on a task they didn't set.
+func (s *Service) canChangePeople(ctx context.Context, t Task, userID string) (bool, error) {
+	if userID == t.Freelancer.ID || userID == t.CreatedBy {
+		return true, nil
+	}
+	contractor, err := s.repo.IsContractor(ctx, userID)
+	return !contractor, err
+}
+
+// AddParticipant puts someone from the task's client side on it; they're
+// told, and a contractor sees the task from now on.
+func (s *Service) AddParticipant(ctx context.Context, userID, id, personID string) (Task, error) {
+	t, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return Task{}, err
+	}
+	if ok, err := s.canChangePeople(ctx, t, userID); err != nil || !ok {
+		if err == nil {
+			err = ErrPeopleNotAllowed
+		}
+		return Task{}, err
+	}
+	people, err := s.People(ctx, userID, id)
+	if err != nil {
+		return Task{}, err
+	}
+	i := slices.IndexFunc(people, func(p Person) bool { return p.ID == personID })
+	if i < 0 {
+		return Task{}, ErrNotClientSide
+	}
+	if people[i].OnTask {
+		return t, nil
+	}
+	if err := s.repo.AddParticipant(ctx, t.ID, personID); err != nil {
+		return Task{}, err
+	}
+	if personID != userID {
+		n := notifications.Notification{UserID: personID, ActorID: userID, Kind: notifications.KindParticipantAdded, TaskID: t.ID, Subject: t.Title}
+		if t.Project != nil {
+			n.ProjectID = t.Project.ID
+		}
+		s.notify.Notify(ctx, n)
+	}
+	return s.repo.Get(ctx, userID, id)
+}
+
+// RemoveParticipant takes someone off the task. Whoever may add people may,
+// and anyone may take themselves off; the freelancer and the creator stay.
+// A contractor taken off no longer sees the task.
+func (s *Service) RemoveParticipant(ctx context.Context, userID, id, personID string) error {
+	t, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return err
+	}
+	if personID == t.Freelancer.ID || personID == t.CreatedBy {
+		return ErrKeepParticipant
+	}
+	if personID != userID {
+		if ok, err := s.canChangePeople(ctx, t, userID); err != nil || !ok {
+			if err == nil {
+				err = ErrPeopleNotAllowed
+			}
+			return err
+		}
+	}
+	return s.repo.RemoveParticipant(ctx, t.ID, personID)
 }
 
 // List returns the user's tasks.

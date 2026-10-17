@@ -22,13 +22,19 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
-const selectProject = `SELECT p.id, p.created_by, p.name, p.description, p.created_at, p.updated_at,
+// selectProject reads projects for the user in the viewer parameter: the task
+// counts are of the tasks they see, so a contractor counts only theirs.
+func selectProject(viewer string) string {
+	return `SELECT p.id, p.created_by, p.name, p.description, p.created_at, p.updated_at,
 		f.id, f.name, f.email, c.id, c.name, c.email,
-		(SELECT count(*) FROM tasks t WHERE t.project_id = p.id AND t.status IN ('new', 'in_progress')),
-		(SELECT count(*) FROM tasks t WHERE t.project_id = p.id)
+		(SELECT count(*) FROM tasks t WHERE t.project_id = p.id AND t.status IN ('new', 'in_progress')
+			AND sees_task(` + viewer + `, t.id, t.freelancer_id, t.client_id)),
+		(SELECT count(*) FROM tasks t WHERE t.project_id = p.id
+			AND sees_task(` + viewer + `, t.id, t.freelancer_id, t.client_id))
 	FROM projects p
 	JOIN users f ON f.id = p.freelancer_id
 	LEFT JOIN users c ON c.id = p.client_id`
+}
 
 func scanProject(row pgx.Row) (Project, error) {
 	var (
@@ -53,7 +59,7 @@ func (r *Repository) List(ctx context.Context, userID, role, counterpartID strin
 	if role == user.RoleClient {
 		own, other = "p.client_id = acting_client($1)", "p.freelancer_id"
 	}
-	rows, err := r.db.Query(ctx, selectProject+` WHERE `+own+`
+	rows, err := r.db.Query(ctx, selectProject("$1::uuid")+` WHERE `+own+`
 		AND ($2 = '' OR `+other+`::text = $2 OR ($2 = '`+PersonalFilter+`' AND `+other+` IS NULL))
 		ORDER BY lower(p.name), p.created_at`, userID, counterpartID)
 	if err != nil {
@@ -68,7 +74,7 @@ func (r *Repository) List(ctx context.Context, userID, role, counterpartID strin
 
 // Get loads a project the user takes part in, or ErrNotFound.
 func (r *Repository) Get(ctx context.Context, userID, id string) (Project, error) {
-	p, err := scanProject(r.db.QueryRow(ctx, selectProject+`
+	p, err := scanProject(r.db.QueryRow(ctx, selectProject("$2::uuid")+`
 		WHERE p.id::text = $1 AND (p.freelancer_id = $2 OR p.client_id = acting_client($2))`, id, userID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Project{}, ErrNotFound
@@ -87,6 +93,15 @@ func (r *Repository) ActingClient(ctx context.Context, userID string) (string, e
 		return "", fmt.Errorf("acting client: %w", err)
 	}
 	return id, nil
+}
+
+// IsContractor reports whether the user is a client company's contractor.
+func (r *Repository) IsContractor(ctx context.Context, userID string) (bool, error) {
+	var ok bool
+	if err := r.db.QueryRow(ctx, `SELECT is_contractor($1)`, userID).Scan(&ok); err != nil {
+		return false, fmt.Errorf("check contractor: %w", err)
+	}
+	return ok, nil
 }
 
 // CreatePersonal inserts a freelancer's personal project.

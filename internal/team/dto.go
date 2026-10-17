@@ -29,19 +29,28 @@ func (r NameRequest) Validate() (string, map[string]string) {
 type InviteRequest struct {
 	Email string `json:"email"`
 	Name  string `json:"name"`
+	// Role is "member" (the default) or "contractor".
+	Role string `json:"role"`
 }
 
 // InviteParams is the validated invitation input.
 type InviteParams struct {
 	Email string
 	Name  string
+	Role  string
 }
 
 // Validate checks the payload and returns per-field errors. The name is
 // optional; it pre-fills the sign-up form.
 func (r InviteRequest) Validate() (InviteParams, map[string]string) {
 	fields := map[string]string{}
-	p := InviteParams{Email: auth.NormalizeEmail(r.Email), Name: strings.TrimSpace(r.Name)}
+	p := InviteParams{Email: auth.NormalizeEmail(r.Email), Name: strings.TrimSpace(r.Name), Role: r.Role}
+	if p.Role == "" {
+		p.Role = RoleMember
+	}
+	if !ValidRole(p.Role) {
+		fields["role"] = "Choose member or contractor"
+	}
 	if p.Email == "" {
 		fields["email"] = "Email is required"
 	} else if _, err := mail.ParseAddress(p.Email); err != nil {
@@ -51,6 +60,12 @@ func (r InviteRequest) Validate() (InviteParams, map[string]string) {
 		fields["name"] = "Name is too long"
 	}
 	return p, fields
+}
+
+// RoleRequest is the JSON body for PUT /api/v1/team/members/{id}.
+type RoleRequest struct {
+	// Role is "member" or "contractor".
+	Role string `json:"role"`
 }
 
 // JoinRequest is the JSON body for POST /api/v1/team-invites/{token}/accept.
@@ -87,6 +102,8 @@ type PersonDTO struct {
 // MemberDTO is a member of the company.
 type MemberDTO struct {
 	PersonDTO
+	// Role is "member" or "contractor".
+	Role     string    `json:"role"`
 	JoinedAt time.Time `json:"joined_at"`
 }
 
@@ -95,6 +112,7 @@ type InviteDTO struct {
 	ID        string    `json:"id"`
 	Email     string    `json:"email"`
 	Name      string    `json:"name"`
+	Role      string    `json:"role"`
 	Token     string    `json:"token"`
 	Expired   bool      `json:"expired"`
 	ExpiresAt time.Time `json:"expires_at"`
@@ -112,7 +130,7 @@ type OverviewDTO struct {
 }
 
 func toInviteDTO(i Invite) InviteDTO {
-	return InviteDTO{ID: i.ID, Email: i.Email, Name: i.Name, Token: i.Token, Expired: i.Expired(), ExpiresAt: i.ExpiresAt, CreatedAt: i.CreatedAt}
+	return InviteDTO{ID: i.ID, Email: i.Email, Name: i.Name, Role: i.Role, Token: i.Token, Expired: i.Expired(), ExpiresAt: i.ExpiresAt, CreatedAt: i.CreatedAt}
 }
 
 func toOverviewDTO(o Overview) OverviewDTO {
@@ -122,7 +140,7 @@ func toOverviewDTO(o Overview) OverviewDTO {
 	}
 	d.Members = make([]MemberDTO, 0, len(o.Members))
 	for _, m := range o.Members {
-		d.Members = append(d.Members, MemberDTO{PersonDTO: PersonDTO(m.Person), JoinedAt: m.JoinedAt})
+		d.Members = append(d.Members, MemberDTO{PersonDTO: PersonDTO(m.Person), Role: m.Role, JoinedAt: m.JoinedAt})
 	}
 	d.Invites = make([]InviteDTO, 0, len(o.Invites))
 	for _, i := range o.Invites {
@@ -133,9 +151,11 @@ func toOverviewDTO(o Overview) OverviewDTO {
 
 // LookupDTO is what the join page shows.
 type LookupDTO struct {
-	Email     string    `json:"email"`
-	Name      string    `json:"name"`
-	Company   string    `json:"company"`
+	Email   string `json:"email"`
+	Name    string `json:"name"`
+	Company string `json:"company"`
+	// Role is what they join as: "member" or "contractor".
+	Role      string    `json:"role"`
 	Owner     PersonDTO `json:"owner"`
 	ExpiresAt time.Time `json:"expires_at"`
 }

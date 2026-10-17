@@ -1,9 +1,10 @@
 // Package team gives a client a company and its people. The client a
-// freelancer invited owns the company; they invite members — employees or
-// contractors, one "member" role for now — by link. Members act for the
-// company: they see its freelancers, tasks, projects and boards and set tasks
-// for its freelancers (see the acting_client SQL function). Reports stay the
-// owner's alone.
+// freelancer invited owns the company; they invite people by link, as
+// members or contractors. Both act for the company: they see its freelancers,
+// projects and boards and set tasks for its freelancers (see the
+// acting_client SQL function). A member sees all the company's tasks, a
+// contractor only the ones they set or were added to (sees_task). Reports
+// stay the owner's alone.
 package team
 
 import (
@@ -37,6 +38,7 @@ type Person struct {
 // Member is a person who joined the company.
 type Member struct {
 	Person
+	Role     string
 	JoinedAt time.Time
 }
 
@@ -46,6 +48,7 @@ type Invite struct {
 	CompanyID string
 	Email     string
 	Name      string
+	Role      string
 	Token     string
 	ExpiresAt time.Time
 	CreatedAt time.Time
@@ -57,7 +60,7 @@ func (i Invite) Expired() bool { return time.Now().After(i.ExpiresAt) }
 // Overview is the team as the viewer sees it. A member sees the company and
 // its owner; the owner also sees the members and pending invitations.
 type Overview struct {
-	// Role is "owner" or "member".
+	// Role is the viewer's: "owner", "member" or "contractor".
 	Role    string
 	Name    string
 	Owner   Person
@@ -65,8 +68,12 @@ type Overview struct {
 	Invites []Invite
 }
 
-// Team roles.
+// Team roles. The owner invites the others as members or contractors.
 const (
-	RoleOwner  = "owner"
-	RoleMember = "member"
+	RoleOwner      = "owner"
+	RoleMember     = "member"
+	RoleContractor = "contractor"
 )
+
+// ValidRole reports whether someone can be invited or set as the role.
+func ValidRole(role string) bool { return role == RoleMember || role == RoleContractor }

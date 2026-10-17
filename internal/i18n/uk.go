@@ -14,6 +14,7 @@ var uk = map[string]string{
 	"%s edited %s":                 "%s: задачу %s змінено",
 	"%s is due tomorrow":           "Завтра дедлайн: %s",
 	"%s is overdue: it was due %s": "%s прострочено: дедлайн був %s",
+	"%s added you to %s":           "%s: вас додано до %s",
 	"%s joined your team":          "%s тепер у вашій команді",
 	"%s marked %s as paid":         "%s: звіт %s позначено оплаченим",
 	"%s moved %s to %s":            "%s: статус %s змінено на %s",
@@ -63,6 +64,8 @@ var uk = map[string]string{
 	"%s invited you to %s": "%s запрошує вас до %s",
 	"Join to see the work %s does with its freelancers on Helpic, and to set tasks yourself.": "Приєднуйтесь, щоб бачити роботу %s з фрилансерами в Helpic і ставити задачі самостійно.",
 	"Join the team": "Приєднатися до команди",
+	"Join as a contractor to set tasks for %s's freelancers and follow the ones you're part of.": "Приєднуйтесь як підрядник, щоб ставити задачі фрилансерам %s і стежити за тими, де ви учасник.",
+	"Choose member or contractor": "Оберіть: співробітник чи підрядник",
 
 	// --- Telegram bot --------------------------------------------------------------
 	"Hi! To get your Helpic notifications here, open Helpic → Settings → Notifications and press <b>Connect Telegram</b>.":                                     "Вітаю! Щоб отримувати сюди сповіщення Helpic, відкрийте Helpic → Налаштування → Сповіщення й натисніть <b>Підключити Telegram</b>.",
@@ -147,6 +150,10 @@ var uk = map[string]string{
 	"This person is on a client's team; they work through that client": "Ця людина в команді клієнта й працює через нього",
 	"You can't invite yourself":                                        "Не можна запросити себе",
 	"You don't work with this freelancer":                              "Ви не працюєте з цим фрилансером",
+	"A contractor changes who is on a task only when they set it":      "Підрядник змінює учасників лише у власних задачах",
+	"Only the client and their team can be added":                      "Додати можна лише клієнта та його команду",
+	"The freelancer and whoever set the task stay on it":               "Фрилансер і автор задачі лишаються в ній",
+	"Contractors can't start projects":                                 "Підрядники не створюють проєкти",
 	"Only the company's owner manages the team":                        "Командою керує лише власник компанії",
 	"The name is too long":                                             "Назва задовга",
 

@@ -13,6 +13,7 @@ var Kinds = []string{
 	KindTaskStatus,
 	KindTaskUpdated,
 	KindTaskDeleted,
+	KindParticipantAdded,
 	KindTaskDueSoon,
 	KindTaskOverdue,
 	KindCommentAdded,
@@ -30,6 +31,7 @@ var Kinds = []string{
 var DefaultKinds = []string{
 	KindTaskCreated,
 	KindTaskStatus,
+	KindParticipantAdded,
 	KindTaskDueSoon,
 	KindTaskOverdue,
 	KindCommentAdded,
@@ -98,6 +100,8 @@ func Phrase(n Notification, locale, who, subject, detail string) string {
 		return t("%s edited %s", who, subject)
 	case KindTaskDeleted:
 		return t("%s deleted %s", who, subject)
+	case KindParticipantAdded:
+		return t("%s added you to %s", who, subject)
 	case KindProjectCreated:
 		return t("%s started a project %s", who, subject)
 	case KindClientJoined:

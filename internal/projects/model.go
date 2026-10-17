@@ -16,6 +16,9 @@ var (
 	// ErrNotOwner is returned when someone other than the creator edits or
 	// deletes a project.
 	ErrNotOwner = errors.New("only the project's creator can change it")
+	// ErrContractor is returned when a client company's contractor starts a
+	// project: they work in the company's projects, not shape them.
+	ErrContractor = errors.New("contractors can't start projects")
 )
 
 // PersonalFilter is the counterpart filter value that selects personal projects.

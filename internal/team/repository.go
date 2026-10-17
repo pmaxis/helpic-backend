@@ -21,19 +21,26 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
-// MembershipOf returns the company the user is a member of (its owner and
-// name), or ok=false when they aren't anyone's member.
-func (r *Repository) MembershipOf(ctx context.Context, userID string) (owner Person, company string, ok bool, err error) {
-	err = r.db.QueryRow(ctx, `SELECT u.id, u.name, u.email, c.name FROM company_members m
+// Membership is the company someone joined and their role in it.
+type Membership struct {
+	Owner   Person
+	Company string
+	Role    string
+}
+
+// MembershipOf returns the company the user is a member of, or ok=false when
+// they aren't anyone's member.
+func (r *Repository) MembershipOf(ctx context.Context, userID string) (m Membership, ok bool, err error) {
+	err = r.db.QueryRow(ctx, `SELECT u.id, u.name, u.email, c.name, m.role FROM company_members m
 		JOIN companies c ON c.id = m.company_id JOIN users u ON u.id = c.owner_id
-		WHERE m.user_id = $1`, userID).Scan(&owner.ID, &owner.Name, &owner.Email, &company)
+		WHERE m.user_id = $1`, userID).Scan(&m.Owner.ID, &m.Owner.Name, &m.Owner.Email, &m.Company, &m.Role)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Person{}, "", false, nil
+		return Membership{}, false, nil
 	}
 	if err != nil {
-		return Person{}, "", false, fmt.Errorf("get membership: %w", err)
+		return Membership{}, false, fmt.Errorf("get membership: %w", err)
 	}
-	return owner, company, true, nil
+	return m, true, nil
 }
 
 // Person loads an account's public side.
@@ -81,14 +88,14 @@ func (r *Repository) Rename(ctx context.Context, ownerID, name string) error {
 
 // Members lists a company's members, earliest first.
 func (r *Repository) Members(ctx context.Context, companyID string) ([]Member, error) {
-	rows, err := r.db.Query(ctx, `SELECT u.id, u.name, u.email, m.created_at FROM company_members m
+	rows, err := r.db.Query(ctx, `SELECT u.id, u.name, u.email, m.role, m.created_at FROM company_members m
 		JOIN users u ON u.id = m.user_id WHERE m.company_id = $1 ORDER BY m.created_at`, companyID)
 	if err != nil {
 		return nil, fmt.Errorf("list members: %w", err)
 	}
 	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Member, error) {
 		var m Member
-		return m, row.Scan(&m.ID, &m.Name, &m.Email, &m.JoinedAt)
+		return m, row.Scan(&m.ID, &m.Name, &m.Email, &m.Role, &m.JoinedAt)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("scan members: %w", err)
@@ -96,11 +103,11 @@ func (r *Repository) Members(ctx context.Context, companyID string) ([]Member, e
 	return out, nil
 }
 
-const inviteColumns = `id, company_id, email, name, token, expires_at, created_at`
+const inviteColumns = `id, company_id, email, name, role, token, expires_at, created_at`
 
 func scanInvite(row pgx.Row) (Invite, error) {
 	var i Invite
-	err := row.Scan(&i.ID, &i.CompanyID, &i.Email, &i.Name, &i.Token, &i.ExpiresAt, &i.CreatedAt)
+	err := row.Scan(&i.ID, &i.CompanyID, &i.Email, &i.Name, &i.Role, &i.Token, &i.ExpiresAt, &i.CreatedAt)
 	return i, err
 }
 
@@ -130,7 +137,7 @@ func (r *Repository) EmailTaken(ctx context.Context, email string) (bool, error)
 
 // CreateInvite stores a pending invitation; an expired one for the same email
 // is replaced, a live one yields ErrAlreadyInvited.
-func (r *Repository) CreateInvite(ctx context.Context, companyID, email, name, token string, expiresAt time.Time) (Invite, error) {
+func (r *Repository) CreateInvite(ctx context.Context, companyID, email, name, role, token string, expiresAt time.Time) (Invite, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return Invite{}, fmt.Errorf("begin: %w", err)
@@ -141,8 +148,8 @@ func (r *Repository) CreateInvite(ctx context.Context, companyID, email, name, t
 		WHERE company_id = $1 AND email = $2 AND accepted_at IS NULL AND expires_at <= now()`, companyID, email); err != nil {
 		return Invite{}, fmt.Errorf("drop expired invite: %w", err)
 	}
-	inv, err := scanInvite(tx.QueryRow(ctx, `INSERT INTO company_invites (company_id, email, name, token, expires_at)
-		VALUES ($1, $2, $3, $4, $5) RETURNING `+inviteColumns, companyID, email, name, token, expiresAt))
+	inv, err := scanInvite(tx.QueryRow(ctx, `INSERT INTO company_invites (company_id, email, name, role, token, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING `+inviteColumns, companyID, email, name, role, token, expiresAt))
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return Invite{}, ErrAlreadyInvited
@@ -182,6 +189,18 @@ func (r *Repository) RemoveMember(ctx context.Context, companyID, userID string)
 	return nil
 }
 
+// SetRole makes a member of the company a member or a contractor.
+func (r *Repository) SetRole(ctx context.Context, companyID, userID, role string) error {
+	tag, err := r.db.Exec(ctx, `UPDATE company_members SET role = $3 WHERE company_id = $1 AND user_id::text = $2`, companyID, userID, role)
+	if err != nil {
+		return fmt.Errorf("set member role: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // InviteByToken loads a pending invitation with its company's name and owner;
 // unknown, used and expired ones yield ErrInviteInvalid.
 func (r *Repository) InviteByToken(ctx context.Context, token string) (Invite, string, Person, error) {
@@ -191,11 +210,11 @@ func (r *Repository) InviteByToken(ctx context.Context, token string) (Invite, s
 		owner   Person
 		used    *time.Time
 	)
-	err := r.db.QueryRow(ctx, `SELECT i.id, i.company_id, i.email, i.name, i.token, i.expires_at, i.created_at, i.accepted_at,
+	err := r.db.QueryRow(ctx, `SELECT i.id, i.company_id, i.email, i.name, i.role, i.token, i.expires_at, i.created_at, i.accepted_at,
 			c.name, u.id, u.name, u.email
 		FROM company_invites i JOIN companies c ON c.id = i.company_id JOIN users u ON u.id = c.owner_id
 		WHERE i.token = $1`, token).
-		Scan(&i.ID, &i.CompanyID, &i.Email, &i.Name, &i.Token, &i.ExpiresAt, &i.CreatedAt, &used, &company, &owner.ID, &owner.Name, &owner.Email)
+		Scan(&i.ID, &i.CompanyID, &i.Email, &i.Name, &i.Role, &i.Token, &i.ExpiresAt, &i.CreatedAt, &used, &company, &owner.ID, &owner.Name, &owner.Email)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (used != nil || i.Expired())) {
 		return Invite{}, "", Person{}, ErrInviteInvalid
 	}
@@ -205,8 +224,8 @@ func (r *Repository) InviteByToken(ctx context.Context, token string) (Invite, s
 	return i, company, owner, nil
 }
 
-// Join makes the user a member and uses up the invitation.
-func (r *Repository) Join(ctx context.Context, inviteID, companyID, userID string) error {
+// Join makes the user a member, in the invitation's role, and uses it up.
+func (r *Repository) Join(ctx context.Context, inviteID, companyID, userID, role string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
@@ -220,7 +239,7 @@ func (r *Repository) Join(ctx context.Context, inviteID, companyID, userID strin
 	if tag.RowsAffected() == 0 {
 		return ErrInviteInvalid
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO company_members (user_id, company_id) VALUES ($1, $2)`, userID, companyID); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO company_members (user_id, company_id, role) VALUES ($1, $2, $3)`, userID, companyID, role); err != nil {
 		return fmt.Errorf("add member: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {

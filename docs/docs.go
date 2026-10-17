@@ -3429,6 +3429,175 @@ const docTemplate = `{
                 }
             }
         },
+        "/tasks/{id}/participants": {
+            "post": {
+                "description": "Someone from the client's side; they're notified, and a contractor sees the task from now on. A contractor can add people only to tasks they set.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Add someone to a task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/tasks.ParticipantRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Not on the client's side",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks/{id}/participants/{userID}": {
+            "delete": {
+                "description": "Anyone can take themselves off; the freelancer and the creator stay. A contractor taken off no longer sees the task.",
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Take someone off a task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Participant's user ID",
+                        "name": "userID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "The freelancer or the creator",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks/{id}/people": {
+            "get": {
+                "description": "The task's client and their company's members and contractors, saying who is on it already. Empty for a personal task.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Who can be on a task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "people",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/tasks.PersonDTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/tasks/{id}/price": {
             "put": {
                 "description": "The task's freelancer only, in any status. A null price clears it.",
@@ -3901,6 +4070,72 @@ const docTemplate = `{
             }
         },
         "/team/members/{id}": {
+            "put": {
+                "description": "A member sees all the company's tasks; a contractor only the ones they set or were added to.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "team"
+                ],
+                "summary": "Make someone a member or a contractor",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Member's user ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/team.RoleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "team",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/team.OverviewDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown role",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
             "delete": {
                 "tags": [
                     "team"
@@ -5022,6 +5257,14 @@ const docTemplate = `{
                 }
             }
         },
+        "tasks.ParticipantRequest": {
+            "type": "object",
+            "properties": {
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "tasks.PartyDTO": {
             "type": "object",
             "properties": {
@@ -5032,6 +5275,28 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "tasks.PersonDTO": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "on_task": {
+                    "description": "OnTask is whether they're a participant already.",
+                    "type": "boolean"
+                },
+                "role": {
+                    "description": "Role is \"owner\", \"member\" or \"contractor\".",
                     "type": "string"
                 }
             }
@@ -5132,6 +5397,9 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
+                "role": {
+                    "type": "string"
+                },
                 "token": {
                     "type": "string"
                 }
@@ -5144,6 +5412,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "role": {
+                    "description": "Role is \"member\" (the default) or \"contractor\".",
                     "type": "string"
                 }
             }
@@ -5179,6 +5451,10 @@ const docTemplate = `{
                 },
                 "owner": {
                     "$ref": "#/definitions/team.PersonDTO"
+                },
+                "role": {
+                    "description": "Role is what they join as: \"member\" or \"contractor\".",
+                    "type": "string"
                 }
             }
         },
@@ -5195,6 +5471,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "role": {
+                    "description": "Role is \"member\" or \"contractor\".",
                     "type": "string"
                 }
             }
@@ -5243,6 +5523,15 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "team.RoleRequest": {
+            "type": "object",
+            "properties": {
+                "role": {
+                    "description": "Role is \"member\" or \"contractor\".",
                     "type": "string"
                 }
             }
@@ -5363,6 +5652,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "owner_id": {
+                    "type": "string"
+                },
+                "role": {
+                    "description": "Role is \"member\" (sees all the company's work) or \"contractor\" (only\nthe tasks they set or were added to).",
                     "type": "string"
                 }
             }

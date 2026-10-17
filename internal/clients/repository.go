@@ -196,12 +196,13 @@ func (r *Repository) ListClients(ctx context.Context, freelancerID string) ([]Li
 }
 
 // ListFreelancers returns the freelancers the client works with — for a
-// company member, the company owner's.
+// company member, the company owner's — counting the open tasks they see.
 func (r *Repository) ListFreelancers(ctx context.Context, clientID string) ([]Link, error) {
 	return r.listLinks(ctx, `SELECT u.id, u.name, u.email, fc.created_at,
 			(SELECT count(*) FROM tasks t
 			 WHERE t.freelancer_id = fc.freelancer_id AND t.client_id = fc.client_id
-			   AND t.status IN ('new', 'in_progress'))
+			   AND t.status IN ('new', 'in_progress')
+			   AND sees_task($1, t.id, t.freelancer_id, t.client_id))
 		FROM freelancer_clients fc
 		JOIN users u ON u.id = fc.freelancer_id
 		WHERE fc.client_id = acting_client($1)
