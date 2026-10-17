@@ -31,6 +31,7 @@ func (h *Handler) ClientRoutes(r chi.Router) {
 		r.Put("/", h.Rename)
 		r.Post("/invites", h.Invite)
 		r.Delete("/invites/{id}", h.RevokeInvite)
+		r.Put("/members/{id}", h.SetRole)
 		r.Delete("/members/{id}", h.RemoveMember)
 	})
 }
@@ -148,6 +149,38 @@ func (h *Handler) RevokeInvite(w http.ResponseWriter, r *http.Request) {
 	writeDone(w, h.svc.RevokeInvite(r.Context(), userID, chi.URLParam(r, "id")))
 }
 
+// SetRole handles PUT /api/v1/team/members/{id}.
+//
+//	@Summary		Make someone a member or a contractor
+//	@Description	A member sees all the company's tasks; a contractor only the ones they set or were added to.
+//	@Tags			team
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Member's user ID"
+//	@Param			body	body		RoleRequest				true	"Request body"
+//	@Success		200		{object}	map[string]OverviewDTO	"team"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Unknown role"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/team/members/{id} [put]
+func (h *Handler) SetRole(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req RoleRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	if !ValidRole(req.Role) {
+		response.ValidationError(w, map[string]string{"role": "Choose member or contractor"})
+		return
+	}
+	o, err := h.svc.SetRole(r.Context(), userID, chi.URLParam(r, "id"), req.Role)
+	writeOverview(w, o, err)
+}
+
 // RemoveMember handles DELETE /api/v1/team/members/{id}.
 //
 //	@Summary	Remove a team member
@@ -186,6 +219,7 @@ func (h *Handler) FindInvite(w http.ResponseWriter, r *http.Request) {
 		Email:     l.Invite.Email,
 		Name:      l.Invite.Name,
 		Company:   l.Company,
+		Role:      l.Invite.Role,
 		Owner:     PersonDTO(l.Owner),
 		ExpiresAt: l.Invite.ExpiresAt,
 	}})

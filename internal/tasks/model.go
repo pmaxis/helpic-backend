@@ -40,7 +40,28 @@ var (
 	ErrPriceNotAllowed = errors.New("only the freelancer sets the price")
 	// ErrLabelMismatch is returned for a label of another pair's board.
 	ErrLabelMismatch = errors.New("label belongs to another board")
+	// ErrPeopleNotAllowed is returned when someone may not change who is on
+	// the task: a contractor, on a task they didn't set.
+	ErrPeopleNotAllowed = errors.New("not allowed to change who is on the task")
+	// ErrNotClientSide is returned for adding someone who isn't the task's
+	// client or in its company.
+	ErrNotClientSide = errors.New("not on the task's client side")
+	// ErrKeepParticipant is returned for taking the freelancer or the creator
+	// off their own task.
+	ErrKeepParticipant = errors.New("the freelancer and the creator stay on the task")
 )
+
+// Person is someone on the task's client side who can be on the task: the
+// client, or a member or contractor of their company.
+type Person struct {
+	ID    string
+	Name  string
+	Email string
+	// Role is "owner", "member" or "contractor".
+	Role string
+	// OnTask is whether they're already a participant.
+	OnTask bool
+}
 
 // PersonalFilter is the CounterpartID value that selects personal tasks.
 const PersonalFilter = "personal"

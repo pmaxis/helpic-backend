@@ -14,7 +14,8 @@ import (
 )
 
 // Repository handles PostgreSQL access for tasks. Every query is scoped to
-// tasks where the user is the freelancer or the client.
+// the tasks the user sees (the sees_task SQL function): their freelancer's,
+// their client company's — for a contractor, only the ones they take part in.
 type Repository struct {
 	db *pgxpool.Pool
 }
@@ -78,10 +79,10 @@ func scanTask(row pgx.Row) (Task, error) {
 
 // ownerColumns returns the condition matching the user's ($1) side of a task
 // and the column holding the other side. A client acts for their company, so
-// a member sees the owner's tasks.
+// a member sees the owner's tasks, and a contractor the ones they take part in.
 func ownerColumns(role string) (own, other string) {
 	if role == user.RoleClient {
-		return "t.client_id = acting_client($1)", "t.freelancer_id"
+		return "t.client_id = acting_client($1) AND sees_task($1, t.id, t.freelancer_id, t.client_id)", "t.freelancer_id"
 	}
 	return "t.freelancer_id = $1", "t.client_id"
 }
@@ -94,6 +95,72 @@ func (r *Repository) ActingClient(ctx context.Context, userID string) (string, e
 		return "", fmt.Errorf("acting client: %w", err)
 	}
 	return id, nil
+}
+
+// IsContractor reports whether the user is a client company's contractor.
+func (r *Repository) IsContractor(ctx context.Context, userID string) (bool, error) {
+	var ok bool
+	if err := r.db.QueryRow(ctx, `SELECT is_contractor($1)`, userID).Scan(&ok); err != nil {
+		return false, fmt.Errorf("check contractor: %w", err)
+	}
+	return ok, nil
+}
+
+// ClientPeople lists the task's client side: the client first, then their
+// company's people by name, saying who is on the task already.
+func (r *Repository) ClientPeople(ctx context.Context, taskID string) ([]Person, error) {
+	rows, err := r.db.Query(ctx, `SELECT u.id, u.name, u.email, coalesce(m.role, 'owner'),
+			EXISTS (SELECT 1 FROM task_participants tp WHERE tp.task_id = t.id AND tp.user_id = u.id)
+		FROM tasks t
+		JOIN users u ON u.id = t.client_id
+			OR u.id IN (SELECT cm.user_id FROM company_members cm JOIN companies c ON c.id = cm.company_id WHERE c.owner_id = t.client_id)
+		LEFT JOIN company_members m ON m.user_id = u.id
+		WHERE t.id = $1
+		ORDER BY u.id = t.client_id DESC, lower(u.name), u.email`, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("list client people: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Person, error) {
+		var p Person
+		return p, row.Scan(&p.ID, &p.Name, &p.Email, &p.Role, &p.OnTask)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan client people: %w", err)
+	}
+	return out, nil
+}
+
+// ClientSideParticipants returns who on the task's client side takes part in
+// it, other than the client: their company's people, while they're still in
+// it.
+func (r *Repository) ClientSideParticipants(ctx context.Context, taskID, clientID string) ([]string, error) {
+	rows, err := r.db.Query(ctx, `SELECT tp.user_id::text FROM task_participants tp
+		WHERE tp.task_id = $1 AND tp.user_id <> $2 AND acting_client(tp.user_id) = $2
+		ORDER BY tp.first_at`, taskID, clientID)
+	if err != nil {
+		return nil, fmt.Errorf("list client side participants: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, fmt.Errorf("scan client side participants: %w", err)
+	}
+	return out, nil
+}
+
+// AddParticipant puts someone on the task.
+func (r *Repository) AddParticipant(ctx context.Context, taskID, userID string) error {
+	if _, err := r.db.Exec(ctx, `SELECT note_participant($1, $2, now())`, taskID, userID); err != nil {
+		return fmt.Errorf("add participant: %w", err)
+	}
+	return nil
+}
+
+// RemoveParticipant takes someone off the task.
+func (r *Repository) RemoveParticipant(ctx context.Context, taskID, userID string) error {
+	if _, err := r.db.Exec(ctx, `DELETE FROM task_participants WHERE task_id = $1 AND user_id::text = $2`, taskID, userID); err != nil {
+		return fmt.Errorf("remove participant: %w", err)
+	}
+	return nil
 }
 
 // List returns the user's tasks: open ones first, then by due date and newest.
@@ -120,10 +187,10 @@ func (r *Repository) List(ctx context.Context, userID, role string, f Filter) ([
 	return out, nil
 }
 
-// Get loads a task the user takes part in, or ErrNotFound.
+// Get loads a task the user sees, or ErrNotFound.
 func (r *Repository) Get(ctx context.Context, userID, id string) (Task, error) {
 	t, err := scanTask(r.db.QueryRow(ctx, selectTask+`
-		WHERE t.id::text = $1 AND (t.freelancer_id = $2 OR t.client_id = acting_client($2))`, id, userID))
+		WHERE t.id::text = $1 AND sees_task($2, t.id, t.freelancer_id, t.client_id)`, id, userID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Task{}, ErrNotFound
 	}

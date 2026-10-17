@@ -29,6 +29,9 @@ const (
 	// due yesterday. Detail is the due date (YYYY-MM-DD); there is no actor.
 	KindTaskDueSoon = "task_due_soon"
 	KindTaskOverdue = "task_overdue"
+	// KindParticipantAdded tells someone they were added to a task — for a
+	// contractor, that it's now theirs to see.
+	KindParticipantAdded = "participant_added"
 )
 
 var ErrNotFound = errors.New("notification not found")

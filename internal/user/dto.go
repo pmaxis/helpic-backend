@@ -23,6 +23,9 @@ type DTO struct {
 type TeamDTO struct {
 	OwnerID string `json:"owner_id"`
 	Name    string `json:"name"`
+	// Role is "member" (sees all the company's work) or "contractor" (only
+	// the tasks they set or were added to).
+	Role string `json:"role"`
 }
 
 // Response wraps a user DTO, matching the API contract: {"user": {...}}.
@@ -34,7 +37,7 @@ type Response struct {
 func ToDTO(u User) DTO {
 	d := DTO{ID: u.ID, Email: u.Email, FirstName: u.FirstName, LastName: u.LastName, Name: u.Name, Role: u.Role, Currency: u.Currency, Locale: u.Locale, CreatedAt: u.CreatedAt}
 	if u.TeamOwnerID != nil {
-		d.MemberOf = &TeamDTO{OwnerID: *u.TeamOwnerID, Name: u.TeamName}
+		d.MemberOf = &TeamDTO{OwnerID: *u.TeamOwnerID, Name: u.TeamName, Role: u.TeamRole}
 	}
 	return d
 }

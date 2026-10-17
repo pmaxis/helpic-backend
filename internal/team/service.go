@@ -43,12 +43,12 @@ func NewService(repo *Repository, accounts accounts, notify notifier, mail auth.
 
 // Overview returns the team as the client sees it.
 func (s *Service) Overview(ctx context.Context, userID string) (Overview, error) {
-	owner, company, member, err := s.repo.MembershipOf(ctx, userID)
+	m, member, err := s.repo.MembershipOf(ctx, userID)
 	if err != nil {
 		return Overview{}, err
 	}
 	if member {
-		return Overview{Role: RoleMember, Name: company, Owner: owner}, nil
+		return Overview{Role: m.Role, Name: m.Company, Owner: m.Owner}, nil
 	}
 	me, err := s.repo.Person(ctx, userID)
 	if err != nil {
@@ -72,7 +72,7 @@ func (s *Service) Overview(ctx context.Context, userID string) (Overview, error)
 // owned returns the company the user owns, making it the first time; a
 // member gets ErrNotOwner.
 func (s *Service) owned(ctx context.Context, userID string) (string, error) {
-	if _, _, member, err := s.repo.MembershipOf(ctx, userID); err != nil || member {
+	if _, member, err := s.repo.MembershipOf(ctx, userID); err != nil || member {
 		if err == nil {
 			err = ErrNotOwner
 		}
@@ -110,7 +110,7 @@ func (s *Service) Invite(ctx context.Context, userID string, p InviteParams) (In
 	if err != nil {
 		return Invite{}, err
 	}
-	inv, err := s.repo.CreateInvite(ctx, companyID, p.Email, p.Name, token, time.Now().Add(InviteTTL))
+	inv, err := s.repo.CreateInvite(ctx, companyID, p.Email, p.Name, p.Role, token, time.Now().Add(InviteTTL))
 	if err != nil {
 		return Invite{}, err
 	}
@@ -134,6 +134,18 @@ func (s *Service) RemoveMember(ctx context.Context, userID, memberID string) err
 		return err
 	}
 	return s.repo.RemoveMember(ctx, companyID, memberID)
+}
+
+// SetRole makes someone on the owner's team a member or a contractor.
+func (s *Service) SetRole(ctx context.Context, userID, memberID, role string) (Overview, error) {
+	companyID, err := s.owned(ctx, userID)
+	if err != nil {
+		return Overview{}, err
+	}
+	if err := s.repo.SetRole(ctx, companyID, memberID, role); err != nil {
+		return Overview{}, err
+	}
+	return s.Overview(ctx, userID)
 }
 
 // Lookup is what the invitation page shows before someone joins.
@@ -176,7 +188,7 @@ func (s *Service) Join(ctx context.Context, token string, p JoinParams, c auth.C
 	if err != nil {
 		return Session{}, err
 	}
-	if err := s.repo.Join(ctx, l.Invite.ID, l.Invite.CompanyID, u.ID); err != nil {
+	if err := s.repo.Join(ctx, l.Invite.ID, l.Invite.CompanyID, u.ID, l.Invite.Role); err != nil {
 		return Session{}, err
 	}
 	s.notify.Notify(ctx, notifications.Notification{UserID: l.Owner.ID, ActorID: u.ID, Kind: notifications.KindMemberJoined})
@@ -185,7 +197,7 @@ func (s *Service) Join(ctx context.Context, token string, p JoinParams, c auth.C
 		return Session{}, err
 	}
 	// The account was read before it joined; say it's a member now.
-	u.TeamOwnerID, u.TeamName = &l.Owner.ID, l.Company
+	u.TeamOwnerID, u.TeamName, u.TeamRole = &l.Owner.ID, l.Company, l.Invite.Role
 	return Session{User: u, Tokens: tokens}, nil
 }
 

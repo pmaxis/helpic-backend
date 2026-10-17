@@ -11,7 +11,14 @@ import (
 // account; it returns the signed-in member.
 func joinTeam(t *testing.T, srv *httptest.Server, owner *http.Client, email string) *http.Client {
 	t.Helper()
-	resp := post(t, owner, srv.URL+"/api/v1/team/invites", map[string]string{"email": email, "name": "Max"})
+	return joinTeamAs(t, srv, owner, email, "")
+}
+
+// joinTeamAs is joinTeam in a role: "member", "contractor", or "" for the
+// default.
+func joinTeamAs(t *testing.T, srv *httptest.Server, owner *http.Client, email, role string) *http.Client {
+	t.Helper()
+	resp := post(t, owner, srv.URL+"/api/v1/team/invites", map[string]string{"email": email, "name": "Max", "role": role})
 	wantStatus(t, resp, http.StatusCreated)
 	token := field(decode(t, resp), "invite")["token"].(string)
 

@@ -37,12 +37,21 @@ func (s *Service) Get(ctx context.Context, userID, id string) (Project, error) {
 
 // Create adds a project: a client names the freelancer (p.FreelancerID), a
 // freelancer names the client (p.ClientID) or leaves it empty for a personal
-// project.
+// project. A client company's contractor can't.
 func (s *Service) Create(ctx context.Context, userID, role string, p Params) (Project, error) {
 	var (
 		id  string
 		err error
 	)
+	if role == user.RoleClient {
+		contractor, err := s.repo.IsContractor(ctx, userID)
+		if err != nil {
+			return Project{}, err
+		}
+		if contractor {
+			return Project{}, ErrContractor
+		}
+	}
 	switch {
 	case role == user.RoleClient:
 		// A company member starts projects for the company: its owner is the client.

@@ -34,6 +34,9 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Put("/{id}/priority", h.SetPriority)
 		r.Put("/{id}/labels", h.SetLabels)
 		r.Get("/{id}/history", h.History)
+		r.Get("/{id}/people", h.People)
+		r.Post("/{id}/participants", h.AddParticipant)
+		r.Delete("/{id}/participants/{userID}", h.RemoveParticipant)
 	})
 }
 
@@ -283,6 +286,89 @@ func (h *Handler) SetLabels(w http.ResponseWriter, r *http.Request) {
 	writeTask(w, http.StatusOK, t, role, userID, err)
 }
 
+// People handles GET /api/v1/tasks/{id}/people: who on the client's side can
+// be on the task.
+//
+//	@Summary		Who can be on a task
+//	@Description	The task's client and their company's members and contractors, saying who is on it already. Empty for a personal task.
+//	@Tags			tasks
+//	@Produce		json
+//	@Param			id	path		string					true	"Task ID"
+//	@Success		200	{object}	map[string][]PersonDTO	"people"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/tasks/{id}/people [get]
+func (h *Handler) People(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	people, err := h.svc.People(r.Context(), userID, chi.URLParam(r, "id"))
+	if err != nil {
+		writeTask(w, 0, Task{}, "", "", err)
+		return
+	}
+	out := make([]PersonDTO, 0, len(people))
+	for _, p := range people {
+		out = append(out, PersonDTO(p))
+	}
+	response.JSON(w, http.StatusOK, map[string][]PersonDTO{"people": out})
+}
+
+// AddParticipant handles POST /api/v1/tasks/{id}/participants.
+//
+//	@Summary		Add someone to a task
+//	@Description	Someone from the client's side; they're notified, and a contractor sees the task from now on. A contractor can add people only to tasks they set.
+//	@Tags			tasks
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Task ID"
+//	@Param			body	body		ParticipantRequest		true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"task"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Not on the client's side"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/tasks/{id}/participants [post]
+func (h *Handler) AddParticipant(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	var req ParticipantRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	t, err := h.svc.AddParticipant(r.Context(), userID, chi.URLParam(r, "id"), req.UserID)
+	writeTask(w, http.StatusOK, t, role, userID, err)
+}
+
+// RemoveParticipant handles DELETE /api/v1/tasks/{id}/participants/{userID}.
+//
+//	@Summary		Take someone off a task
+//	@Description	Anyone can take themselves off; the freelancer and the creator stay. A contractor taken off no longer sees the task.
+//	@Tags			tasks
+//	@Param			id		path	string	true	"Task ID"
+//	@Param			userID	path	string	true	"Participant's user ID"
+//	@Success		204		"No content"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409		{object}	response.ErrorEnvelope	"The freelancer or the creator"
+//	@Router			/tasks/{id}/participants/{userID} [delete]
+func (h *Handler) RemoveParticipant(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	err := h.svc.RemoveParticipant(r.Context(), userID, chi.URLParam(r, "id"), chi.URLParam(r, "userID"))
+	if err != nil {
+		writeTask(w, 0, Task{}, "", "", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // History handles GET /api/v1/tasks/{id}/history: who changed what and when.
 //
 //	@Summary		A task's history
@@ -367,6 +453,12 @@ func writeTask(w http.ResponseWriter, status int, t Task, role, viewerID string,
 		response.ValidationError(w, map[string]string{"label_ids": "These labels aren't on this task's board"})
 	case errors.Is(err, ErrPriceNotAllowed):
 		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the freelancer sets the price")
+	case errors.Is(err, ErrPeopleNotAllowed):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "A contractor changes who is on a task only when they set it")
+	case errors.Is(err, ErrNotClientSide):
+		response.ValidationError(w, map[string]string{"user_id": "Only the client and their team can be added"})
+	case errors.Is(err, ErrKeepParticipant):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "The freelancer and whoever set the task stay on it")
 	case errors.Is(err, ErrTransition):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "This status change isn't allowed")
 	case err != nil:

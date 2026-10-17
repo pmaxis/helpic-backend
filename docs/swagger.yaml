@@ -724,6 +724,11 @@ definitions:
           type: string
         type: array
     type: object
+  tasks.ParticipantRequest:
+    properties:
+      user_id:
+        type: string
+    type: object
   tasks.PartyDTO:
     properties:
       email:
@@ -731,6 +736,21 @@ definitions:
       id:
         type: string
       name:
+        type: string
+    type: object
+  tasks.PersonDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      on_task:
+        description: OnTask is whether they're a participant already.
+        type: boolean
+      role:
+        description: Role is "owner", "member" or "contractor".
         type: string
     type: object
   tasks.PriceRequest:
@@ -806,6 +826,8 @@ definitions:
         type: string
       name:
         type: string
+      role:
+        type: string
       token:
         type: string
     type: object
@@ -814,6 +836,9 @@ definitions:
       email:
         type: string
       name:
+        type: string
+      role:
+        description: Role is "member" (the default) or "contractor".
         type: string
     type: object
   team.JoinRequest:
@@ -837,6 +862,9 @@ definitions:
         type: string
       owner:
         $ref: '#/definitions/team.PersonDTO'
+      role:
+        description: 'Role is what they join as: "member" or "contractor".'
+        type: string
     type: object
   team.MemberDTO:
     properties:
@@ -847,6 +875,9 @@ definitions:
       joined_at:
         type: string
       name:
+        type: string
+      role:
+        description: Role is "member" or "contractor".
         type: string
     type: object
   team.NameRequest:
@@ -878,6 +909,12 @@ definitions:
       id:
         type: string
       name:
+        type: string
+    type: object
+  team.RoleRequest:
+    properties:
+      role:
+        description: Role is "member" or "contractor".
         type: string
     type: object
   telegram.ConnectDTO:
@@ -959,6 +996,11 @@ definitions:
       name:
         type: string
       owner_id:
+        type: string
+      role:
+        description: |-
+          Role is "member" (sees all the company's work) or "contractor" (only
+          the tasks they set or were added to).
         type: string
     type: object
 info:
@@ -3241,6 +3283,122 @@ paths:
       summary: Set a task's labels
       tags:
       - tasks
+  /tasks/{id}/participants:
+    post:
+      consumes:
+      - application/json
+      description: Someone from the client's side; they're notified, and a contractor
+        sees the task from now on. A contractor can add people only to tasks they
+        set.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/tasks.ParticipantRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "400":
+          description: Not on the client's side
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Add someone to a task
+      tags:
+      - tasks
+  /tasks/{id}/participants/{userID}:
+    delete:
+      description: Anyone can take themselves off; the freelancer and the creator
+        stay. A contractor taken off no longer sees the task.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Participant's user ID
+        in: path
+        name: userID
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: The freelancer or the creator
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Take someone off a task
+      tags:
+      - tasks
+  /tasks/{id}/people:
+    get:
+      description: The task's client and their company's members and contractors,
+        saying who is on it already. Empty for a personal task.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: people
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/tasks.PersonDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Who can be on a task
+      tags:
+      - tasks
   /tasks/{id}/price:
     put:
       consumes:
@@ -3578,6 +3736,51 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Remove a team member
+      tags:
+      - team
+    put:
+      consumes:
+      - application/json
+      description: A member sees all the company's tasks; a contractor only the ones
+        they set or were added to.
+      parameters:
+      - description: Member's user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/team.RoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: team
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/team.OverviewDTO'
+            type: object
+        "400":
+          description: Unknown role
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Make someone a member or a contractor
       tags:
       - team
 swagger: "2.0"
