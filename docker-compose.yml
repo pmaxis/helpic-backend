@@ -26,12 +26,15 @@ services:
       APP_PORT: 8080
       DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/helpic?sslmode=disable}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
-      JWT_EXPIRATION: ${JWT_EXPIRATION:-24h}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-15m}
+      REFRESH_EXPIRATION: ${REFRESH_EXPIRATION:-720h}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5180}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-lax}
       COOKIE_NAME: ${COOKIE_NAME:-auth_token}
       COOKIE_PATH: ${COOKIE_PATH:-/}
+      REFRESH_COOKIE_NAME: ${REFRESH_COOKIE_NAME:-refresh_token}
+      REFRESH_COOKIE_PATH: ${REFRESH_COOKIE_PATH:-/api/v1/auth}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
     volumes:
       - uploads:/app/uploads

@@ -59,6 +59,23 @@ definitions:
       password_confirmation:
         type: string
     type: object
+  auth.SessionDTO:
+    properties:
+      created_at:
+        type: string
+      current:
+        type: boolean
+      expires_at:
+        type: string
+      id:
+        type: string
+      ip:
+        type: string
+      last_used_at:
+        type: string
+      user_agent:
+        type: string
+    type: object
   board.BoardDTO:
     properties:
       can_manage:
@@ -1013,11 +1030,25 @@ paths:
       - auth
   /auth/logout:
     post:
-      description: Clears the auth cookie.
+      description: Ends this device's session and clears the auth cookies.
       responses:
         "204":
           description: Signed out
       summary: Sign out
+      tags:
+      - auth
+  /auth/refresh:
+    post:
+      description: Swaps the refresh cookie for a new one and sets a new access cookie.
+        A refresh token used again after it was replaced ends the session.
+      responses:
+        "204":
+          description: Refreshed
+        "401":
+          description: No session, or it ended
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Refresh the session
       tags:
       - auth
   /auth/register:
@@ -1858,7 +1889,7 @@ paths:
     put:
       consumes:
       - application/json
-      description: Needs the current password.
+      description: Needs the current password. Signs out every other device.
       parameters:
       - description: Request body
         in: body
@@ -1882,6 +1913,61 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Change your password
+      tags:
+      - account
+  /me/sessions:
+    delete:
+      responses:
+        "204":
+          description: Signed out
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Sign out every other device
+      tags:
+      - account
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: sessions, the most recently used first
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/auth.SessionDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Your signed-in devices
+      tags:
+      - account
+  /me/sessions/{id}:
+    delete:
+      description: Its access token works until it expires, minutes at most; it can't
+        be refreshed.
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: Signed out
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: No such session
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Sign a device out
       tags:
       - account
   /notifications:

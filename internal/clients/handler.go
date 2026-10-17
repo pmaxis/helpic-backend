@@ -250,14 +250,14 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 			response.ValidationError(w, map[string]string{"password": "Password is required"})
 			return
 		}
-		session, err = h.svc.AcceptExisting(r.Context(), l, req.Password)
+		session, err = h.svc.AcceptExisting(r.Context(), l, req.Password, auth.ClientOf(r))
 	} else {
 		params, fields := req.ValidateNew()
 		if len(fields) > 0 {
 			response.ValidationError(w, fields)
 			return
 		}
-		session, err = h.svc.AcceptNew(r.Context(), l, params)
+		session, err = h.svc.AcceptNew(r.Context(), l, params, auth.ClientOf(r))
 	}
 
 	switch {
@@ -270,7 +270,7 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		response.Internal(w, err)
 	default:
-		h.cookie.Set(w, session.Token, session.ExpiresAt)
+		h.cookie.Set(w, session.Tokens)
 		response.JSON(w, http.StatusOK, user.NewResponse(session.User))
 	}
 }

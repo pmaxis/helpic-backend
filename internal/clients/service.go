@@ -17,8 +17,8 @@ import (
 // *auth.Service.
 type accounts interface {
 	Register(ctx context.Context, p auth.RegisterParams, role string) (user.User, error)
-	Login(ctx context.Context, p auth.LoginParams) (user.User, string, time.Time, error)
-	IssueToken(u user.User) (string, time.Time, error)
+	Login(ctx context.Context, p auth.LoginParams, c auth.Client) (user.User, auth.Tokens, error)
+	StartSession(ctx context.Context, u user.User, c auth.Client) (auth.Tokens, error)
 }
 
 // notifier tells the freelancer their invitation was accepted. Implemented by
@@ -127,13 +127,12 @@ func (s *Service) Find(ctx context.Context, token string) (Lookup, error) {
 
 // Session is the signed-in client after accepting an invitation.
 type Session struct {
-	User      user.User
-	Token     string
-	ExpiresAt time.Time
+	User   user.User
+	Tokens auth.Tokens
 }
 
 // AcceptNew creates the client account for a looked-up invitation and links it.
-func (s *Service) AcceptNew(ctx context.Context, l Lookup, p AcceptParams) (Session, error) {
+func (s *Service) AcceptNew(ctx context.Context, l Lookup, p AcceptParams, c auth.Client) (Session, error) {
 	u, err := s.accounts.Register(ctx, auth.RegisterParams{
 		Email:    l.Invitation.Email,
 		Name:     p.Name,
@@ -146,17 +145,17 @@ func (s *Service) AcceptNew(ctx context.Context, l Lookup, p AcceptParams) (Sess
 		return Session{}, err
 	}
 	s.joined(ctx, l, u.ID)
-	tok, exp, err := s.accounts.IssueToken(u)
+	tokens, err := s.accounts.StartSession(ctx, u, c)
 	if err != nil {
 		return Session{}, err
 	}
-	return Session{User: u, Token: tok, ExpiresAt: exp}, nil
+	return Session{User: u, Tokens: tokens}, nil
 }
 
 // AcceptExisting signs in the existing client account the invitation was sent
 // to and links it. A wrong password yields auth.ErrInvalidCredentials.
-func (s *Service) AcceptExisting(ctx context.Context, l Lookup, password string) (Session, error) {
-	u, tok, exp, err := s.accounts.Login(ctx, auth.LoginParams{Email: l.Invitation.Email, Password: password})
+func (s *Service) AcceptExisting(ctx context.Context, l Lookup, password string, c auth.Client) (Session, error) {
+	u, tokens, err := s.accounts.Login(ctx, auth.LoginParams{Email: l.Invitation.Email, Password: password}, c)
 	if err != nil {
 		return Session{}, err
 	}
@@ -167,7 +166,7 @@ func (s *Service) AcceptExisting(ctx context.Context, l Lookup, password string)
 		return Session{}, err
 	}
 	s.joined(ctx, l, u.ID)
-	return Session{User: u, Token: tok, ExpiresAt: exp}, nil
+	return Session{User: u, Tokens: tokens}, nil
 }
 
 func newToken() (string, error) {

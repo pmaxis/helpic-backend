@@ -57,17 +57,20 @@ func TestMain(m *testing.M) {
 	}
 
 	testCfg = config.Config{
-		AppEnv:         "test",
-		AppPort:        "8080",
-		DatabaseURL:    dsn,
-		MigrationsDir:  "../../migrations",
-		JWTSecret:      "test-secret-please-change",
-		JWTExpiration:  time.Hour,
-		CORSOrigin:     "http://localhost:5173",
-		CookieName:     "auth_token",
-		CookiePath:     "/",
-		CookieSecure:   false,
-		CookieSameSite: http.SameSiteLaxMode,
+		AppEnv:            "test",
+		AppPort:           "8080",
+		DatabaseURL:       dsn,
+		MigrationsDir:     "../../migrations",
+		JWTSecret:         "test-secret-please-change",
+		JWTExpiration:     time.Hour,
+		RefreshExpiration: 24 * time.Hour,
+		CORSOrigin:        "http://localhost:5173",
+		CookieName:        "auth_token",
+		CookiePath:        "/",
+		RefreshCookieName: "refresh_token",
+		RefreshCookiePath: "/api/v1/auth",
+		CookieSecure:      false,
+		CookieSameSite:    http.SameSiteLaxMode,
 		// Never fall back to a browser installed on the machine: PDF export
 		// answers 503 here. The real PDF test is opt-in (HELPIC_PDF_TEST=1).
 		ChromePath: "/nonexistent/helpic-test-chrome",
@@ -370,7 +373,7 @@ func TestMe_ExpiredJWT(t *testing.T) {
 	}
 
 	expiredManager := token.NewManager(testCfg.JWTSecret, -time.Hour)
-	expired, _, err := expiredManager.Generate(userID, "freelancer")
+	expired, _, err := expiredManager.Generate(userID, "freelancer", "00000000-0000-0000-0000-000000000000")
 	if err != nil {
 		t.Fatalf("generate expired token: %v", err)
 	}

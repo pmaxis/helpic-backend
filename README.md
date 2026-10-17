@@ -2,7 +2,7 @@
 
 Go API for Helpic: freelancers and their clients on the same page — tasks, projects, boards and reports. The frontend lives in [`../frontend`](../frontend).
 
-**Stack:** Go 1.26, chi, pgx, golang-migrate, PostgreSQL 16, JWT in an httpOnly cookie. Integration tests run against Testcontainers.
+**Stack:** Go 1.26, chi, pgx, golang-migrate, PostgreSQL 16, sessions with a short-lived JWT and a rotating refresh token, both in httpOnly cookies. Integration tests run against Testcontainers.
 
 ## Getting started
 

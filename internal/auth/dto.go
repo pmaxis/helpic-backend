@@ -3,6 +3,7 @@ package auth
 import (
 	"net/mail"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -94,4 +95,28 @@ func (r LoginRequest) Validate() (LoginParams, map[string]string) {
 		return LoginParams{}, fields
 	}
 	return LoginParams{Email: email, Password: r.Password}, nil
+}
+
+// SessionDTO is a signed-in device as the API shows it.
+type SessionDTO struct {
+	ID         string    `json:"id"`
+	UserAgent  string    `json:"user_agent"`
+	IP         string    `json:"ip"`
+	Current    bool      `json:"current"`
+	CreatedAt  time.Time `json:"created_at"`
+	LastUsedAt time.Time `json:"last_used_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
+}
+
+// ToSessionDTO converts a session; current is the requesting device's session.
+func ToSessionDTO(s Session, current string) SessionDTO {
+	return SessionDTO{
+		ID:         s.ID,
+		UserAgent:  s.UserAgent,
+		IP:         s.IP,
+		Current:    s.ID == current,
+		CreatedAt:  s.CreatedAt,
+		LastUsedAt: s.LastUsedAt,
+		ExpiresAt:  s.ExpiresAt,
+	}
 }

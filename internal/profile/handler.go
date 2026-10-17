@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/pmaxis/helpic/internal/auth"
+	"github.com/pmaxis/helpic/internal/middleware"
 	"github.com/pmaxis/helpic/internal/request"
 	"github.com/pmaxis/helpic/internal/response"
 	"github.com/pmaxis/helpic/internal/user"
@@ -96,7 +97,7 @@ func (h *Handler) ChangeEmail(w http.ResponseWriter, r *http.Request) {
 // ChangePassword handles PUT /api/v1/me/password.
 //
 //	@Summary		Change your password
-//	@Description	Needs the current password.
+//	@Description	Needs the current password. Signs out every other device.
 //	@Tags			account
 //	@Accept			json
 //	@Produce		json
@@ -118,7 +119,7 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		response.ValidationError(w, fields)
 		return
 	}
-	u, err := h.svc.ChangePassword(r.Context(), userID, req.CurrentPassword, req.Password)
+	u, err := h.svc.ChangePassword(r.Context(), userID, middleware.SessionID(r.Context()), req.CurrentPassword, req.Password)
 	writeUser(w, u, err)
 }
 

@@ -39,12 +39,14 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 
 	// --- auth + user ----------------------------------------------------------
 	authRepo := auth.NewRepository(pool)
-	authSvc := auth.NewService(authRepo, tokens)
+	authSvc := auth.NewService(authRepo, tokens, cfg.RefreshExpiration)
 	cookie := auth.CookieConfig{
-		Name:     cfg.CookieName,
-		Path:     cfg.CookiePath,
-		Secure:   cfg.CookieSecure,
-		SameSite: cfg.CookieSameSite,
+		Name:        cfg.CookieName,
+		Path:        cfg.CookiePath,
+		RefreshName: cfg.RefreshCookieName,
+		RefreshPath: cfg.RefreshCookiePath,
+		Secure:      cfg.CookieSecure,
+		SameSite:    cfg.CookieSameSite,
 	}
 	authHandler := auth.NewHandler(authSvc, cookie)
 
@@ -54,7 +56,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 
 	userRepo := user.NewRepository(pool)
 	userHandler := user.NewHandler(user.NewService(userRepo))
-	profileHandler := profile.NewHandler(profile.NewService(profile.NewRepository(pool)))
+	profileHandler := profile.NewHandler(profile.NewService(profile.NewRepository(pool), authSvc))
 
 	// --- clients: invitations and freelancer–client links ---------------------
 	clientsRepo := clients.NewRepository(pool)
@@ -112,6 +114,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", authHandler.Register)
 			r.Post("/login", authHandler.Login)
+			r.Post("/refresh", authHandler.Refresh)
 			r.Post("/logout", authHandler.Logout)
 		})
 		clientsHandler.PublicRoutes(r)
@@ -121,6 +124,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			r.Use(authMiddleware)
 			r.Get("/me", userHandler.Me)
 			profileHandler.Routes(r)
+			authHandler.SessionRoutes(r)
 			tasksHandler.Routes(r)
 			attachmentsHandler.Routes(r)
 			commentsHandler.Routes(r)

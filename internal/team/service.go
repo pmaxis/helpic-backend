@@ -15,7 +15,7 @@ import (
 // accounts makes and signs in member accounts. Implemented by *auth.Service.
 type accounts interface {
 	Register(ctx context.Context, p auth.RegisterParams, role string) (user.User, error)
-	IssueToken(u user.User) (string, time.Time, error)
+	StartSession(ctx context.Context, u user.User, c auth.Client) (auth.Tokens, error)
 }
 
 // notifier tells the owner someone joined. Implemented by
@@ -153,13 +153,12 @@ func (s *Service) Find(ctx context.Context, token string) (Lookup, error) {
 
 // Session is the new member, signed in.
 type Session struct {
-	User      user.User
-	Token     string
-	ExpiresAt time.Time
+	User   user.User
+	Tokens auth.Tokens
 }
 
 // Join creates the member's account, adds it to the company and signs it in.
-func (s *Service) Join(ctx context.Context, token string, p JoinParams) (Session, error) {
+func (s *Service) Join(ctx context.Context, token string, p JoinParams, c auth.Client) (Session, error) {
 	l, err := s.Find(ctx, token)
 	if err != nil {
 		return Session{}, err
@@ -172,13 +171,13 @@ func (s *Service) Join(ctx context.Context, token string, p JoinParams) (Session
 		return Session{}, err
 	}
 	s.notify.Notify(ctx, notifications.Notification{UserID: l.Owner.ID, ActorID: u.ID, Kind: notifications.KindMemberJoined})
-	tok, exp, err := s.accounts.IssueToken(u)
+	tokens, err := s.accounts.StartSession(ctx, u, c)
 	if err != nil {
 		return Session{}, err
 	}
 	// The account was read before it joined; say it's a member now.
 	u.TeamOwnerID, u.TeamName = &l.Owner.ID, l.Company
-	return Session{User: u, Token: tok, ExpiresAt: exp}, nil
+	return Session{User: u, Tokens: tokens}, nil
 }
 
 func newToken() (string, error) {

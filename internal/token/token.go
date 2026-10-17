@@ -16,10 +16,19 @@ import (
 var ErrInvalid = errors.New("invalid token")
 
 // claims are the registered claims plus the account role, which never changes
-// for an account and so is safe to carry in the token.
+// for an account and so is safe to carry in the token, and the session the
+// token was issued for.
 type claims struct {
-	Role string `json:"role"`
+	Role      string `json:"role"`
+	SessionID string `json:"sid"`
 	jwt.RegisteredClaims
+}
+
+// Claims is what a verified token says about its bearer.
+type Claims struct {
+	UserID    string
+	Role      string
+	SessionID string
 }
 
 // Manager signs and parses HS256 JWTs.
@@ -34,13 +43,14 @@ func NewManager(secret string, expiration time.Duration) *Manager {
 }
 
 // Generate returns a signed JWT whose subject is the given user ID and which
-// carries the account role, together with its expiry time (useful for setting
-// the cookie's Max-Age).
-func (m *Manager) Generate(userID, role string) (string, time.Time, error) {
+// carries the account role and the session, together with its expiry time
+// (useful for setting the cookie's Max-Age).
+func (m *Manager) Generate(userID, role, sessionID string) (string, time.Time, error) {
 	now := time.Now()
 	expiresAt := now.Add(m.expiration)
 	c := claims{
-		Role: role,
+		Role:      role,
+		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -54,9 +64,10 @@ func (m *Manager) Generate(userID, role string) (string, time.Time, error) {
 	return signed, expiresAt, nil
 }
 
-// Verify validates the token and returns the user ID from its subject claim
-// and the account role.
-func (m *Manager) Verify(raw string) (string, string, error) {
+// Verify validates the token and returns the user ID from its subject claim,
+// the account role and the session. A token without a session (issued before
+// sessions existed) is invalid.
+func (m *Manager) Verify(raw string) (Claims, error) {
 	c := &claims{}
 	parsed, err := jwt.ParseWithClaims(raw, c, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -65,10 +76,10 @@ func (m *Manager) Verify(raw string) (string, string, error) {
 		return m.secret, nil
 	})
 	if err != nil || !parsed.Valid {
-		return "", "", ErrInvalid
+		return Claims{}, ErrInvalid
 	}
-	if c.Subject == "" || c.Role == "" {
-		return "", "", ErrInvalid
+	if c.Subject == "" || c.Role == "" || c.SessionID == "" {
+		return Claims{}, ErrInvalid
 	}
-	return c.Subject, c.Role, nil
+	return Claims{UserID: c.Subject, Role: c.Role, SessionID: c.SessionID}, nil
 }

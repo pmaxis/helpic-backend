@@ -253,7 +253,7 @@ const docTemplate = `{
         },
         "/auth/logout": {
             "post": {
-                "description": "Clears the auth cookie.",
+                "description": "Ends this device's session and clears the auth cookies.",
                 "tags": [
                     "auth"
                 ],
@@ -261,6 +261,26 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "Signed out"
+                    }
+                }
+            }
+        },
+        "/auth/refresh": {
+            "post": {
+                "description": "Swaps the refresh cookie for a new one and sets a new access cookie. A refresh token used again after it was replaced ends the session.",
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Refresh the session",
+                "responses": {
+                    "204": {
+                        "description": "Refreshed"
+                    },
+                    "401": {
+                        "description": "No session, or it ended",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
                     }
                 }
             }
@@ -1533,7 +1553,7 @@ const docTemplate = `{
         },
         "/me/password": {
             "put": {
-                "description": "Needs the current password.",
+                "description": "Needs the current password. Signs out every other device.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1570,6 +1590,89 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/sessions": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Your signed-in devices",
+                "responses": {
+                    "200": {
+                        "description": "sessions, the most recently used first",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/auth.SessionDTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "account"
+                ],
+                "summary": "Sign out every other device",
+                "responses": {
+                    "204": {
+                        "description": "Signed out"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/sessions/{id}": {
+            "delete": {
+                "description": "Its access token works until it expires, minutes at most; it can't be refreshed.",
+                "tags": [
+                    "account"
+                ],
+                "summary": "Sign a device out",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Signed out"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "No such session",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -3506,6 +3609,32 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "password_confirmation": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.SessionDTO": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "current": {
+                    "type": "boolean"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "ip": {
+                    "type": "string"
+                },
+                "last_used_at": {
+                    "type": "string"
+                },
+                "user_agent": {
                     "type": "string"
                 }
             }

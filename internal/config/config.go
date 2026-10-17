@@ -19,8 +19,11 @@ type Config struct {
 	DatabaseURL   string
 	MigrationsDir string
 
-	JWTSecret     string
-	JWTExpiration time.Duration
+	// JWTExpiration is how long an access token lasts; RefreshExpiration is
+	// how long a session lasts unused.
+	JWTSecret         string
+	JWTExpiration     time.Duration
+	RefreshExpiration time.Duration
 
 	CORSOrigin string
 
@@ -28,6 +31,10 @@ type Config struct {
 	CookieSecure   bool
 	CookieSameSite http.SameSite
 	CookiePath     string
+
+	// The refresh token's cookie; its path keeps it to the auth endpoints.
+	RefreshCookieName string
+	RefreshCookiePath string
 
 	// ChromePath points at the Chrome/Chromium that prints report PDFs; empty
 	// means auto-detect.
@@ -59,6 +66,9 @@ func Load() (Config, error) {
 		CORSOrigin:    getEnv("CORS_ORIGIN", "http://localhost:5180"),
 		CookieName:    getEnv("COOKIE_NAME", "auth_token"),
 		CookiePath:    getEnv("COOKIE_PATH", "/"),
+
+		RefreshCookieName: getEnv("REFRESH_COOKIE_NAME", "refresh_token"),
+		RefreshCookiePath: getEnv("REFRESH_COOKIE_PATH", "/api/v1/auth"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -68,11 +78,17 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("JWT_SECRET is required")
 	}
 
-	exp, err := time.ParseDuration(getEnv("JWT_EXPIRATION", "24h"))
+	exp, err := time.ParseDuration(getEnv("JWT_EXPIRATION", "15m"))
 	if err != nil {
 		return Config{}, fmt.Errorf("invalid JWT_EXPIRATION: %w", err)
 	}
 	cfg.JWTExpiration = exp
+
+	refresh, err := time.ParseDuration(getEnv("REFRESH_EXPIRATION", "720h"))
+	if err != nil || refresh <= exp {
+		return Config{}, fmt.Errorf("invalid REFRESH_EXPIRATION: must be a duration longer than JWT_EXPIRATION")
+	}
+	cfg.RefreshExpiration = refresh
 
 	cfg.CookieSecure = getEnvBool("COOKIE_SECURE", false)
 	cfg.CookieSameSite = parseSameSite(getEnv("COOKIE_SAME_SITE", "lax"))
