@@ -19,15 +19,18 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
-// Create stores a notification.
-func (r *Repository) Create(ctx context.Context, n Notification) error {
-	_, err := r.db.Exec(ctx, `INSERT INTO notifications (user_id, actor_id, kind, task_id, project_id, report_id, subject, detail)
-		VALUES ($1, $2, $3, NULLIF($4, '')::uuid, NULLIF($5, '')::uuid, NULLIF($6, '')::uuid, $7, $8)`,
-		n.UserID, n.ActorID, n.Kind, n.TaskID, n.ProjectID, n.ReportID, n.Subject, n.Detail)
+// Create stores a notification and returns it with its ID, time and the
+// actor's name and email.
+func (r *Repository) Create(ctx context.Context, n Notification) (Notification, error) {
+	err := r.db.QueryRow(ctx, `INSERT INTO notifications (user_id, actor_id, kind, task_id, project_id, report_id, subject, detail)
+		VALUES ($1, $2, $3, NULLIF($4, '')::uuid, NULLIF($5, '')::uuid, NULLIF($6, '')::uuid, $7, $8)
+		RETURNING id, created_at, (SELECT name FROM users WHERE id = $2), (SELECT email FROM users WHERE id = $2)`,
+		n.UserID, n.ActorID, n.Kind, n.TaskID, n.ProjectID, n.ReportID, n.Subject, n.Detail).
+		Scan(&n.ID, &n.CreatedAt, &n.ActorName, &n.ActorEmail)
 	if err != nil {
-		return fmt.Errorf("create notification: %w", err)
+		return Notification{}, fmt.Errorf("create notification: %w", err)
 	}
-	return nil
+	return n, nil
 }
 
 // List returns the user's latest notifications, newest first.

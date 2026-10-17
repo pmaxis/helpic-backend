@@ -825,6 +825,49 @@ definitions:
       name:
         type: string
     type: object
+  telegram.ConnectDTO:
+    properties:
+      expires_at:
+        type: string
+      url:
+        type: string
+    type: object
+  telegram.KindsRequest:
+    properties:
+      kinds:
+        items:
+          type: string
+        type: array
+    type: object
+  telegram.StatusDTO:
+    properties:
+      available:
+        description: |-
+          Available are the kinds that can go to Telegram; DefaultKinds those on
+          when a chat is connected.
+        items:
+          type: string
+        type: array
+      connected:
+        type: boolean
+      default_kinds:
+        items:
+          type: string
+        type: array
+      enabled:
+        description: Enabled is false when the server has no bot.
+        type: boolean
+      kinds:
+        items:
+          type: string
+        type: array
+      linked_at:
+        type: string
+      username:
+        description: Username is the connected Telegram account's @handle, or its
+          first name.
+        type: string
+    type: object
   user.DTO:
     properties:
       created_at:
@@ -1970,6 +2013,100 @@ paths:
       summary: Sign a device out
       tags:
       - account
+  /me/telegram:
+    delete:
+      responses:
+        "204":
+          description: Disconnected
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Telegram is not connected
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Disconnect Telegram
+      tags:
+      - telegram
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: telegram
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/telegram.StatusDTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Your Telegram connection
+      tags:
+      - telegram
+  /me/telegram/kinds:
+    put:
+      consumes:
+      - application/json
+      description: The notification kinds sent to the connected chat; see "available"
+        in GET /me/telegram.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/telegram.KindsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: telegram
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/telegram.StatusDTO'
+            type: object
+        "400":
+          description: Unknown kind
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Telegram is not connected
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Choose what goes to Telegram
+      tags:
+      - telegram
+  /me/telegram/link:
+    post:
+      description: 'A one-time t.me link to the bot, good for 15 minutes: opening
+        it in Telegram connects that chat.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: link
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/telegram.ConnectDTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "503":
+          description: No bot on this server, or it isn't ready
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Get a link that connects Telegram
+      tags:
+      - telegram
   /notifications:
     get:
       description: The latest 50, and how many are unread.
