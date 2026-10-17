@@ -4,8 +4,10 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,10 +20,12 @@ import (
 	"github.com/pmaxis/helpic/internal/clients"
 	"github.com/pmaxis/helpic/internal/comments"
 	"github.com/pmaxis/helpic/internal/config"
+	"github.com/pmaxis/helpic/internal/jobs"
 	"github.com/pmaxis/helpic/internal/middleware"
 	"github.com/pmaxis/helpic/internal/notifications"
 	"github.com/pmaxis/helpic/internal/profile"
 	"github.com/pmaxis/helpic/internal/projects"
+	"github.com/pmaxis/helpic/internal/reminders"
 	"github.com/pmaxis/helpic/internal/reports"
 	"github.com/pmaxis/helpic/internal/response"
 	"github.com/pmaxis/helpic/internal/tasks"
@@ -120,6 +124,9 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	// --- reports of work done, sent to clients ------------------------------
 	reportsHandler := reports.NewHandler(reports.NewService(reports.NewRepository(pool), notifier, tasksSvc), reports.NewPDFRenderer(cfg.ChromePath))
 
+	// --- reminders before and after due dates ---------------------------------
+	remindersSvc := reminders.NewService(reminders.NewRepository(pool), notifier, cfg.Location, cfg.ReminderHour)
+
 	// --- each user's kanban board over their tasks ----------------------------
 	boardHandler := board.NewHandler(board.NewService(board.NewRepository(pool), tasksSvc))
 
@@ -191,5 +198,15 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		response.Error(w, http.StatusMethodNotAllowed, response.CodeMethodNotAllowed, "Method not allowed")
 	})
 
-	return &App{Handler: r, background: []func(context.Context){telegramSvc.Run, lim.sweep}}, nil
+	// Expired sessions, connect links nobody opened and old reminders.
+	cleanup := func(ctx context.Context) error {
+		return errors.Join(authSvc.Cleanup(ctx), telegramSvc.Cleanup(ctx), remindersSvc.Cleanup(ctx))
+	}
+
+	return &App{Handler: r, background: []func(context.Context){
+		telegramSvc.Run,
+		func(ctx context.Context) { jobs.Every(ctx, "deadline reminders", 15*time.Minute, remindersSvc.Run) },
+		func(ctx context.Context) { jobs.Every(ctx, "cleanup", time.Hour, cleanup) },
+		func(ctx context.Context) { jobs.Every(ctx, "rate limit sweep", time.Minute, lim.sweep) },
+	}}, nil
 }

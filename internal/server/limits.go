@@ -37,26 +37,14 @@ func newLimits(on bool) limits {
 	}
 }
 
-// sweepEvery is how often full buckets are forgotten.
-const sweepEvery = time.Minute
-
-// sweep forgets full buckets until ctx ends.
-func (l limits) sweep(ctx context.Context) {
-	all := []*ratelimit.Limiter{l.signIn, l.signUp, l.refresh, l.loginFailures, l.passwordChecks}
-	t := time.NewTicker(sweepEvery)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			for _, lim := range all {
-				if lim != nil {
-					lim.Sweep()
-				}
-			}
+// sweep forgets full buckets, so the maps don't grow without end.
+func (l limits) sweep(context.Context) error {
+	for _, lim := range []*ratelimit.Limiter{l.signIn, l.signUp, l.refresh, l.loginFailures, l.passwordChecks} {
+		if lim != nil {
+			lim.Sweep()
 		}
 	}
+	return nil
 }
 
 // byIP limits requests per client address; a nil limiter lets all through.

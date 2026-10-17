@@ -40,6 +40,8 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       RATE_LIMIT: ${RATE_LIMIT:-true}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
+      REMINDER_HOUR: ${REMINDER_HOUR:-9}
     volumes:
       - uploads:/app/uploads
     ports:

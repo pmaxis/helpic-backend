@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"net/url"
+	"time"
 
 	"github.com/pmaxis/helpic/internal/notifications"
 )
@@ -17,6 +18,14 @@ func (s *Service) message(n notifications.Notification) (string, *Button) {
 	}
 	subject := "“" + html.EscapeString(n.Subject) + "”"
 	detail := html.EscapeString(n.Detail)
+
+	// Reminders have no actor: the date came.
+	switch n.Kind {
+	case notifications.KindTaskDueSoon:
+		return "⏰ " + subject + " is due <b>tomorrow</b>", s.button(n)
+	case notifications.KindTaskOverdue:
+		return "⚠️ " + subject + " is <b>overdue</b>: it was due " + html.EscapeString(dueDate(n.Detail)), s.button(n)
+	}
 
 	var what string
 	switch n.Kind {
@@ -76,4 +85,13 @@ func (s *Service) button(n notifications.Notification) *Button {
 		path = "/dashboard"
 	}
 	return &Button{Text: "Open in Helpic", URL: s.appURL + path}
+}
+
+// dueDate shows a YYYY-MM-DD due date as "17 Oct 2026".
+func dueDate(iso string) string {
+	d, err := time.Parse(time.DateOnly, iso)
+	if err != nil {
+		return iso
+	}
+	return d.Format("2 Jan 2006")
 }

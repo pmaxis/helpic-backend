@@ -23,8 +23,10 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 // actor's name and email.
 func (r *Repository) Create(ctx context.Context, n Notification) (Notification, error) {
 	err := r.db.QueryRow(ctx, `INSERT INTO notifications (user_id, actor_id, kind, task_id, project_id, report_id, subject, detail)
-		VALUES ($1, $2, $3, NULLIF($4, '')::uuid, NULLIF($5, '')::uuid, NULLIF($6, '')::uuid, $7, $8)
-		RETURNING id, created_at, (SELECT name FROM users WHERE id = $2), (SELECT email FROM users WHERE id = $2)`,
+		VALUES ($1, NULLIF($2, '')::uuid, $3, NULLIF($4, '')::uuid, NULLIF($5, '')::uuid, NULLIF($6, '')::uuid, $7, $8)
+		RETURNING id, created_at,
+			coalesce((SELECT name FROM users WHERE id::text = $2), ''),
+			coalesce((SELECT email FROM users WHERE id::text = $2), '')`,
 		n.UserID, n.ActorID, n.Kind, n.TaskID, n.ProjectID, n.ReportID, n.Subject, n.Detail).
 		Scan(&n.ID, &n.CreatedAt, &n.ActorName, &n.ActorEmail)
 	if err != nil {
@@ -35,11 +37,11 @@ func (r *Repository) Create(ctx context.Context, n Notification) (Notification, 
 
 // List returns the user's latest notifications, newest first.
 func (r *Repository) List(ctx context.Context, userID string, limit int) ([]Notification, error) {
-	rows, err := r.db.Query(ctx, `SELECT n.id, n.user_id, n.actor_id, n.kind,
+	rows, err := r.db.Query(ctx, `SELECT n.id, n.user_id, coalesce(n.actor_id::text, ''), n.kind,
 			coalesce(n.task_id::text, ''), coalesce(n.project_id::text, ''), coalesce(n.report_id::text, ''),
-			n.subject, n.detail, n.read_at, n.created_at, a.name, a.email
+			n.subject, n.detail, n.read_at, n.created_at, coalesce(a.name, ''), coalesce(a.email, '')
 		FROM notifications n
-		JOIN users a ON a.id = n.actor_id
+		LEFT JOIN users a ON a.id = n.actor_id
 		WHERE n.user_id = $1
 		ORDER BY n.created_at DESC
 		LIMIT $2`, userID, limit)

@@ -37,7 +37,7 @@ type ListResponse struct {
 	Unread        int   `json:"unread"`
 }
 
-// ActorDTO is who did the thing.
+// ActorDTO is who did the thing; a reminder has none.
 type ActorDTO struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
@@ -48,7 +48,7 @@ type ActorDTO struct {
 type DTO struct {
 	ID        string    `json:"id"`
 	Kind      string    `json:"kind"`
-	Actor     ActorDTO  `json:"actor"`
+	Actor     *ActorDTO `json:"actor"`
 	TaskID    *string   `json:"task_id"`
 	ProjectID *string   `json:"project_id"`
 	ReportID  *string   `json:"report_id"`
@@ -62,11 +62,13 @@ func toDTO(n Notification) DTO {
 	d := DTO{
 		ID:        n.ID,
 		Kind:      n.Kind,
-		Actor:     ActorDTO{ID: n.ActorID, Name: n.ActorName, Email: n.ActorEmail},
 		Subject:   n.Subject,
 		Detail:    n.Detail,
 		Read:      n.ReadAt != nil,
 		CreatedAt: n.CreatedAt,
+	}
+	if n.ActorID != "" {
+		d.Actor = &ActorDTO{ID: n.ActorID, Name: n.ActorName, Email: n.ActorEmail}
 	}
 	if n.TaskID != "" {
 		d.TaskID = &n.TaskID
