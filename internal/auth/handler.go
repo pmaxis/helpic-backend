@@ -31,7 +31,17 @@ func NewHandler(svc *Service, cookie CookieConfig) *Handler {
 	return &Handler{svc: svc, cookie: cookie}
 }
 
-// Register handles POST /api/auth/register.
+// Register handles POST /api/v1/auth/register.
+//
+//	@Summary	Sign up as a freelancer
+//	@Tags		auth
+//	@Accept		json
+//	@Produce	json
+//	@Param		body	body		RegisterRequest			true	"Request body"
+//	@Success	201		{object}	user.Response			"The new account"
+//	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure	409		{object}	response.ErrorEnvelope	"The email is taken"
+//	@Router		/auth/register [post]
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if !decodeJSON(w, r, &req) {
@@ -57,7 +67,18 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusCreated, user.NewResponse(u))
 }
 
-// Login handles POST /api/auth/login.
+// Login handles POST /api/v1/auth/login.
+//
+//	@Summary		Sign in
+//	@Description	Sets the httpOnly auth cookie that every other endpoint reads.
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		LoginRequest			true	"Request body"
+//	@Success		200		{object}	user.Response			"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Wrong email or password"
+//	@Router			/auth/login [post]
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if !decodeJSON(w, r, &req) {
@@ -84,7 +105,13 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, user.NewResponse(u))
 }
 
-// Logout handles POST /api/auth/logout. It clears the auth cookie.
+// Logout handles POST /api/v1/auth/logout. It clears the auth cookie.
+//
+//	@Summary		Sign out
+//	@Description	Clears the auth cookie.
+//	@Tags			auth
+//	@Success		204	"Signed out"
+//	@Router			/auth/logout [post]
 func (h *Handler) Logout(w http.ResponseWriter, _ *http.Request) {
 	h.cookie.Clear(w)
 	w.WriteHeader(http.StatusNoContent)

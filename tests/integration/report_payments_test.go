@@ -15,17 +15,17 @@ func TestReports_PaidAndHistory(t *testing.T) {
 
 	finish := func(title string) string {
 		task := newTask(t, srv, freelancer, map[string]any{"client_id": clientID, "title": title})
-		resp := post(t, freelancer, srv.URL+"/api/tasks/"+task["id"].(string)+"/status", map[string]string{"status": "done"})
+		resp := post(t, freelancer, srv.URL+"/api/v1/tasks/"+task["id"].(string)+"/status", map[string]string{"status": "done"})
 		wantStatus(t, resp, http.StatusOK)
 		resp.Body.Close()
 		return task["id"].(string)
 	}
 	logo, landing := finish("Logo"), finish("Landing")
 	report := func() (string, []any) {
-		resp := post(t, freelancer, srv.URL+"/api/reports", map[string]string{"client_id": clientID, "from": today, "to": today})
+		resp := post(t, freelancer, srv.URL+"/api/v1/reports", map[string]string{"client_id": clientID, "from": today, "to": today})
 		wantStatus(t, resp, http.StatusCreated)
 		rep := field(decode(t, resp), "report")
-		return srv.URL + "/api/reports/" + rep["id"].(string), rep["items"].([]any)
+		return srv.URL + "/api/v1/reports/" + rep["id"].(string), rep["items"].([]any)
 	}
 
 	// Draft, edit, drop a task, send.
@@ -79,14 +79,14 @@ func TestReports_PaidAndHistory(t *testing.T) {
 	if len(names) != 5 || names[3] != "Paid" || paid.Category != "done" || len(paid.Tasks) != 1 || paid.Tasks[0] != "Logo" {
 		t.Fatalf("board after payment = %+v", b.Columns)
 	}
-	resp = get(t, freelancer, srv.URL+"/api/tasks/"+landing)
+	resp = get(t, freelancer, srv.URL+"/api/v1/tasks/"+landing)
 	wantStatus(t, resp, http.StatusOK)
 	if got := field(decode(t, resp), "task"); got["status_name"] != "Done" {
 		t.Fatalf("dropped task = %v", got)
 	}
 
 	// The task's history says who moved it.
-	resp = get(t, freelancer, srv.URL+"/api/tasks/"+logo+"/history")
+	resp = get(t, freelancer, srv.URL+"/api/v1/tasks/"+logo+"/history")
 	wantStatus(t, resp, http.StatusOK)
 	events := decode(t, resp)["events"].([]any)
 	last := events[len(events)-1].(map[string]any)

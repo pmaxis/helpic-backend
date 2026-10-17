@@ -30,7 +30,17 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Put("/me/currency", h.SetCurrency)
 }
 
-// UpdateName handles PUT /api/me: the first and last name.
+// UpdateName handles PUT /api/v1/me: the first and last name.
+//
+//	@Summary	Change your name
+//	@Tags		account
+//	@Accept		json
+//	@Produce	json
+//	@Param		body	body		NameRequest				true	"Request body"
+//	@Success	200		{object}	user.Response			"OK"
+//	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router		/me [put]
 func (h *Handler) UpdateName(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -49,7 +59,18 @@ func (h *Handler) UpdateName(w http.ResponseWriter, r *http.Request) {
 	writeUser(w, u, err)
 }
 
-// ChangeEmail handles PUT /api/me/email.
+// ChangeEmail handles PUT /api/v1/me/email.
+//
+//	@Summary		Change your sign-in email
+//	@Description	Needs the current password.
+//	@Tags			account
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		EmailRequest			true	"Request body"
+//	@Success		200		{object}	user.Response			"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router			/me/email [put]
 func (h *Handler) ChangeEmail(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -72,7 +93,18 @@ func (h *Handler) ChangeEmail(w http.ResponseWriter, r *http.Request) {
 	writeUser(w, u, err)
 }
 
-// ChangePassword handles PUT /api/me/password.
+// ChangePassword handles PUT /api/v1/me/password.
+//
+//	@Summary		Change your password
+//	@Description	Needs the current password.
+//	@Tags			account
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		PasswordRequest			true	"Request body"
+//	@Success		200		{object}	user.Response			"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router			/me/password [put]
 func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -90,7 +122,18 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	writeUser(w, u, err)
 }
 
-// SetCurrency handles PUT /api/me/currency: what a freelancer bills in.
+// SetCurrency handles PUT /api/v1/me/currency: what a freelancer bills in.
+//
+//	@Summary		Set the billing currency
+//	@Description	What a freelancer bills in: USD, EUR, GBP, UAH, PLN or CAD.
+//	@Tags			account
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		CurrencyRequest			true	"Request body"
+//	@Success		200		{object}	user.Response			"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router			/me/currency [put]
 func (h *Handler) SetCurrency(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {

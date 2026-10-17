@@ -8,7 +8,7 @@ import (
 	"github.com/pmaxis/helpic/internal/auth"
 )
 
-// InviteRequest is the JSON body for POST /api/invitations.
+// InviteRequest is the JSON body for POST /api/v1/invitations.
 type InviteRequest struct {
 	Email string `json:"email"`
 	Name  string `json:"name"`
@@ -36,7 +36,7 @@ func (r InviteRequest) Validate() (InviteParams, map[string]string) {
 	return p, fields
 }
 
-// AcceptRequest is the JSON body for POST /api/invites/{token}/accept. A new
+// AcceptRequest is the JSON body for POST /api/v1/invites/{token}/accept. A new
 // account needs all three fields; an existing one only the password.
 type AcceptRequest struct {
 	Name                 string `json:"name"`

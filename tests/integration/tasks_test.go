@@ -42,7 +42,7 @@ func signUpFreelancer(t *testing.T, srv *httptest.Server, email string) *http.Cl
 	t.Helper()
 	c := newClient()
 	wantStatus(t, register(t, c, srv.URL, email, "supersecret"), http.StatusCreated)
-	resp := post(t, c, srv.URL+"/api/auth/login", map[string]string{"email": email, "password": "supersecret"})
+	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{"email": email, "password": "supersecret"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 	return c
@@ -51,7 +51,7 @@ func signUpFreelancer(t *testing.T, srv *httptest.Server, email string) *http.Cl
 // invite creates an invitation and returns its token.
 func invite(t *testing.T, srv *httptest.Server, freelancer *http.Client, email string) string {
 	t.Helper()
-	resp := post(t, freelancer, srv.URL+"/api/invitations", map[string]string{"email": email, "name": "Acme"})
+	resp := post(t, freelancer, srv.URL+"/api/v1/invitations", map[string]string{"email": email, "name": "Acme"})
 	wantStatus(t, resp, http.StatusCreated)
 	return field(decode(t, resp), "invitation")["token"].(string)
 }
@@ -61,7 +61,7 @@ func invite(t *testing.T, srv *httptest.Server, freelancer *http.Client, email s
 func acceptNew(t *testing.T, srv *httptest.Server, token string) *http.Client {
 	t.Helper()
 	c := newClient()
-	resp := post(t, c, srv.URL+"/api/invites/"+token+"/accept", map[string]string{
+	resp := post(t, c, srv.URL+"/api/v1/invites/"+token+"/accept", map[string]string{
 		"name": "Acme Inc", "password": "clientsecret", "password_confirmation": "clientsecret",
 	})
 	wantStatus(t, resp, http.StatusOK)
@@ -71,7 +71,7 @@ func acceptNew(t *testing.T, srv *httptest.Server, token string) *http.Client {
 
 func myID(t *testing.T, srv *httptest.Server, c *http.Client) string {
 	t.Helper()
-	resp := get(t, c, srv.URL+"/api/me")
+	resp := get(t, c, srv.URL+"/api/v1/me")
 	wantStatus(t, resp, http.StatusOK)
 	return field(decode(t, resp), "user")["id"].(string)
 }
@@ -83,7 +83,7 @@ func TestInvitation_NewClientAcceptsAndIsLinked(t *testing.T) {
 	freelancer := signUpFreelancer(t, srv, "free@example.com")
 	token := invite(t, srv, freelancer, "Client@Example.com")
 
-	resp := get(t, newClient(), srv.URL+"/api/invites/"+token)
+	resp := get(t, newClient(), srv.URL+"/api/v1/invites/"+token)
 	wantStatus(t, resp, http.StatusOK)
 	inv := field(decode(t, resp), "invitation")
 	if inv["email"] != "client@example.com" || inv["account_exists"] != false || inv["name"] != "Acme" {
@@ -91,26 +91,26 @@ func TestInvitation_NewClientAcceptsAndIsLinked(t *testing.T) {
 	}
 
 	client := acceptNew(t, srv, token)
-	resp = get(t, client, srv.URL+"/api/me")
+	resp = get(t, client, srv.URL+"/api/v1/me")
 	wantStatus(t, resp, http.StatusOK)
 	if u := field(decode(t, resp), "user"); u["role"] != "client" || u["name"] != "Acme Inc" {
 		t.Fatalf("me = %v", u)
 	}
 
-	resp = get(t, freelancer, srv.URL+"/api/clients")
+	resp = get(t, freelancer, srv.URL+"/api/v1/clients")
 	wantStatus(t, resp, http.StatusOK)
 	if list, _ := decode(t, resp)["clients"].([]any); len(list) != 1 {
 		t.Fatalf("clients = %v, want 1", list)
 	}
-	resp = get(t, client, srv.URL+"/api/freelancers")
+	resp = get(t, client, srv.URL+"/api/v1/freelancers")
 	wantStatus(t, resp, http.StatusOK)
 	if list, _ := decode(t, resp)["freelancers"].([]any); len(list) != 1 {
 		t.Fatalf("freelancers = %v, want 1", list)
 	}
 
 	// The link is single-use.
-	wantStatus(t, get(t, newClient(), srv.URL+"/api/invites/"+token), http.StatusNotFound)
-	resp = get(t, freelancer, srv.URL+"/api/invitations")
+	wantStatus(t, get(t, newClient(), srv.URL+"/api/v1/invites/"+token), http.StatusNotFound)
+	resp = get(t, freelancer, srv.URL+"/api/v1/invitations")
 	wantStatus(t, resp, http.StatusOK)
 	if list, _ := decode(t, resp)["invitations"].([]any); len(list) != 0 {
 		t.Fatalf("pending invitations = %v, want none", list)
@@ -125,22 +125,22 @@ func TestInvitation_ExistingClientSignsInToAccept(t *testing.T) {
 	second := signUpFreelancer(t, srv, "second@example.com")
 	token := invite(t, srv, second, "client@example.com")
 
-	resp := get(t, newClient(), srv.URL+"/api/invites/"+token)
+	resp := get(t, newClient(), srv.URL+"/api/v1/invites/"+token)
 	wantStatus(t, resp, http.StatusOK)
 	if field(decode(t, resp), "invitation")["account_exists"] != true {
 		t.Fatal("account_exists = false, want true")
 	}
 
 	c := newClient()
-	wrong := post(t, c, srv.URL+"/api/invites/"+token+"/accept", map[string]string{"password": "nope-nope"})
+	wrong := post(t, c, srv.URL+"/api/v1/invites/"+token+"/accept", map[string]string{"password": "nope-nope"})
 	wantStatus(t, wrong, http.StatusBadRequest)
 	wrong.Body.Close()
 
-	resp = post(t, c, srv.URL+"/api/invites/"+token+"/accept", map[string]string{"password": "clientsecret"})
+	resp = post(t, c, srv.URL+"/api/v1/invites/"+token+"/accept", map[string]string{"password": "clientsecret"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 
-	resp = get(t, c, srv.URL+"/api/freelancers")
+	resp = get(t, c, srv.URL+"/api/v1/freelancers")
 	wantStatus(t, resp, http.StatusOK)
 	if list, _ := decode(t, resp)["freelancers"].([]any); len(list) != 2 {
 		t.Fatalf("freelancers = %v, want 2", list)
@@ -156,7 +156,7 @@ func TestInvitation_Rejections(t *testing.T) {
 		"self":               "free@example.com",
 		"another freelancer": "other@example.com",
 	} {
-		resp := post(t, freelancer, srv.URL+"/api/invitations", map[string]string{"email": email, "name": "X"})
+		resp := post(t, freelancer, srv.URL+"/api/v1/invitations", map[string]string{"email": email, "name": "X"})
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("%s: status = %d, want 400", name, resp.StatusCode)
 		}
@@ -164,7 +164,7 @@ func TestInvitation_Rejections(t *testing.T) {
 	}
 
 	invite(t, srv, freelancer, "c@example.com")
-	resp := post(t, freelancer, srv.URL+"/api/invitations", map[string]string{"email": "c@example.com", "name": "X"})
+	resp := post(t, freelancer, srv.URL+"/api/v1/invitations", map[string]string{"email": "c@example.com", "name": "X"})
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 }
@@ -174,11 +174,11 @@ func TestRoles_AreEnforced(t *testing.T) {
 	freelancer := signUpFreelancer(t, srv, "free@example.com")
 	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
 
-	resp := post(t, client, srv.URL+"/api/invitations", map[string]string{"email": "x@example.com", "name": "X"})
+	resp := post(t, client, srv.URL+"/api/v1/invitations", map[string]string{"email": "x@example.com", "name": "X"})
 	wantStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 
-	resp = get(t, freelancer, srv.URL+"/api/freelancers")
+	resp = get(t, freelancer, srv.URL+"/api/v1/freelancers")
 	wantStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 }
@@ -191,7 +191,7 @@ func TestTasks_ClientSetsAndFreelancerWorks(t *testing.T) {
 	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
 	freelancerID := myID(t, srv, freelancer)
 
-	resp := post(t, client, srv.URL+"/api/tasks", map[string]any{
+	resp := post(t, client, srv.URL+"/api/v1/tasks", map[string]any{
 		"freelancer_id": freelancerID, "title": "Landing page", "description": "Hero + pricing", "due_on": "2030-01-15",
 	})
 	wantStatus(t, resp, http.StatusCreated)
@@ -202,47 +202,47 @@ func TestTasks_ClientSetsAndFreelancerWorks(t *testing.T) {
 	}
 
 	// The freelancer sees it and can start it, but not cancel it.
-	resp = get(t, freelancer, srv.URL+"/api/tasks")
+	resp = get(t, freelancer, srv.URL+"/api/v1/tasks")
 	wantStatus(t, resp, http.StatusOK)
 	if list, _ := decode(t, resp)["tasks"].([]any); len(list) != 1 {
 		t.Fatalf("freelancer tasks = %v, want 1", list)
 	}
-	resp = post(t, freelancer, srv.URL+"/api/tasks/"+id+"/status", map[string]string{"status": "cancelled"})
+	resp = post(t, freelancer, srv.URL+"/api/v1/tasks/"+id+"/status", map[string]string{"status": "cancelled"})
 	wantStatus(t, resp, http.StatusConflict)
 	resp.Body.Close()
-	resp = post(t, freelancer, srv.URL+"/api/tasks/"+id+"/status", map[string]string{"status": "in_progress"})
+	resp = post(t, freelancer, srv.URL+"/api/v1/tasks/"+id+"/status", map[string]string{"status": "in_progress"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 
 	// Started tasks can't be deleted, only cancelled.
-	resp = do(t, client, http.MethodDelete, srv.URL+"/api/tasks/"+id, nil)
+	resp = do(t, client, http.MethodDelete, srv.URL+"/api/v1/tasks/"+id, nil)
 	wantStatus(t, resp, http.StatusConflict)
 	resp.Body.Close()
 
-	resp = post(t, freelancer, srv.URL+"/api/tasks/"+id+"/status", map[string]string{"status": "done"})
+	resp = post(t, freelancer, srv.URL+"/api/v1/tasks/"+id+"/status", map[string]string{"status": "done"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 
 	// Done tasks stay editable: the client fixes their wording, and the
 	// freelancer edits what the client set.
-	resp = do(t, client, http.MethodPut, srv.URL+"/api/tasks/"+id, map[string]any{"title": "Landing page", "description": "Hero and pricing"})
+	resp = do(t, client, http.MethodPut, srv.URL+"/api/v1/tasks/"+id, map[string]any{"title": "Landing page", "description": "Hero and pricing"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
-	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/tasks/"+id, map[string]any{"title": "Landing page (final)", "description": "Hero and pricing"})
+	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/tasks/"+id, map[string]any{"title": "Landing page (final)", "description": "Hero and pricing"})
 	wantStatus(t, resp, http.StatusOK)
 	if got := field(decode(t, resp), "task"); got["title"] != "Landing page (final)" || got["can_edit"] != true {
 		t.Fatalf("freelancer's edit of a done client task = %v", got)
 	}
-	resp = post(t, client, srv.URL+"/api/tasks/"+id+"/status", map[string]string{"status": "in_progress"})
+	resp = post(t, client, srv.URL+"/api/v1/tasks/"+id+"/status", map[string]string{"status": "in_progress"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
-	resp = do(t, client, http.MethodPut, srv.URL+"/api/tasks/"+id, map[string]any{"title": "Landing page v2"})
+	resp = do(t, client, http.MethodPut, srv.URL+"/api/v1/tasks/"+id, map[string]any{"title": "Landing page v2"})
 	wantStatus(t, resp, http.StatusOK)
 	if got := field(decode(t, resp), "task")["title"]; got != "Landing page v2" {
 		t.Fatalf("title = %v", got)
 	}
 
-	resp = get(t, client, srv.URL+"/api/tasks?status=done")
+	resp = get(t, client, srv.URL+"/api/v1/tasks?status=done")
 	wantStatus(t, resp, http.StatusOK)
 	if list, _ := decode(t, resp)["tasks"].([]any); len(list) != 0 {
 		t.Fatalf("done tasks = %v, want none", list)
@@ -255,22 +255,22 @@ func TestTasks_OnlyForLinkedFreelancers(t *testing.T) {
 	stranger := signUpFreelancer(t, srv, "stranger@example.com")
 	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
 
-	resp := post(t, client, srv.URL+"/api/tasks", map[string]any{"freelancer_id": myID(t, srv, stranger), "title": "Nope"})
+	resp := post(t, client, srv.URL+"/api/v1/tasks", map[string]any{"freelancer_id": myID(t, srv, stranger), "title": "Nope"})
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 
-	resp = post(t, client, srv.URL+"/api/tasks", map[string]any{"freelancer_id": myID(t, srv, freelancer), "title": "Mine"})
+	resp = post(t, client, srv.URL+"/api/v1/tasks", map[string]any{"freelancer_id": myID(t, srv, freelancer), "title": "Mine"})
 	wantStatus(t, resp, http.StatusCreated)
 	id := field(decode(t, resp), "task")["id"].(string)
 
 	// Another freelancer can neither see nor move it.
-	wantStatus(t, get(t, stranger, srv.URL+"/api/tasks/"+id), http.StatusNotFound)
-	resp = post(t, stranger, srv.URL+"/api/tasks/"+id+"/status", map[string]string{"status": "in_progress"})
+	wantStatus(t, get(t, stranger, srv.URL+"/api/v1/tasks/"+id), http.StatusNotFound)
+	resp = post(t, stranger, srv.URL+"/api/v1/tasks/"+id+"/status", map[string]string{"status": "in_progress"})
 	wantStatus(t, resp, http.StatusNotFound)
 	resp.Body.Close()
 
 	// A new task can be deleted by its client.
-	resp = do(t, client, http.MethodDelete, srv.URL+"/api/tasks/"+id, nil)
+	resp = do(t, client, http.MethodDelete, srv.URL+"/api/v1/tasks/"+id, nil)
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
 }
@@ -281,7 +281,7 @@ func TestTasks_FreelancerCreatesForClient(t *testing.T) {
 	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
 	clientID := myID(t, srv, client)
 
-	resp := post(t, freelancer, srv.URL+"/api/tasks", map[string]any{"client_id": clientID, "title": "Set up hosting"})
+	resp := post(t, freelancer, srv.URL+"/api/v1/tasks", map[string]any{"client_id": clientID, "title": "Set up hosting"})
 	wantStatus(t, resp, http.StatusCreated)
 	task := field(decode(t, resp), "task")
 	id := task["id"].(string)
@@ -290,27 +290,27 @@ func TestTasks_FreelancerCreatesForClient(t *testing.T) {
 	}
 
 	// The client sees it but can't edit or delete what the freelancer created.
-	resp = get(t, client, srv.URL+"/api/tasks/"+id)
+	resp = get(t, client, srv.URL+"/api/v1/tasks/"+id)
 	wantStatus(t, resp, http.StatusOK)
 	if got := field(decode(t, resp), "task"); got["can_edit"] != false || got["can_delete"] != false {
 		t.Fatalf("client view = %v", got)
 	}
-	resp = do(t, client, http.MethodPut, srv.URL+"/api/tasks/"+id, map[string]any{"title": "Changed"})
+	resp = do(t, client, http.MethodPut, srv.URL+"/api/v1/tasks/"+id, map[string]any{"title": "Changed"})
 	wantStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 
 	// The freelancer edits and cancels their own task, and can restore it.
-	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/tasks/"+id, map[string]any{"title": "Set up hosting and DNS"})
+	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/tasks/"+id, map[string]any{"title": "Set up hosting and DNS"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
-	resp = post(t, freelancer, srv.URL+"/api/tasks/"+id+"/status", map[string]string{"status": "cancelled"})
+	resp = post(t, freelancer, srv.URL+"/api/v1/tasks/"+id+"/status", map[string]string{"status": "cancelled"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
-	resp = post(t, freelancer, srv.URL+"/api/tasks/"+id+"/status", map[string]string{"status": "new"})
+	resp = post(t, freelancer, srv.URL+"/api/v1/tasks/"+id+"/status", map[string]string{"status": "new"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 
-	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/tasks/"+id, nil)
+	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/v1/tasks/"+id, nil)
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
 }
@@ -320,11 +320,11 @@ func TestTasks_FreelancerCannotCancelClientTask(t *testing.T) {
 	freelancer := signUpFreelancer(t, srv, "free@example.com")
 	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
 
-	resp := post(t, client, srv.URL+"/api/tasks", map[string]any{"freelancer_id": myID(t, srv, freelancer), "title": "Logo"})
+	resp := post(t, client, srv.URL+"/api/v1/tasks", map[string]any{"freelancer_id": myID(t, srv, freelancer), "title": "Logo"})
 	wantStatus(t, resp, http.StatusCreated)
 	id := field(decode(t, resp), "task")["id"].(string)
 
-	resp = post(t, freelancer, srv.URL+"/api/tasks/"+id+"/status", map[string]string{"status": "cancelled"})
+	resp = post(t, freelancer, srv.URL+"/api/v1/tasks/"+id+"/status", map[string]string{"status": "cancelled"})
 	wantStatus(t, resp, http.StatusConflict)
 	resp.Body.Close()
 }
@@ -335,7 +335,7 @@ func TestTasks_FreelancerOnlyForOwnClients(t *testing.T) {
 	client := acceptNew(t, srv, invite(t, srv, owner, "client@example.com"))
 	other := signUpFreelancer(t, srv, "other@example.com")
 
-	resp := post(t, other, srv.URL+"/api/tasks", map[string]any{"client_id": myID(t, srv, client), "title": "Sneaky"})
+	resp := post(t, other, srv.URL+"/api/v1/tasks", map[string]any{"client_id": myID(t, srv, client), "title": "Sneaky"})
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 }
@@ -345,7 +345,7 @@ func TestTasks_PersonalTasks(t *testing.T) {
 	freelancer := signUpFreelancer(t, srv, "free@example.com")
 	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
 
-	resp := post(t, freelancer, srv.URL+"/api/tasks", map[string]any{"title": "Renew domain"})
+	resp := post(t, freelancer, srv.URL+"/api/v1/tasks", map[string]any{"title": "Renew domain"})
 	wantStatus(t, resp, http.StatusCreated)
 	task := field(decode(t, resp), "task")
 	id := task["id"].(string)
@@ -353,19 +353,19 @@ func TestTasks_PersonalTasks(t *testing.T) {
 		t.Fatalf("client = %v, want null", task["client"])
 	}
 
-	resp = post(t, freelancer, srv.URL+"/api/tasks", map[string]any{"client_id": myID(t, srv, client), "title": "Client work"})
+	resp = post(t, freelancer, srv.URL+"/api/v1/tasks", map[string]any{"client_id": myID(t, srv, client), "title": "Client work"})
 	wantStatus(t, resp, http.StatusCreated)
 	resp.Body.Close()
 
 	// Only the freelancer sees it.
-	wantStatus(t, get(t, client, srv.URL+"/api/tasks/"+id), http.StatusNotFound)
-	resp = get(t, client, srv.URL+"/api/tasks")
+	wantStatus(t, get(t, client, srv.URL+"/api/v1/tasks/"+id), http.StatusNotFound)
+	resp = get(t, client, srv.URL+"/api/v1/tasks")
 	wantStatus(t, resp, http.StatusOK)
 	if list, _ := decode(t, resp)["tasks"].([]any); len(list) != 1 {
 		t.Fatalf("client tasks = %v, want only the client one", list)
 	}
 
-	resp = get(t, freelancer, srv.URL+"/api/tasks?with=personal")
+	resp = get(t, freelancer, srv.URL+"/api/v1/tasks?with=personal")
 	wantStatus(t, resp, http.StatusOK)
 	list, _ := decode(t, resp)["tasks"].([]any)
 	if len(list) != 1 || list[0].(map[string]any)["id"] != id {
@@ -374,23 +374,23 @@ func TestTasks_PersonalTasks(t *testing.T) {
 
 	// The whole lifecycle is the freelancer's.
 	for _, status := range []string{"in_progress", "done", "in_progress", "cancelled", "new"} {
-		resp = post(t, freelancer, srv.URL+"/api/tasks/"+id+"/status", map[string]string{"status": status})
+		resp = post(t, freelancer, srv.URL+"/api/v1/tasks/"+id+"/status", map[string]string{"status": status})
 		wantStatus(t, resp, http.StatusOK)
 		resp.Body.Close()
 	}
 
 	// It stays editable once done.
-	resp = post(t, freelancer, srv.URL+"/api/tasks/"+id+"/status", map[string]string{"status": "done"})
+	resp = post(t, freelancer, srv.URL+"/api/v1/tasks/"+id+"/status", map[string]string{"status": "done"})
 	wantStatus(t, resp, http.StatusOK)
 	if got := field(decode(t, resp), "task"); got["can_edit"] != true {
 		t.Fatalf("done personal task = %v, want can_edit", got)
 	}
-	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/tasks/"+id, map[string]any{"title": "Renew domain for 2 years"})
+	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/tasks/"+id, map[string]any{"title": "Renew domain for 2 years"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 
 	// A client can't create a task without a freelancer.
-	resp = post(t, client, srv.URL+"/api/tasks", map[string]any{"title": "Mine"})
+	resp = post(t, client, srv.URL+"/api/v1/tasks", map[string]any{"title": "Mine"})
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 }

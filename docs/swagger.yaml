@@ -1,0 +1,3111 @@
+basePath: /api/v1
+definitions:
+  attachments.DTO:
+    properties:
+      can_delete:
+        description: CanDelete is true for the uploader.
+        type: boolean
+      content_type:
+        type: string
+      created_at:
+        type: string
+      file_name:
+        type: string
+      id:
+        type: string
+      is_image:
+        description: IsImage marks a picture the browser may preview.
+        type: boolean
+      size_bytes:
+        type: integer
+      task_id:
+        type: string
+      uploaded_by:
+        $ref: '#/definitions/attachments.UploaderDTO'
+    type: object
+  attachments.ListResponse:
+    properties:
+      attachments:
+        items:
+          $ref: '#/definitions/attachments.DTO'
+        type: array
+      max_size_bytes:
+        type: integer
+    type: object
+  attachments.UploaderDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  auth.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    type: object
+  auth.RegisterRequest:
+    properties:
+      email:
+        type: string
+      name:
+        type: string
+      password:
+        type: string
+      password_confirmation:
+        type: string
+    type: object
+  board.BoardDTO:
+    properties:
+      can_manage:
+        description: CanManage is true for the freelancer, who manages the columns.
+        type: boolean
+      columns:
+        items:
+          $ref: '#/definitions/board.ColumnDTO'
+        type: array
+      merged:
+        description: |-
+          Merged is true for the all board: its columns are lanes merging the
+          pairs' columns of one name, moved to with MoveRequest.Lane.
+        type: boolean
+    type: object
+  board.ColumnDTO:
+    properties:
+      category:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      tasks:
+        items:
+          $ref: '#/definitions/tasks.DTO'
+        type: array
+    type: object
+  board.ColumnRequest:
+    properties:
+      category:
+        type: string
+      name:
+        type: string
+      project_id:
+        type: string
+      with:
+        type: string
+    type: object
+  board.LabelDTO:
+    properties:
+      color:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      task_count:
+        type: integer
+    type: object
+  board.LabelRequest:
+    properties:
+      color:
+        type: string
+      name:
+        type: string
+      project_id:
+        type: string
+      with:
+        type: string
+    type: object
+  board.LabelsResponse:
+    properties:
+      colors:
+        items:
+          type: string
+        type: array
+      labels:
+        items:
+          $ref: '#/definitions/board.LabelDTO'
+        type: array
+    type: object
+  board.MoveRequest:
+    properties:
+      after_task_id:
+        description: |-
+          AfterTaskID is the card the moved one goes right after; empty puts it
+          at the top of the column.
+        type: string
+      column_id:
+        type: string
+      lane:
+        description: Lane, instead of ColumnID, moves the card to a lane of the all
+          board.
+        type: string
+      task_id:
+        type: string
+    type: object
+  board.OrderRequest:
+    properties:
+      ids:
+        items:
+          type: string
+        type: array
+    type: object
+  clients.AcceptRequest:
+    properties:
+      name:
+        type: string
+      password:
+        type: string
+      password_confirmation:
+        type: string
+    type: object
+  clients.InvitationDTO:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      expired:
+        type: boolean
+      expires_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      token:
+        type: string
+    type: object
+  clients.InviteRequest:
+    properties:
+      email:
+        type: string
+      name:
+        type: string
+    type: object
+  clients.LinkDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      linked_at:
+        type: string
+      name:
+        type: string
+      open_tasks:
+        type: integer
+    type: object
+  clients.LookupDTO:
+    properties:
+      account_exists:
+        type: boolean
+      email:
+        type: string
+      expires_at:
+        type: string
+      freelancer:
+        $ref: '#/definitions/clients.PartyDTO'
+      name:
+        type: string
+    type: object
+  clients.PartyDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  comments.AuthorDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  comments.DTO:
+    properties:
+      author:
+        $ref: '#/definitions/comments.AuthorDTO'
+      body:
+        type: string
+      can_edit:
+        description: CanEdit is true for the author, who may edit and delete it.
+        type: boolean
+      created_at:
+        type: string
+      edited:
+        type: boolean
+      id:
+        type: string
+      task_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  comments.Request:
+    properties:
+      body:
+        type: string
+    type: object
+  notifications.ActorDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  notifications.DTO:
+    properties:
+      actor:
+        $ref: '#/definitions/notifications.ActorDTO'
+      created_at:
+        type: string
+      detail:
+        type: string
+      id:
+        type: string
+      kind:
+        type: string
+      project_id:
+        type: string
+      read:
+        type: boolean
+      report_id:
+        type: string
+      subject:
+        type: string
+      task_id:
+        type: string
+    type: object
+  notifications.ListResponse:
+    properties:
+      notifications:
+        items:
+          $ref: '#/definitions/notifications.DTO'
+        type: array
+      unread:
+        type: integer
+    type: object
+  profile.CurrencyRequest:
+    properties:
+      currency:
+        type: string
+    type: object
+  profile.EmailRequest:
+    properties:
+      current_password:
+        type: string
+      email:
+        type: string
+    type: object
+  profile.NameRequest:
+    properties:
+      first_name:
+        type: string
+      last_name:
+        type: string
+    type: object
+  profile.PasswordRequest:
+    properties:
+      current_password:
+        type: string
+      password:
+        type: string
+      password_confirmation:
+        type: string
+    type: object
+  projects.DTO:
+    properties:
+      can_edit:
+        type: boolean
+      client:
+        $ref: '#/definitions/projects.PartyDTO'
+      created_at:
+        type: string
+      created_by:
+        type: string
+      description:
+        type: string
+      freelancer:
+        $ref: '#/definitions/projects.PartyDTO'
+      id:
+        type: string
+      name:
+        type: string
+      open_tasks:
+        type: integer
+      total_tasks:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  projects.PartyDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  projects.Request:
+    properties:
+      client_id:
+        type: string
+      description:
+        type: string
+      freelancer_id:
+        type: string
+      name:
+        type: string
+    type: object
+  reports.CreateRequest:
+    properties:
+      client_id:
+        type: string
+      from:
+        type: string
+      kind:
+        description: Kind is "basic" (the default) or "detailed".
+        type: string
+      project_id:
+        description: ProjectID is the one-project form of ProjectIDs, still accepted.
+        type: string
+      project_ids:
+        description: ProjectIDs limits the report to these projects; none means all.
+        items:
+          type: string
+        type: array
+      summary:
+        type: string
+      title:
+        type: string
+      to:
+        type: string
+    type: object
+  reports.DTO:
+    properties:
+      can_delete:
+        description: CanDelete is true for the freelancer, sent or not.
+        type: boolean
+      can_edit:
+        description: CanEdit is true for the freelancer while the report is a draft.
+        type: boolean
+      can_mark_paid:
+        description: CanMarkPaid is true for the client of a sent, unpaid report.
+        type: boolean
+      client:
+        allOf:
+        - $ref: '#/definitions/reports.PartyDTO'
+        description: Client is null for a report on personal work.
+      created_at:
+        type: string
+      currency:
+        type: string
+      freelancer:
+        $ref: '#/definitions/reports.PartyDTO'
+      from:
+        type: string
+      id:
+        type: string
+      item_count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/reports.ItemDTO'
+        type: array
+      kind:
+        type: string
+      paid_at:
+        type: string
+      projects:
+        description: Projects the report covers, named as they were; empty means all.
+        items:
+          $ref: '#/definitions/reports.ProjectRef'
+        type: array
+      sent_at:
+        type: string
+      status:
+        type: string
+      summary:
+        type: string
+      title:
+        type: string
+      to:
+        type: string
+      total_cents:
+        description: |-
+          TotalCents sums the items' prices, on a list too; null when none
+          has a price.
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  reports.EventDTO:
+    properties:
+      actor:
+        $ref: '#/definitions/reports.PartyDTO'
+      created_at:
+        type: string
+      data:
+        additionalProperties: {}
+        type: object
+      id:
+        type: string
+      kind:
+        type: string
+    type: object
+  reports.ItemDTO:
+    properties:
+      completed_on:
+        type: string
+      id:
+        type: string
+      notes:
+        description: Notes say what was done in the task (shown in a detailed report).
+        type: string
+      price_cents:
+        description: PriceCents is null for a task without a price.
+        type: integer
+      project_name:
+        type: string
+      status_name:
+        type: string
+      task_id:
+        type: string
+      title:
+        type: string
+    type: object
+  reports.ItemRequest:
+    properties:
+      notes:
+        type: string
+    type: object
+  reports.ListResponse:
+    properties:
+      pdf_available:
+        type: boolean
+      reports:
+        items:
+          $ref: '#/definitions/reports.DTO'
+        type: array
+    type: object
+  reports.PartyDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  reports.ProjectRef:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  reports.UpdateRequest:
+    properties:
+      kind:
+        description: Kind switches between "basic" and "detailed"; omitted, it stays.
+        type: string
+      summary:
+        type: string
+      title:
+        type: string
+    type: object
+  response.APIError:
+    properties:
+      code:
+        type: string
+      fields:
+        additionalProperties:
+          type: string
+        type: object
+      message:
+        type: string
+    type: object
+  response.ErrorEnvelope:
+    properties:
+      error:
+        $ref: '#/definitions/response.APIError'
+    type: object
+  tasks.DTO:
+    properties:
+      can_delete:
+        type: boolean
+      can_edit:
+        type: boolean
+      can_see_price:
+        description: |-
+          CanSeePrice is false for a member of the client's team: the price is
+          left out for them.
+        type: boolean
+      can_set_price:
+        type: boolean
+      client:
+        allOf:
+        - $ref: '#/definitions/tasks.PartyDTO'
+        description: Client is null for a personal task.
+      created_at:
+        type: string
+      created_by:
+        type: string
+      creator:
+        allOf:
+        - $ref: '#/definitions/tasks.PartyDTO'
+        description: |-
+          Creator is who set the task — the freelancer, the client, or a member
+          of the client's company.
+      currency:
+        type: string
+      description:
+        type: string
+      due_on:
+        type: string
+      freelancer:
+        $ref: '#/definitions/tasks.PartyDTO'
+      id:
+        type: string
+      labels:
+        items:
+          $ref: '#/definitions/tasks.Label'
+        type: array
+      next_statuses:
+        items:
+          type: string
+        type: array
+      participants:
+        description: |-
+          Participants are who took part: the freelancer first, then everyone who
+          set, commented on, attached to or changed the task.
+        items:
+          $ref: '#/definitions/tasks.PartyDTO'
+        type: array
+      position:
+        type: integer
+      price_cents:
+        description: |-
+          PriceCents is null while the task has no price; Currency is the
+          freelancer's.
+        type: integer
+      priority:
+        type: string
+      project:
+        allOf:
+        - $ref: '#/definitions/tasks.ProjectDTO'
+        description: Project is null for a task outside any project.
+      status:
+        type: string
+      status_id:
+        description: |-
+          Status is the category; StatusID and StatusName the exact workflow
+          status (board column), Position the card's place in it.
+        type: string
+      status_name:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  tasks.EventDTO:
+    properties:
+      actor:
+        $ref: '#/definitions/tasks.PartyDTO'
+      created_at:
+        type: string
+      data:
+        additionalProperties: {}
+        type: object
+      id:
+        type: string
+      kind:
+        type: string
+    type: object
+  tasks.Label:
+    properties:
+      color:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  tasks.LabelsRequest:
+    properties:
+      label_ids:
+        items:
+          type: string
+        type: array
+    type: object
+  tasks.PartyDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  tasks.PriceRequest:
+    properties:
+      price:
+        type: string
+    type: object
+  tasks.PriorityRequest:
+    properties:
+      priority:
+        type: string
+    type: object
+  tasks.ProjectDTO:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  tasks.Request:
+    properties:
+      client_id:
+        type: string
+      description:
+        type: string
+      due_on:
+        type: string
+      freelancer_id:
+        type: string
+      price:
+        description: |-
+          Price is an amount like "1200.50", set by a freelancer on create only;
+          PUT /api/v1/tasks/{id}/price changes it later.
+        type: string
+      priority:
+        description: |-
+          Priority is set on create only ("none" when left out); PUT
+          /api/v1/tasks/{id}/priority changes it later.
+        type: string
+      project_id:
+        description: |-
+          ProjectID puts the task in a project; on edit null keeps the current
+          project and "" takes the task out of it.
+        type: string
+      status_id:
+        description: StatusID creates the task straight in a board column (create
+          only).
+        type: string
+      title:
+        type: string
+    type: object
+  tasks.StatusRequest:
+    properties:
+      status:
+        description: |-
+          Status moves the task to the first column of a category; StatusID to an
+          exact column.
+        type: string
+      status_id:
+        type: string
+    type: object
+  team.InviteDTO:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      expired:
+        type: boolean
+      expires_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      token:
+        type: string
+    type: object
+  team.InviteRequest:
+    properties:
+      email:
+        type: string
+      name:
+        type: string
+    type: object
+  team.JoinRequest:
+    properties:
+      name:
+        type: string
+      password:
+        type: string
+      password_confirmation:
+        type: string
+    type: object
+  team.LookupDTO:
+    properties:
+      company:
+        type: string
+      email:
+        type: string
+      expires_at:
+        type: string
+      name:
+        type: string
+      owner:
+        $ref: '#/definitions/team.PersonDTO'
+    type: object
+  team.MemberDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      joined_at:
+        type: string
+      name:
+        type: string
+    type: object
+  team.NameRequest:
+    properties:
+      name:
+        type: string
+    type: object
+  team.OverviewDTO:
+    properties:
+      invites:
+        items:
+          $ref: '#/definitions/team.InviteDTO'
+        type: array
+      members:
+        items:
+          $ref: '#/definitions/team.MemberDTO'
+        type: array
+      name:
+        type: string
+      owner:
+        $ref: '#/definitions/team.PersonDTO'
+      role:
+        type: string
+    type: object
+  team.PersonDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  user.DTO:
+    properties:
+      created_at:
+        type: string
+      currency:
+        type: string
+      email:
+        type: string
+      first_name:
+        type: string
+      id:
+        type: string
+      last_name:
+        type: string
+      member_of:
+        allOf:
+        - $ref: '#/definitions/user.TeamDTO'
+        description: MemberOf is set for a member of a client's company; null otherwise.
+      name:
+        type: string
+      role:
+        type: string
+    type: object
+  user.Response:
+    properties:
+      user:
+        $ref: '#/definitions/user.DTO'
+    type: object
+  user.TeamDTO:
+    properties:
+      name:
+        type: string
+      owner_id:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: |-
+    Freelancers and their clients on the same page: tasks, projects, boards, reports.
+
+    Sign in with POST /auth/login: it sets an httpOnly cookie that every other call sends.
+    In this UI, sign in first and the cookie goes along with the next requests.
+    Errors come as {"error": {"code", "message", "fields"}}.
+  title: Helpic API
+  version: "1.0"
+paths:
+  /attachments:
+    get:
+      parameters:
+      - description: Task ID
+        in: query
+        name: task
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/attachments.ListResponse'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A task's files
+      tags:
+      - attachments
+    post:
+      consumes:
+      - multipart/form-data
+      description: Multipart, one "file" part, up to MAX_UPLOAD_MB. The type is read
+        from the bytes.
+      parameters:
+      - description: Task ID
+        in: query
+        name: task
+        required: true
+        type: string
+      - description: The file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: attachment
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/attachments.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "413":
+          description: Too large
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Attach a file to a task
+      tags:
+      - attachments
+  /attachments/{id}:
+    delete:
+      description: Its uploader only.
+      parameters:
+      - description: Attachment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Delete a file
+      tags:
+      - attachments
+    get:
+      description: Always as a download, except PNG/JPEG/GIF/WebP images with inline=1.
+      parameters:
+      - description: Attachment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 1 to show a safe image in place
+        in: query
+        name: inline
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: The file
+          schema:
+            type: file
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Download a file
+      tags:
+      - attachments
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Sets the httpOnly auth cookie that every other endpoint reads.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.Response'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Wrong email or password
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Sign in
+      tags:
+      - auth
+  /auth/logout:
+    post:
+      description: Clears the auth cookie.
+      responses:
+        "204":
+          description: Signed out
+      summary: Sign out
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: The new account
+          schema:
+            $ref: '#/definitions/user.Response'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: The email is taken
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Sign up as a freelancer
+      tags:
+      - auth
+  /board:
+    get:
+      description: 'One pair''s board, a project''s, or with=all: a freelancer''s
+        every task, the boards'' columns merged by name.'
+      parameters:
+      - description: 'A counterpart''s ID, '
+        in: query
+        name: with
+        type: string
+      - description: A project ID
+        in: query
+        name: project
+        type: string
+      - description: 'Comma-separated project IDs; '
+        in: query
+        name: projects
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/board.BoardDTO'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A board with its tasks
+      tags:
+      - board
+  /board/columns:
+    get:
+      description: The same query as /board, without tasks.
+      parameters:
+      - description: 'A counterpart''s ID, or '
+        in: query
+        name: with
+        type: string
+      - description: A project ID
+        in: query
+        name: project
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/board.BoardDTO'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A board's columns
+      tags:
+      - board
+    post:
+      consumes:
+      - application/json
+      description: The board's freelancer only.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/board.ColumnRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Add a column
+      tags:
+      - board
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Every column ID, in the new order
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/board.OrderRequest'
+      responses:
+        "204":
+          description: No content
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Reorder a board's columns
+      tags:
+      - board
+  /board/columns/{id}:
+    delete:
+      description: Its tasks move to another column of the same category.
+      parameters:
+      - description: Column ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Conflicts with the current state
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Delete a column
+      tags:
+      - board
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Column ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/board.ColumnRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No content
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Rename a column or change its category
+      tags:
+      - board
+  /board/labels:
+    get:
+      parameters:
+      - description: 'A counterpart''s ID, or '
+        in: query
+        name: with
+        type: string
+      - description: A project ID
+        in: query
+        name: project
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/board.LabelsResponse'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A board's labels
+      tags:
+      - labels
+    post:
+      consumes:
+      - application/json
+      description: Either side of the board.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/board.LabelRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: label
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/board.LabelDTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Make a label
+      tags:
+      - labels
+  /board/labels/{id}:
+    delete:
+      description: Takes it off every task too.
+      parameters:
+      - description: Label ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Delete a label
+      tags:
+      - labels
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Label ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/board.LabelRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: label
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/board.LabelDTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Rename or recolor a label
+      tags:
+      - labels
+  /board/moves:
+    post:
+      consumes:
+      - application/json
+      description: Into a column after a card (column_id, after_task_id), or on the
+        all board into a lane (lane).
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/board.MoveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: The move isn't allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Move a card
+      tags:
+      - board
+  /clients:
+    get:
+      description: Freelancers only. Each with their open task count.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: clients
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/clients.LinkDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Your clients
+      tags:
+      - people
+  /comments:
+    get:
+      description: Oldest first.
+      parameters:
+      - description: Task ID
+        in: query
+        name: task
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: comments
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/comments.DTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A task's comments
+      tags:
+      - comments
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Task ID
+        in: query
+        name: task
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/comments.Request'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: comment
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/comments.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Comment on a task
+      tags:
+      - comments
+  /comments/{id}:
+    delete:
+      parameters:
+      - description: Comment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Delete your comment
+      tags:
+      - comments
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Comment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/comments.Request'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: comment
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/comments.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Edit your comment
+      tags:
+      - comments
+  /freelancers:
+    get:
+      description: Clients only; a team member sees the company owner's.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: freelancers
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/clients.LinkDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Your freelancers
+      tags:
+      - people
+  /invitations:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: invitations
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/clients.InvitationDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Pending client invitations
+      tags:
+      - people
+    post:
+      consumes:
+      - application/json
+      description: Returns the invitation with the token for its link (/invite/{token}).
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/clients.InviteRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: invitation
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/clients.InvitationDTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Invite a client
+      tags:
+      - people
+  /invitations/{id}:
+    delete:
+      parameters:
+      - description: Invitation ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Revoke a client invitation
+      tags:
+      - people
+  /invites/{token}:
+    get:
+      description: 'Public: the invitation page.'
+      parameters:
+      - description: Invitation token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: invitation
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/clients.LookupDTO'
+            type: object
+        "404":
+          description: Invalid, used or expired
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Look up a client invitation
+      tags:
+      - invitations
+  /invites/{token}/accept:
+    post:
+      consumes:
+      - application/json
+      description: Public. Creates the client account (name, password, confirmation)
+        or signs in to the existing one (password), links it with the freelancer and
+        sets the auth cookie.
+      parameters:
+      - description: Invitation token
+        in: path
+        name: token
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/clients.AcceptRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.Response'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Invalid, used or expired
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Accept a client invitation
+      tags:
+      - invitations
+  /me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.Response'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: The signed-in user
+      tags:
+      - account
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/profile.NameRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.Response'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Change your name
+      tags:
+      - account
+  /me/currency:
+    put:
+      consumes:
+      - application/json
+      description: 'What a freelancer bills in: USD, EUR, GBP, UAH, PLN or CAD.'
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/profile.CurrencyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.Response'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Set the billing currency
+      tags:
+      - account
+  /me/email:
+    put:
+      consumes:
+      - application/json
+      description: Needs the current password.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/profile.EmailRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.Response'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Change your sign-in email
+      tags:
+      - account
+  /me/password:
+    put:
+      consumes:
+      - application/json
+      description: Needs the current password.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/profile.PasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.Response'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Change your password
+      tags:
+      - account
+  /notifications:
+    get:
+      description: The latest 50, and how many are unread.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/notifications.ListResponse'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Your notifications
+      tags:
+      - notifications
+  /notifications/{id}/read:
+    post:
+      parameters:
+      - description: Notification ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Mark one read
+      tags:
+      - notifications
+  /notifications/read-all:
+    post:
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Mark all read
+      tags:
+      - notifications
+  /notifications/unread-count:
+    get:
+      description: Cheap enough to poll.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: unread
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: How many are unread
+      tags:
+      - notifications
+  /projects:
+    get:
+      parameters:
+      - description: 'A counterpart''s ID, or '
+        in: query
+        name: with
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: projects
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/projects.DTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Your projects
+      tags:
+      - projects
+    post:
+      consumes:
+      - application/json
+      description: A client names the freelancer; a freelancer the client, or none
+        for a personal project.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/projects.Request'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: project
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/projects.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Start a project
+      tags:
+      - projects
+  /projects/{id}:
+    delete:
+      description: Its creator only; its tasks stay, out of the project.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Delete a project
+      tags:
+      - projects
+    get:
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: project
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/projects.DTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A project
+      tags:
+      - projects
+    put:
+      consumes:
+      - application/json
+      description: Its creator only.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/projects.Request'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: project
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/projects.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Edit a project
+      tags:
+      - projects
+  /reports:
+    get:
+      description: A freelancer's own; a client's once sent. Team members get none.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/reports.ListResponse'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Your reports
+      tags:
+      - reports
+    post:
+      consumes:
+      - application/json
+      description: Freelancers only. Snapshots the tasks completed in the period (in
+        project_ids, if any), leaving out ones a paid report covers.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/reports.CreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: report
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/reports.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Make a report
+      tags:
+      - reports
+  /reports/{id}:
+    delete:
+      description: Its freelancer, sent or not; a sent one is gone for the client
+        too.
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Delete a report
+      tags:
+      - reports
+    get:
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: report
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/reports.DTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A report with its tasks
+      tags:
+      - reports
+    put:
+      consumes:
+      - application/json
+      description: Title, summary and kind.
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/reports.UpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: report
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/reports.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Already sent
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Edit a draft
+      tags:
+      - reports
+  /reports/{id}/history:
+    get:
+      description: Its client sees only the sending and the payment.
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: events
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/reports.EventDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A report's history
+      tags:
+      - reports
+  /reports/{id}/html:
+    get:
+      description: For servers that can't print PDFs.
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML
+          schema:
+            type: string
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A report as an HTML sheet
+      tags:
+      - reports
+  /reports/{id}/items/{itemID}:
+    delete:
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Report item ID
+        in: path
+        name: itemID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: report
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/reports.DTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Already sent
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Drop a task from a draft
+      tags:
+      - reports
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Report item ID
+        in: path
+        name: itemID
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/reports.ItemRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: report
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/reports.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Already sent
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Rewrite a task's notes in a draft
+      tags:
+      - reports
+  /reports/{id}/paid:
+    post:
+      description: The report's client only. Its tasks move to the board's Paid column;
+        the freelancer is notified.
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: report
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/reports.DTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not the report's client
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Not sent, or already paid
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Mark a sent report paid
+      tags:
+      - reports
+  /reports/{id}/pdf:
+    get:
+      description: Printed by headless Chromium; 503 without it.
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 1 to save it rather than show it
+        in: query
+        name: download
+        type: string
+      produces:
+      - application/pdf
+      responses:
+        "200":
+          description: PDF
+          schema:
+            type: file
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "503":
+          description: No Chromium on this server
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A report as PDF
+      tags:
+      - reports
+  /reports/{id}/send:
+    post:
+      description: Freezes it, its prices and currency; the client is notified.
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: report
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/reports.DTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Already sent, or personal
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Send a draft to its client
+      tags:
+      - reports
+  /tasks:
+    get:
+      description: Open ones first, then by due date.
+      parameters:
+      - description: 'Comma-separated: new,in_progress,done,cancelled'
+        in: query
+        name: status
+        type: string
+      - description: 'A counterpart''s ID, or '
+        in: query
+        name: with
+        type: string
+      - description: A project ID
+        in: query
+        name: project
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: tasks
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/tasks.DTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Your tasks
+      tags:
+      - tasks
+    post:
+      consumes:
+      - application/json
+      description: A client names the freelancer; a freelancer the client, or none
+        for a personal task. A project, or a board column (status_id), fixes who it's
+        with.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/tasks.Request'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Conflicts with the current state
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Set a task
+      tags:
+      - tasks
+  /tasks/{id}:
+    delete:
+      description: Its creator, while it's new.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Conflicts with the current state
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Delete a task
+      tags:
+      - tasks
+    get:
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A task
+      tags:
+      - tasks
+    put:
+      consumes:
+      - application/json
+      description: Title, description, due date, project. Its creator or its freelancer,
+        in any status.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/tasks.Request'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Edit a task
+      tags:
+      - tasks
+  /tasks/{id}/history:
+    get:
+      description: Who changed what and when, oldest first. Team members don't see
+        price changes.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: events
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/tasks.EventDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A task's history
+      tags:
+      - tasks
+  /tasks/{id}/labels:
+    put:
+      consumes:
+      - application/json
+      description: Replaces them with labels of the task's board.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/tasks.LabelsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Set a task's labels
+      tags:
+      - tasks
+  /tasks/{id}/price:
+    put:
+      consumes:
+      - application/json
+      description: The task's freelancer only, in any status. A null price clears
+        it.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/tasks.PriceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Price a task
+      tags:
+      - tasks
+  /tasks/{id}/priority:
+    put:
+      consumes:
+      - application/json
+      description: Either side, in any status.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/tasks.PriorityRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Set a task's priority
+      tags:
+      - tasks
+  /tasks/{id}/status:
+    post:
+      consumes:
+      - application/json
+      description: To an exact board column (status_id), or to the first column of
+        a category (status), as the role rules allow.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/tasks.StatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: The move isn't allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Move a task
+      tags:
+      - tasks
+  /team:
+    get:
+      description: Clients only. The owner also gets the members and pending invitations.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: team
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/team.OverviewDTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Your company and its team
+      tags:
+      - team
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/team.NameRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: team
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/team.OverviewDTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Members don't run the team
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Name your company
+      tags:
+      - team
+  /team-invites/{token}:
+    get:
+      description: 'Public: the join page.'
+      parameters:
+      - description: Invitation token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: invite
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/team.LookupDTO'
+            type: object
+        "404":
+          description: Invalid, used or expired
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Look up a team invitation
+      tags:
+      - invitations
+  /team-invites/{token}/accept:
+    post:
+      consumes:
+      - application/json
+      description: Public. Creates the member's account, adds it to the company and
+        sets the auth cookie.
+      parameters:
+      - description: Invitation token
+        in: path
+        name: token
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/team.JoinRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.Response'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Invalid, used or expired
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Join a team
+      tags:
+      - invitations
+  /team/invites:
+    post:
+      consumes:
+      - application/json
+      description: They join with a new account through /join/{token}.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/team.InviteRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: invite
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/team.InviteDTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Members don't run the team
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Invite someone to your team
+      tags:
+      - team
+  /team/invites/{id}:
+    delete:
+      parameters:
+      - description: Invitation ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Revoke a team invitation
+      tags:
+      - team
+  /team/members/{id}:
+    delete:
+      parameters:
+      - description: Member's user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Remove a team member
+      tags:
+      - team
+swagger: "2.0"

@@ -6,7 +6,7 @@ import (
 	"unicode/utf8"
 )
 
-// RegisterRequest is the JSON body for POST /api/auth/register.
+// RegisterRequest is the JSON body for POST /api/v1/auth/register.
 type RegisterRequest struct {
 	Email                string `json:"email"`
 	Name                 string `json:"name"`
@@ -14,7 +14,7 @@ type RegisterRequest struct {
 	PasswordConfirmation string `json:"password_confirmation"`
 }
 
-// LoginRequest is the JSON body for POST /api/auth/login.
+// LoginRequest is the JSON body for POST /api/v1/auth/login.
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`

@@ -11,7 +11,7 @@ func TestComments(t *testing.T) {
 	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
 	outsider := signUpFreelancer(t, srv, "other@example.com")
 	task := newTask(t, srv, client, map[string]any{"freelancer_id": myID(t, srv, freelancer), "title": "Logo"})
-	listURL := srv.URL + "/api/comments?task=" + task["id"].(string)
+	listURL := srv.URL + "/api/v1/comments?task=" + task["id"].(string)
 
 	// Both sides talk.
 	resp := post(t, client, listURL, map[string]string{"body": "  Can we try a darker blue?  "})
@@ -20,7 +20,7 @@ func TestComments(t *testing.T) {
 	if first["body"] != "Can we try a darker blue?" || first["can_edit"] != true || first["edited"] != false {
 		t.Fatalf("comment = %v", first)
 	}
-	firstURL := srv.URL + "/api/comments/" + first["id"].(string)
+	firstURL := srv.URL + "/api/v1/comments/" + first["id"].(string)
 	resp = post(t, freelancer, listURL, map[string]string{"body": "Sure, two options by Friday"})
 	wantStatus(t, resp, http.StatusCreated)
 	resp.Body.Close()

@@ -40,8 +40,20 @@ func scopeOf(r *http.Request) Scope {
 	return Scope{With: q.Get("with"), ProjectID: q.Get("project"), Projects: parseProjects(q.Get("projects"))}
 }
 
-// Board handles GET /api/board?with={clientID|personal|freelancerID|all}&project={id}&projects={id,…|none}.
+// Board handles GET /api/v1/board?with={clientID|personal|freelancerID|all}&project={id}&projects={id,…|none}.
 // with=all is a freelancer's every task on one board, its columns merged by name.
+//
+//	@Summary		A board with its tasks
+//	@Description	One pair's board, a project's, or with=all: a freelancer's every task, the boards' columns merged by name.
+//	@Tags			board
+//	@Produce		json
+//	@Param			with		query		string					false	"A counterpart's ID, "personal", or "all""
+//	@Param			project		query		string					false	"A project ID"
+//	@Param			projects	query		string					false	"Comma-separated project IDs; "none" keeps tasks outside any"
+//	@Success		200			{object}	BoardDTO				"OK"
+//	@Failure		401			{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404			{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/board [get]
 func (h *Handler) Board(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -65,7 +77,18 @@ func (h *Handler) Board(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, LanesDTO(p, lanes, role, userID))
 }
 
-// Columns handles GET /api/board/columns with the same query as Board.
+// Columns handles GET /api/v1/board/columns with the same query as Board.
+//
+//	@Summary		A board's columns
+//	@Description	The same query as /board, without tasks.
+//	@Tags			board
+//	@Produce		json
+//	@Param			with	query		string					false	"A counterpart's ID, or "personal""
+//	@Param			project	query		string					false	"A project ID"
+//	@Success		200		{object}	BoardDTO				"OK"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/board/columns [get]
 func (h *Handler) Columns(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -79,7 +102,20 @@ func (h *Handler) Columns(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, ColumnsDTO(p, cols, userID))
 }
 
-// CreateColumn handles POST /api/board/columns.
+// CreateColumn handles POST /api/v1/board/columns.
+//
+//	@Summary		Add a column
+//	@Description	The board's freelancer only.
+//	@Tags			board
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body	ColumnRequest	true	"Request body"
+//	@Success		201		"Created"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/board/columns [post]
 func (h *Handler) CreateColumn(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -97,7 +133,20 @@ func (h *Handler) CreateColumn(w http.ResponseWriter, r *http.Request) {
 	writeDone(w, http.StatusCreated, h.svc.CreateColumn(r.Context(), userID, role, Scope{With: req.With, ProjectID: req.ProjectID}, cp))
 }
 
-// UpdateColumn handles PUT /api/board/columns/{id}.
+// UpdateColumn handles PUT /api/v1/board/columns/{id}.
+//
+//	@Summary	Rename a column or change its category
+//	@Tags		board
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path	string			true	"Column ID"
+//	@Param		body	body	ColumnRequest	true	"Request body"
+//	@Success	204		"No content"
+//	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure	404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router		/board/columns/{id} [put]
 func (h *Handler) UpdateColumn(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := request.UserRole(w, r)
 	if !ok {
@@ -115,7 +164,18 @@ func (h *Handler) UpdateColumn(w http.ResponseWriter, r *http.Request) {
 	writeDone(w, http.StatusNoContent, h.svc.UpdateColumn(r.Context(), userID, chi.URLParam(r, "id"), cp))
 }
 
-// DeleteColumn handles DELETE /api/board/columns/{id}.
+// DeleteColumn handles DELETE /api/v1/board/columns/{id}.
+//
+//	@Summary		Delete a column
+//	@Description	Its tasks move to another column of the same category.
+//	@Tags			board
+//	@Param			id	path	string	true	"Column ID"
+//	@Success		204	"No content"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409	{object}	response.ErrorEnvelope	"Conflicts with the current state"
+//	@Router			/board/columns/{id} [delete]
 func (h *Handler) DeleteColumn(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := request.UserRole(w, r)
 	if !ok {
@@ -124,7 +184,17 @@ func (h *Handler) DeleteColumn(w http.ResponseWriter, r *http.Request) {
 	writeDone(w, http.StatusNoContent, h.svc.DeleteColumn(r.Context(), userID, chi.URLParam(r, "id")))
 }
 
-// Reorder handles PUT /api/board/columns.
+// Reorder handles PUT /api/v1/board/columns.
+//
+//	@Summary	Reorder a board's columns
+//	@Tags		board
+//	@Accept		json
+//	@Param		body	body	OrderRequest	true	"Every column ID, in the new order"
+//	@Success	204		"No content"
+//	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Router		/board/columns [put]
 func (h *Handler) Reorder(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -137,7 +207,20 @@ func (h *Handler) Reorder(w http.ResponseWriter, r *http.Request) {
 	writeDone(w, http.StatusNoContent, h.svc.Reorder(r.Context(), userID, role, req.IDs))
 }
 
-// Move handles POST /api/board/moves.
+// Move handles POST /api/v1/board/moves.
+//
+//	@Summary		Move a card
+//	@Description	Into a column after a card (column_id, after_task_id), or on the all board into a lane (lane).
+//	@Tags			board
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		MoveRequest				true	"Request body"
+//	@Success		200		{object}	map[string]tasks.DTO	"task"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409		{object}	response.ErrorEnvelope	"The move isn't allowed"
+//	@Router			/board/moves [post]
 func (h *Handler) Move(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {

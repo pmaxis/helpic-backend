@@ -206,6 +206,12 @@ type LabelDTO struct {
 	TaskCount int    `json:"task_count"`
 }
 
+// LabelsResponse is a board's labels and the palette their colors come from.
+type LabelsResponse struct {
+	Labels []LabelDTO `json:"labels"`
+	Colors []string   `json:"colors"`
+}
+
 func toLabelDTO(l Label) LabelDTO {
 	return LabelDTO{ID: l.ID, Name: l.Name, Color: l.Color, TaskCount: l.TaskCount}
 }
@@ -219,7 +225,17 @@ func (h *Handler) labelRoutes(r chi.Router) {
 	r.Delete("/labels/{id}", h.DeleteLabel)
 }
 
-// Labels handles GET /api/board/labels?with=…&project=….
+// Labels handles GET /api/v1/board/labels?with=…&project=….
+//
+//	@Summary	A board's labels
+//	@Tags		labels
+//	@Produce	json
+//	@Param		with	query		string					false	"A counterpart's ID, or "personal""
+//	@Param		project	query		string					false	"A project ID"
+//	@Success	200		{object}	LabelsResponse			"OK"
+//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router		/board/labels [get]
 func (h *Handler) Labels(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -234,10 +250,22 @@ func (h *Handler) Labels(w http.ResponseWriter, r *http.Request) {
 	for _, l := range list {
 		out = append(out, toLabelDTO(l))
 	}
-	response.JSON(w, http.StatusOK, map[string]any{"labels": out, "colors": LabelColors})
+	response.JSON(w, http.StatusOK, LabelsResponse{Labels: out, Colors: LabelColors})
 }
 
-// CreateLabel handles POST /api/board/labels.
+// CreateLabel handles POST /api/v1/board/labels.
+//
+//	@Summary		Make a label
+//	@Description	Either side of the board.
+//	@Tags			labels
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		LabelRequest			true	"Request body"
+//	@Success		201		{object}	map[string]LabelDTO		"label"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/board/labels [post]
 func (h *Handler) CreateLabel(w http.ResponseWriter, r *http.Request) {
 	userID, role, ok := request.UserRole(w, r)
 	if !ok {
@@ -260,7 +288,19 @@ func (h *Handler) CreateLabel(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusCreated, map[string]LabelDTO{"label": toLabelDTO(l)})
 }
 
-// UpdateLabel handles PUT /api/board/labels/{id}.
+// UpdateLabel handles PUT /api/v1/board/labels/{id}.
+//
+//	@Summary	Rename or recolor a label
+//	@Tags		labels
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		string					true	"Label ID"
+//	@Param		body	body		LabelRequest			true	"Request body"
+//	@Success	200		{object}	map[string]LabelDTO		"label"
+//	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router		/board/labels/{id} [put]
 func (h *Handler) UpdateLabel(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := request.UserRole(w, r)
 	if !ok {
@@ -283,7 +323,16 @@ func (h *Handler) UpdateLabel(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]LabelDTO{"label": toLabelDTO(l)})
 }
 
-// DeleteLabel handles DELETE /api/board/labels/{id}.
+// DeleteLabel handles DELETE /api/v1/board/labels/{id}.
+//
+//	@Summary		Delete a label
+//	@Description	Takes it off every task too.
+//	@Tags			labels
+//	@Param			id	path	string	true	"Label ID"
+//	@Success		204	"No content"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/board/labels/{id} [delete]
 func (h *Handler) DeleteLabel(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := request.UserRole(w, r)
 	if !ok {

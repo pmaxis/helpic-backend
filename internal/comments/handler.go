@@ -31,7 +31,17 @@ func (h *Handler) Routes(r chi.Router) {
 	})
 }
 
-// List handles GET /api/comments?task={id}.
+// List handles GET /api/v1/comments?task={id}.
+//
+//	@Summary		A task's comments
+//	@Description	Oldest first.
+//	@Tags			comments
+//	@Produce		json
+//	@Param			task	query		string					true	"Task ID"
+//	@Success		200		{object}	map[string][]DTO		"comments"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/comments [get]
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -49,7 +59,19 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string][]DTO{"comments": out})
 }
 
-// Create handles POST /api/comments?task={id}.
+// Create handles POST /api/v1/comments?task={id}.
+//
+//	@Summary	Comment on a task
+//	@Tags		comments
+//	@Accept		json
+//	@Produce	json
+//	@Param		task	query		string					true	"Task ID"
+//	@Param		body	body		Request					true	"Request body"
+//	@Success	201		{object}	map[string]DTO			"comment"
+//	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router		/comments [post]
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -63,7 +85,20 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	writeComment(w, http.StatusCreated, c, userID, err)
 }
 
-// Update handles PUT /api/comments/{id}.
+// Update handles PUT /api/v1/comments/{id}.
+//
+//	@Summary	Edit your comment
+//	@Tags		comments
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		string					true	"Comment ID"
+//	@Param		body	body		Request					true	"Request body"
+//	@Success	200		{object}	map[string]DTO			"comment"
+//	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure	404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router		/comments/{id} [put]
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -77,7 +112,16 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	writeComment(w, http.StatusOK, c, userID, err)
 }
 
-// Delete handles DELETE /api/comments/{id}.
+// Delete handles DELETE /api/v1/comments/{id}.
+//
+//	@Summary	Delete your comment
+//	@Tags		comments
+//	@Param		id	path	string	true	"Comment ID"
+//	@Success	204	"No content"
+//	@Failure	401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure	404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router		/comments/{id} [delete]
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {

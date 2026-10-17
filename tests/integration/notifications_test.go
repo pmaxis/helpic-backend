@@ -14,7 +14,7 @@ type note struct {
 
 func notifications(t *testing.T, srv *httptest.Server, c *http.Client) ([]note, int) {
 	t.Helper()
-	resp := get(t, c, srv.URL+"/api/notifications")
+	resp := get(t, c, srv.URL+"/api/v1/notifications")
 	wantStatus(t, resp, http.StatusOK)
 	body := decode(t, resp)
 	var out []note
@@ -51,7 +51,7 @@ func TestNotifications_SharedWork(t *testing.T) {
 	}
 
 	// The freelancer moves it: the client hears the new status.
-	resp := post(t, freelancer, srv.URL+"/api/tasks/"+task["id"].(string)+"/status", map[string]string{"status": "in_progress"})
+	resp := post(t, freelancer, srv.URL+"/api/v1/tasks/"+task["id"].(string)+"/status", map[string]string{"status": "in_progress"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 	list, _ = notifications(t, srv, client)
@@ -60,19 +60,19 @@ func TestNotifications_SharedWork(t *testing.T) {
 	}
 
 	// Reading.
-	resp = post(t, freelancer, srv.URL+"/api/notifications/"+list[0].ID+"/read", nil)
+	resp = post(t, freelancer, srv.URL+"/api/v1/notifications/"+list[0].ID+"/read", nil)
 	wantStatus(t, resp, http.StatusNotFound) // someone else's
 	resp.Body.Close()
-	resp = post(t, client, srv.URL+"/api/notifications/"+list[0].ID+"/read", nil)
+	resp = post(t, client, srv.URL+"/api/v1/notifications/"+list[0].ID+"/read", nil)
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
-	resp = get(t, client, srv.URL+"/api/notifications/unread-count")
+	resp = get(t, client, srv.URL+"/api/v1/notifications/unread-count")
 	wantStatus(t, resp, http.StatusOK)
 	if got := decode(t, resp)["unread"]; got != float64(0) {
 		t.Fatalf("client unread = %v", got)
 	}
 
-	resp = post(t, freelancer, srv.URL+"/api/notifications/read-all", nil)
+	resp = post(t, freelancer, srv.URL+"/api/v1/notifications/read-all", nil)
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
 	if _, n := notifications(t, srv, freelancer); n != 0 {
@@ -91,7 +91,7 @@ func TestNotifications_PersonalWorkIsSilent(t *testing.T) {
 	srv, _ := newAPI(t)
 	freelancer := signUpFreelancer(t, srv, "free@example.com")
 	task := newTask(t, srv, freelancer, map[string]any{"title": "Mine"})
-	resp := post(t, freelancer, srv.URL+"/api/tasks/"+task["id"].(string)+"/status", map[string]string{"status": "done"})
+	resp := post(t, freelancer, srv.URL+"/api/v1/tasks/"+task["id"].(string)+"/status", map[string]string{"status": "done"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 	createProject(t, srv, freelancer, map[string]any{"name": "Portfolio"})

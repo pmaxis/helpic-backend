@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 COMPOSE := docker compose
 
-.PHONY: help dev up down build logs test test-unit test-integration migrate-up migrate-down psql fmt
+.PHONY: help dev up down build logs test test-unit test-integration migrate-up migrate-down psql fmt swagger
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -42,3 +42,7 @@ psql: ## Open a psql shell on the database
 
 fmt: ## Format Go code
 	go fmt ./...
+
+swagger: ## Regenerate the API docs (docs/) from the handlers' comments; served at /api/docs
+	go run github.com/swaggo/swag/cmd/swag@v1.16.2 init -g cmd/server/main.go -d ./ -o docs --parseInternal --outputTypes go,json,yaml
+	go run github.com/swaggo/swag/cmd/swag@v1.16.2 fmt -d ./cmd,./internal

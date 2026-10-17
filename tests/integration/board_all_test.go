@@ -18,7 +18,7 @@ func TestBoard_All(t *testing.T) {
 	personal := newTask(t, srv, freelancer, map[string]any{"title": "Renew domain"})
 
 	// The client's board gets a Review column; the personal board has none.
-	resp := post(t, freelancer, srv.URL+"/api/board/columns", map[string]string{"with": clientID, "name": "Review", "category": "in_progress"})
+	resp := post(t, freelancer, srv.URL+"/api/v1/board/columns", map[string]string{"with": clientID, "name": "Review", "category": "in_progress"})
 	wantStatus(t, resp, http.StatusCreated)
 	resp.Body.Close()
 
@@ -51,7 +51,7 @@ func TestBoard_All(t *testing.T) {
 	// A card dropped on a lane goes to its own board's column of that name,
 	// or its first column of that category.
 	move := func(task map[string]any, lane string) map[string]any {
-		resp := post(t, freelancer, srv.URL+"/api/board/moves", map[string]string{"task_id": task["id"].(string), "lane": lane})
+		resp := post(t, freelancer, srv.URL+"/api/v1/board/moves", map[string]string{"task_id": task["id"].(string), "lane": lane})
 		wantStatus(t, resp, http.StatusOK)
 		return field(decode(t, resp), "task")
 	}
@@ -61,10 +61,10 @@ func TestBoard_All(t *testing.T) {
 	if got := move(personal, column(b, "Review").ID); got["status_name"] != "In progress" || got["status"] != "in_progress" {
 		t.Fatalf("personal task moved to = %v", got["status_name"])
 	}
-	resp = post(t, freelancer, srv.URL+"/api/board/moves", map[string]string{"task_id": personal["id"].(string), "lane": "nonsense"})
+	resp = post(t, freelancer, srv.URL+"/api/v1/board/moves", map[string]string{"task_id": personal["id"].(string), "lane": "nonsense"})
 	wantStatus(t, resp, http.StatusNotFound)
 	resp.Body.Close()
 
 	// The all board is the freelancer's.
-	wantStatus(t, get(t, client, srv.URL+"/api/board?with=all"), http.StatusNotFound)
+	wantStatus(t, get(t, client, srv.URL+"/api/v1/board?with=all"), http.StatusNotFound)
 }

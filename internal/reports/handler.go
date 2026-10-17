@@ -51,7 +51,15 @@ func (h *Handler) Routes(r chi.Router) {
 	})
 }
 
-// List handles GET /api/reports.
+// List handles GET /api/v1/reports.
+//
+//	@Summary		Your reports
+//	@Description	A freelancer's own; a client's once sent. Team members get none.
+//	@Tags			reports
+//	@Produce		json
+//	@Success		200	{object}	ListResponse			"OK"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router			/reports [get]
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -66,10 +74,19 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	for _, rep := range list {
 		out = append(out, ToDTO(rep, userID))
 	}
-	response.JSON(w, http.StatusOK, map[string]any{"reports": out, "pdf_available": h.pdf.Available()})
+	response.JSON(w, http.StatusOK, ListResponse{Reports: out, PDFAvailable: h.pdf.Available()})
 }
 
-// Get handles GET /api/reports/{id}.
+// Get handles GET /api/v1/reports/{id}.
+//
+//	@Summary	A report with its tasks
+//	@Tags		reports
+//	@Produce	json
+//	@Param		id	path		string					true	"Report ID"
+//	@Success	200	{object}	map[string]DTO			"report"
+//	@Failure	401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router		/reports/{id} [get]
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -79,7 +96,19 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	writeReport(w, http.StatusOK, rep, userID, err)
 }
 
-// Create handles POST /api/reports.
+// Create handles POST /api/v1/reports.
+//
+//	@Summary		Make a report
+//	@Description	Freelancers only. Snapshots the tasks completed in the period (in project_ids, if any), leaving out ones a paid report covers.
+//	@Tags			reports
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		CreateRequest			true	"Request body"
+//	@Success		201		{object}	map[string]DTO			"report"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Router			/reports [post]
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -105,7 +134,22 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Update handles PUT /api/reports/{id}.
+// Update handles PUT /api/v1/reports/{id}.
+//
+//	@Summary		Edit a draft
+//	@Description	Title, summary and kind.
+//	@Tags			reports
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Report ID"
+//	@Param			body	body		UpdateRequest			true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"report"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409		{object}	response.ErrorEnvelope	"Already sent"
+//	@Router			/reports/{id} [put]
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -124,7 +168,22 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	writeReport(w, http.StatusOK, rep, userID, err)
 }
 
-// UpdateItem handles PUT /api/reports/{id}/items/{itemID}: the task's notes.
+// UpdateItem handles PUT /api/v1/reports/{id}/items/{itemID}: the task's notes.
+//
+//	@Summary	Rewrite a task's notes in a draft
+//	@Tags		reports
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		string					true	"Report ID"
+//	@Param		itemID	path		string					true	"Report item ID"
+//	@Param		body	body		ItemRequest				true	"Request body"
+//	@Success	200		{object}	map[string]DTO			"report"
+//	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure	404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure	409		{object}	response.ErrorEnvelope	"Already sent"
+//	@Router		/reports/{id}/items/{itemID} [put]
 func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -143,7 +202,19 @@ func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	writeReport(w, http.StatusOK, rep, userID, err)
 }
 
-// RemoveItem handles DELETE /api/reports/{id}/items/{itemID}.
+// RemoveItem handles DELETE /api/v1/reports/{id}/items/{itemID}.
+//
+//	@Summary	Drop a task from a draft
+//	@Tags		reports
+//	@Produce	json
+//	@Param		id		path		string					true	"Report ID"
+//	@Param		itemID	path		string					true	"Report item ID"
+//	@Success	200		{object}	map[string]DTO			"report"
+//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure	404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure	409		{object}	response.ErrorEnvelope	"Already sent"
+//	@Router		/reports/{id}/items/{itemID} [delete]
 func (h *Handler) RemoveItem(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -153,7 +224,19 @@ func (h *Handler) RemoveItem(w http.ResponseWriter, r *http.Request) {
 	writeReport(w, http.StatusOK, rep, userID, err)
 }
 
-// Send handles POST /api/reports/{id}/send.
+// Send handles POST /api/v1/reports/{id}/send.
+//
+//	@Summary		Send a draft to its client
+//	@Description	Freezes it, its prices and currency; the client is notified.
+//	@Tags			reports
+//	@Produce		json
+//	@Param			id	path		string					true	"Report ID"
+//	@Success		200	{object}	map[string]DTO			"report"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409	{object}	response.ErrorEnvelope	"Already sent, or personal"
+//	@Router			/reports/{id}/send [post]
 func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -163,7 +246,19 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 	writeReport(w, http.StatusOK, rep, userID, err)
 }
 
-// MarkPaid handles POST /api/reports/{id}/paid: the client paid it.
+// MarkPaid handles POST /api/v1/reports/{id}/paid: the client paid it.
+//
+//	@Summary		Mark a sent report paid
+//	@Description	The report's client only. Its tasks move to the board's Paid column; the freelancer is notified.
+//	@Tags			reports
+//	@Produce		json
+//	@Param			id	path		string					true	"Report ID"
+//	@Success		200	{object}	map[string]DTO			"report"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not the report's client"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409	{object}	response.ErrorEnvelope	"Not sent, or already paid"
+//	@Router			/reports/{id}/paid [post]
 func (h *Handler) MarkPaid(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -173,7 +268,17 @@ func (h *Handler) MarkPaid(w http.ResponseWriter, r *http.Request) {
 	writeReport(w, http.StatusOK, rep, userID, err)
 }
 
-// History handles GET /api/reports/{id}/history.
+// History handles GET /api/v1/reports/{id}/history.
+//
+//	@Summary		A report's history
+//	@Description	Its client sees only the sending and the payment.
+//	@Tags			reports
+//	@Produce		json
+//	@Param			id	path		string					true	"Report ID"
+//	@Success		200	{object}	map[string][]EventDTO	"events"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/reports/{id}/history [get]
 func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -191,7 +296,17 @@ func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string][]EventDTO{"events": out})
 }
 
-// Delete handles DELETE /api/reports/{id}.
+// Delete handles DELETE /api/v1/reports/{id}.
+//
+//	@Summary		Delete a report
+//	@Description	Its freelancer, sent or not; a sent one is gone for the client too.
+//	@Tags			reports
+//	@Param			id	path	string	true	"Report ID"
+//	@Success		204	"No content"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/reports/{id} [delete]
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -204,8 +319,18 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// HTML handles GET /api/reports/{id}/html: the on-screen sheet, for servers
+// HTML handles GET /api/v1/reports/{id}/html: the on-screen sheet, for servers
 // that can't print PDFs.
+//
+//	@Summary		A report as an HTML sheet
+//	@Description	For servers that can't print PDFs.
+//	@Tags			reports
+//	@Produce		html
+//	@Param			id	path		string					true	"Report ID"
+//	@Success		200	{string}	string					"HTML"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/reports/{id}/html [get]
 func (h *Handler) HTML(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -228,8 +353,20 @@ func (h *Handler) HTML(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(html)
 }
 
-// PDF handles GET /api/reports/{id}/pdf: the file, printed by headless Chrome.
+// PDF handles GET /api/v1/reports/{id}/pdf: the file, printed by headless Chrome.
 // ?download=1 asks the browser to save it rather than show it.
+//
+//	@Summary		A report as PDF
+//	@Description	Printed by headless Chromium; 503 without it.
+//	@Tags			reports
+//	@Produce		application/pdf
+//	@Param			id			path		string					true	"Report ID"
+//	@Param			download	query		string					false	"1 to save it rather than show it"
+//	@Success		200			{file}		file					"PDF"
+//	@Failure		401			{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404			{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		503			{object}	response.ErrorEnvelope	"No Chromium on this server"
+//	@Router			/reports/{id}/pdf [get]
 func (h *Handler) PDF(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {

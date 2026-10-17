@@ -11,7 +11,7 @@ import (
 
 const maxCompanyName = 120
 
-// NameRequest is the JSON body for PUT /api/team.
+// NameRequest is the JSON body for PUT /api/v1/team.
 type NameRequest struct {
 	Name string `json:"name"`
 }
@@ -25,7 +25,7 @@ func (r NameRequest) Validate() (string, map[string]string) {
 	return name, nil
 }
 
-// InviteRequest is the JSON body for POST /api/team/invites.
+// InviteRequest is the JSON body for POST /api/v1/team/invites.
 type InviteRequest struct {
 	Email string `json:"email"`
 	Name  string `json:"name"`
@@ -53,7 +53,7 @@ func (r InviteRequest) Validate() (InviteParams, map[string]string) {
 	return p, fields
 }
 
-// JoinRequest is the JSON body for POST /api/team-invites/{token}/accept.
+// JoinRequest is the JSON body for POST /api/v1/team-invites/{token}/accept.
 type JoinRequest struct {
 	Name                 string `json:"name"`
 	Password             string `json:"password"`

@@ -18,7 +18,7 @@ const (
 	maxPeriod = 366 * 24 * time.Hour
 )
 
-// CreateRequest is the JSON body for POST /api/reports.
+// CreateRequest is the JSON body for POST /api/v1/reports.
 type CreateRequest struct {
 	ClientID string `json:"client_id"`
 	// ProjectIDs limits the report to these projects; none means all.
@@ -85,7 +85,7 @@ func (r CreateRequest) Validate() (CreateParams, map[string]string) {
 	return p, fields
 }
 
-// UpdateRequest is the JSON body for PUT /api/reports/{id}.
+// UpdateRequest is the JSON body for PUT /api/v1/reports/{id}.
 type UpdateRequest struct {
 	Title   string `json:"title"`
 	Summary string `json:"summary"`
@@ -116,7 +116,7 @@ func (r UpdateRequest) Validate() (UpdateParams, map[string]string) {
 	return p, fields
 }
 
-// ItemRequest is the JSON body for PUT /api/reports/{id}/items/{itemID}.
+// ItemRequest is the JSON body for PUT /api/v1/reports/{id}/items/{itemID}.
 type ItemRequest struct {
 	Notes string `json:"notes"`
 }
@@ -196,6 +196,13 @@ type DTO struct {
 	CanDelete bool      `json:"can_delete"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ListResponse is the reports the viewer may see, and whether the server can
+// print PDFs (it needs Chromium).
+type ListResponse struct {
+	Reports      []DTO `json:"reports"`
+	PDFAvailable bool  `json:"pdf_available"`
 }
 
 // ToDTO maps a report for the viewer.

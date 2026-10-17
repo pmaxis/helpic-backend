@@ -13,7 +13,7 @@ func TestPriorityAndLabels(t *testing.T) {
 
 	// Priority comes with the task, and either side changes it.
 	task := newTask(t, srv, client, map[string]any{"freelancer_id": freelancerID, "title": "Logo", "priority": "high"})
-	taskURL := srv.URL + "/api/tasks/" + task["id"].(string)
+	taskURL := srv.URL + "/api/v1/tasks/" + task["id"].(string)
 	if task["priority"] != "high" || len(task["labels"].([]any)) != 0 {
 		t.Fatalf("new task = %v", task)
 	}
@@ -30,7 +30,7 @@ func TestPriorityAndLabels(t *testing.T) {
 	resp.Body.Close()
 
 	// Both sides make labels on their board; names are unique whatever the case.
-	labelsURL := srv.URL + "/api/board/labels"
+	labelsURL := srv.URL + "/api/v1/board/labels"
 	resp = post(t, freelancer, labelsURL, map[string]string{"with": clientID, "name": "  Design  ", "color": "violet"})
 	wantStatus(t, resp, http.StatusCreated)
 	design := field(decode(t, resp), "label")

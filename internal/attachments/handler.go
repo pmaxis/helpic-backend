@@ -38,7 +38,16 @@ func (h *Handler) Routes(r chi.Router) {
 	})
 }
 
-// List handles GET /api/attachments?task={id}.
+// List handles GET /api/v1/attachments?task={id}.
+//
+//	@Summary	A task's files
+//	@Tags		attachments
+//	@Produce	json
+//	@Param		task	query		string					true	"Task ID"
+//	@Success	200		{object}	ListResponse			"OK"
+//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router		/attachments [get]
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -53,11 +62,25 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	for _, a := range list {
 		out = append(out, ToDTO(a, userID))
 	}
-	response.JSON(w, http.StatusOK, map[string]any{"attachments": out, "max_size_bytes": h.svc.MaxSize()})
+	response.JSON(w, http.StatusOK, ListResponse{Attachments: out, MaxSizeBytes: h.svc.MaxSize()})
 }
 
-// Upload handles POST /api/attachments?task={id}: a multipart form with one
+// Upload handles POST /api/v1/attachments?task={id}: a multipart form with one
 // "file" part.
+//
+//	@Summary		Attach a file to a task
+//	@Description	Multipart, one "file" part, up to MAX_UPLOAD_MB. The type is read from the bytes.
+//	@Tags			attachments
+//	@Accept			multipart/form-data
+//	@Produce		json
+//	@Param			task	query		string					true	"Task ID"
+//	@Param			file	formData	file					true	"The file"
+//	@Success		201		{object}	map[string]DTO			"attachment"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		413		{object}	response.ErrorEnvelope	"Too large"
+//	@Router			/attachments [post]
 func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -92,8 +115,19 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Download handles GET /api/attachments/{id}. Files are always downloaded;
+// Download handles GET /api/v1/attachments/{id}. Files are always downloaded;
 // ?inline=1 shows a safe image in place.
+//
+//	@Summary		Download a file
+//	@Description	Always as a download, except PNG/JPEG/GIF/WebP images with inline=1.
+//	@Tags			attachments
+//	@Produce		octet-stream
+//	@Param			id		path		string					true	"Attachment ID"
+//	@Param			inline	query		string					false	"1 to show a safe image in place"
+//	@Success		200		{file}		file					"The file"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/attachments/{id} [get]
 func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -119,7 +153,17 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "", a.CreatedAt, f)
 }
 
-// Delete handles DELETE /api/attachments/{id}.
+// Delete handles DELETE /api/v1/attachments/{id}.
+//
+//	@Summary		Delete a file
+//	@Description	Its uploader only.
+//	@Tags			attachments
+//	@Param			id	path	string	true	"Attachment ID"
+//	@Success		204	"No content"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/attachments/{id} [delete]
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {

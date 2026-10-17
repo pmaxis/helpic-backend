@@ -13,7 +13,7 @@ func TestTaskHistory(t *testing.T) {
 	project := createProject(t, srv, freelancer, map[string]any{"client_id": myID(t, srv, client), "name": "Website"})
 
 	task := newTask(t, srv, client, map[string]any{"freelancer_id": myID(t, srv, freelancer), "title": "Logo"})
-	taskURL := srv.URL + "/api/tasks/" + task["id"].(string)
+	taskURL := srv.URL + "/api/v1/tasks/" + task["id"].(string)
 
 	// The client edits; an unchanged field leaves no trace.
 	resp := do(t, client, http.MethodPut, taskURL, map[string]any{
@@ -35,7 +35,7 @@ func TestTaskHistory(t *testing.T) {
 	resp = upload(t, srv, freelancer, task["id"].(string), "draft.png", pngBytes)
 	wantStatus(t, resp, http.StatusCreated)
 	file := field(decode(t, resp), "attachment")
-	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/attachments/"+file["id"].(string), nil)
+	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/v1/attachments/"+file["id"].(string), nil)
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
 

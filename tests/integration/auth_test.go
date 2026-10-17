@@ -105,6 +105,7 @@ func newAPI(t *testing.T) (*httptest.Server, *http.Client) {
 	cfg := testCfg
 	cfg.UploadsDir = t.TempDir()
 	cfg.MaxUploadBytes = 1 << 20
+	cfg.SwaggerEnabled = true
 	app, err := server.New(cfg, testPool)
 	if err != nil {
 		t.Fatalf("build app: %v", err)
@@ -173,7 +174,7 @@ func errorCode(body map[string]any) string {
 }
 
 func register(t *testing.T, c *http.Client, base, email, password string) *http.Response {
-	return post(t, c, base+"/api/auth/register", map[string]string{
+	return post(t, c, base+"/api/v1/auth/register", map[string]string{
 		"email":                 email,
 		"name":                  "Test User",
 		"password":              password,
@@ -231,7 +232,7 @@ func TestRegister_WeakPassword(t *testing.T) {
 
 func TestRegister_PasswordMismatch(t *testing.T) {
 	srv, c := newAPI(t)
-	resp := post(t, c, srv.URL+"/api/auth/register", map[string]string{
+	resp := post(t, c, srv.URL+"/api/v1/auth/register", map[string]string{
 		"email":                 "mismatch@example.com",
 		"password":              "supersecret",
 		"password_confirmation": "different-secret",
@@ -261,7 +262,7 @@ func TestLogin_Success(t *testing.T) {
 	srv, c := newAPI(t)
 	register(t, c, srv.URL, "login@example.com", "supersecret").Body.Close()
 
-	resp := post(t, c, srv.URL+"/api/auth/login", map[string]string{
+	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
 		"email":    "login@example.com",
 		"password": "supersecret",
 	})
@@ -293,7 +294,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 	srv, c := newAPI(t)
 	register(t, c, srv.URL, "wrongpw@example.com", "supersecret").Body.Close()
 
-	resp := post(t, c, srv.URL+"/api/auth/login", map[string]string{
+	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
 		"email":    "wrongpw@example.com",
 		"password": "not-the-password",
 	})
@@ -305,7 +306,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 
 func TestLogin_NonExistingEmail(t *testing.T) {
 	srv, c := newAPI(t)
-	resp := post(t, c, srv.URL+"/api/auth/login", map[string]string{
+	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
 		"email":    "ghost@example.com",
 		"password": "supersecret",
 	})
@@ -315,29 +316,29 @@ func TestLogin_NonExistingEmail(t *testing.T) {
 	}
 }
 
-// --- /api/me -----------------------------------------------------------------
+// --- /api/v1/me -----------------------------------------------------------------
 
 func TestMe_ValidSession(t *testing.T) {
 	srv, c := newAPI(t)
 	register(t, c, srv.URL, "me@example.com", "supersecret").Body.Close()
-	post(t, c, srv.URL+"/api/auth/login", map[string]string{
+	post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
 		"email":    "me@example.com",
 		"password": "supersecret",
 	}).Body.Close()
 
-	resp := get(t, c, srv.URL+"/api/me")
+	resp := get(t, c, srv.URL+"/api/v1/me")
 	wantStatus(t, resp, http.StatusOK)
 
 	body := decode(t, resp)
 	u, _ := body["user"].(map[string]any)
 	if u == nil || u["email"] != "me@example.com" {
-		t.Fatalf("unexpected /api/me body: %v", body)
+		t.Fatalf("unexpected /api/v1/me body: %v", body)
 	}
 }
 
 func TestMe_NoCookie(t *testing.T) {
 	srv, _ := newAPI(t)
-	resp, err := http.Get(srv.URL + "/api/me")
+	resp, err := http.Get(srv.URL + "/api/v1/me")
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -349,7 +350,7 @@ func TestMe_NoCookie(t *testing.T) {
 
 func TestMe_InvalidJWT(t *testing.T) {
 	srv, _ := newAPI(t)
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/me", nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/me", nil)
 	req.AddCookie(&http.Cookie{Name: "auth_token", Value: "this.is.not.a.jwt"})
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -374,7 +375,7 @@ func TestMe_ExpiredJWT(t *testing.T) {
 		t.Fatalf("generate expired token: %v", err)
 	}
 
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/me", nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/me", nil)
 	req.AddCookie(&http.Cookie{Name: "auth_token", Value: expired})
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -388,17 +389,17 @@ func TestMe_ExpiredJWT(t *testing.T) {
 func TestLogout_ClearsCookie(t *testing.T) {
 	srv, c := newAPI(t)
 	register(t, c, srv.URL, "logout@example.com", "supersecret").Body.Close()
-	post(t, c, srv.URL+"/api/auth/login", map[string]string{
+	post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
 		"email":    "logout@example.com",
 		"password": "supersecret",
 	}).Body.Close()
 
 	// Session works before logout.
-	pre := get(t, c, srv.URL+"/api/me")
+	pre := get(t, c, srv.URL+"/api/v1/me")
 	wantStatus(t, pre, http.StatusOK)
 	pre.Body.Close()
 
-	resp := post(t, c, srv.URL+"/api/auth/logout", nil)
+	resp := post(t, c, srv.URL+"/api/v1/auth/logout", nil)
 	wantStatus(t, resp, http.StatusNoContent)
 
 	var cleared bool
@@ -412,7 +413,7 @@ func TestLogout_ClearsCookie(t *testing.T) {
 	}
 
 	// Session is rejected after logout (cookie jar dropped the cookie).
-	postLogout := get(t, c, srv.URL+"/api/me")
+	postLogout := get(t, c, srv.URL+"/api/v1/me")
 	wantStatus(t, postLogout, http.StatusUnauthorized)
 	postLogout.Body.Close()
 }

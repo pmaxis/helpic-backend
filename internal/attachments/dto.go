@@ -24,6 +24,12 @@ type DTO struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// ListResponse is a task's files and the largest file the server takes.
+type ListResponse struct {
+	Attachments  []DTO `json:"attachments"`
+	MaxSizeBytes int64 `json:"max_size_bytes"`
+}
+
 // ToDTO maps a file for the viewer.
 func ToDTO(a Attachment, viewerID string) DTO {
 	return DTO{

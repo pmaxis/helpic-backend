@@ -41,7 +41,16 @@ func (h *Handler) PublicRoutes(r chi.Router) {
 	r.Post("/team-invites/{token}/accept", h.Join)
 }
 
-// Overview handles GET /api/team.
+// Overview handles GET /api/v1/team.
+//
+//	@Summary		Your company and its team
+//	@Description	Clients only. The owner also gets the members and pending invitations.
+//	@Tags			team
+//	@Produce		json
+//	@Success		200	{object}	map[string]OverviewDTO	"team"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Router			/team [get]
 func (h *Handler) Overview(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -51,7 +60,18 @@ func (h *Handler) Overview(w http.ResponseWriter, r *http.Request) {
 	writeOverview(w, o, err)
 }
 
-// Rename handles PUT /api/team.
+// Rename handles PUT /api/v1/team.
+//
+//	@Summary	Name your company
+//	@Tags		team
+//	@Accept		json
+//	@Produce	json
+//	@Param		body	body		NameRequest				true	"Request body"
+//	@Success	200		{object}	map[string]OverviewDTO	"team"
+//	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	403		{object}	response.ErrorEnvelope	"Members don't run the team"
+//	@Router		/team [put]
 func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -70,7 +90,19 @@ func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
 	writeOverview(w, o, err)
 }
 
-// Invite handles POST /api/team/invites.
+// Invite handles POST /api/v1/team/invites.
+//
+//	@Summary		Invite someone to your team
+//	@Description	They join with a new account through /join/{token}.
+//	@Tags			team
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		InviteRequest			true	"Request body"
+//	@Success		201		{object}	map[string]InviteDTO	"invite"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Members don't run the team"
+//	@Router			/team/invites [post]
 func (h *Handler) Invite(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -98,7 +130,16 @@ func (h *Handler) Invite(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// RevokeInvite handles DELETE /api/team/invites/{id}.
+// RevokeInvite handles DELETE /api/v1/team/invites/{id}.
+//
+//	@Summary	Revoke a team invitation
+//	@Tags		team
+//	@Param		id	path	string	true	"Invitation ID"
+//	@Success	204	"No content"
+//	@Failure	401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure	404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router		/team/invites/{id} [delete]
 func (h *Handler) RevokeInvite(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -107,7 +148,16 @@ func (h *Handler) RevokeInvite(w http.ResponseWriter, r *http.Request) {
 	writeDone(w, h.svc.RevokeInvite(r.Context(), userID, chi.URLParam(r, "id")))
 }
 
-// RemoveMember handles DELETE /api/team/members/{id}.
+// RemoveMember handles DELETE /api/v1/team/members/{id}.
+//
+//	@Summary	Remove a team member
+//	@Tags		team
+//	@Param		id	path	string	true	"Member's user ID"
+//	@Success	204	"No content"
+//	@Failure	401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure	404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router		/team/members/{id} [delete]
 func (h *Handler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {
@@ -116,7 +166,16 @@ func (h *Handler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	writeDone(w, h.svc.RemoveMember(r.Context(), userID, chi.URLParam(r, "id")))
 }
 
-// FindInvite handles GET /api/team-invites/{token}.
+// FindInvite handles GET /api/v1/team-invites/{token}.
+//
+//	@Summary		Look up a team invitation
+//	@Description	Public: the join page.
+//	@Tags			invitations
+//	@Produce		json
+//	@Param			token	path		string					true	"Invitation token"
+//	@Success		200		{object}	map[string]LookupDTO	"invite"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Invalid, used or expired"
+//	@Router			/team-invites/{token} [get]
 func (h *Handler) FindInvite(w http.ResponseWriter, r *http.Request) {
 	l, err := h.svc.Find(r.Context(), chi.URLParam(r, "token"))
 	if err != nil {
@@ -132,8 +191,20 @@ func (h *Handler) FindInvite(w http.ResponseWriter, r *http.Request) {
 	}})
 }
 
-// Join handles POST /api/team-invites/{token}/accept: it creates the member's
+// Join handles POST /api/v1/team-invites/{token}/accept: it creates the member's
 // account, adds it to the company and starts a session.
+//
+//	@Summary		Join a team
+//	@Description	Public. Creates the member's account, adds it to the company and sets the auth cookie.
+//	@Tags			invitations
+//	@Accept			json
+//	@Produce		json
+//	@Param			token	path		string					true	"Invitation token"
+//	@Param			body	body		JoinRequest				true	"Request body"
+//	@Success		200		{object}	user.Response			"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Invalid, used or expired"
+//	@Router			/team-invites/{token}/accept [post]
 func (h *Handler) Join(w http.ResponseWriter, r *http.Request) {
 	var req JoinRequest
 	if !request.Decode(w, r, &req) {
