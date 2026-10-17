@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{.Locale}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -24,7 +24,7 @@
   /* The footer goes in every page's bottom margin. */
   @page {
     @bottom-left {
-      content: "Prepared {{.Prepared}}{{if .SentOn}} · sent {{.SentOn}}{{end}}{{if .PaidOn}} · paid {{.PaidOn}}{{end}} · Helpic";
+      content: "{{.Footer}} · Helpic";
       vertical-align: top;
       font-family: 'Inter', 'DejaVu Sans', Arial, sans-serif;
       font-size: 8.5pt;
@@ -114,29 +114,29 @@
 <body class="{{if .ForPDF}}pdf{{else}}preview{{end}}">
 <div class="sheet">
   <header>
-    <div class="eyebrow">Work report{{if .Draft}}<span class="draft">Draft</span>{{end}}</div>
+    <div class="eyebrow">{{t "Work report"}}{{if .Draft}}<span class="draft">{{t "Draft"}}</span>{{end}}</div>
     <h1>{{.Title}}</h1>
     <div class="facts">
       <span>{{.Period}}</span>
       {{- if .Project}}<span>{{.Project}}</span>{{end}}
-      <span>{{.Count}} {{if eq .Count 1}}task{{else}}tasks{{end}} completed</span>
+      <span>{{.Completed}}</span>
     </div>
   </header>
 
 
   {{- if or .SummaryText .SummaryBullets}}
   <section>
-    <h2>Summary</h2>
+    <h2>{{t "Summary"}}</h2>
     {{- if .SummaryText}}<p>{{.SummaryText}}</p>{{end}}
     {{- if .SummaryBullets}}<ul class="summary">{{range .SummaryBullets}}<li>{{.}}</li>{{end}}</ul>{{end}}
   </section>
   {{- end}}
 
   <section>
-    <h2>Completed tasks</h2>
+    <h2>{{t "Completed tasks"}}</h2>
     {{- if .Items}}
     <table class="tasks">
-      <thead><tr><th class="n">#</th><th>Task</th>{{if .ShowProject}}<th class="project">Project</th>{{end}}<th class="date">Completed</th>{{if .ShowPrice}}<th class="price">Price</th>{{end}}</tr></thead>
+      <thead><tr><th class="n">#</th><th>{{t "Task"}}</th>{{if .ShowProject}}<th class="project">{{t "Project"}}</th>{{end}}<th class="date">{{t "Completed"}}</th>{{if .ShowPrice}}<th class="price">{{t "Price"}}</th>{{end}}</tr></thead>
       <tbody>
       {{- range $i, $it := .Items}}
         <tr>
@@ -153,16 +153,16 @@
       </tbody>
     </table>
     {{- if .ShowPrice}}
-    <div class="total"><span class="label">Total</span><span class="sum">{{.Total}}</span></div>
+    <div class="total"><span class="label">{{t "Total"}}</span><span class="sum">{{.Total}}</span></div>
     {{- end}}
     {{- else}}
-    <div class="empty">No tasks were completed in this period.</div>
+    <div class="empty">{{t "No tasks were completed in this period."}}</div>
     {{- end}}
   </section>
 
   {{- if not .ForPDF}}
   <footer>
-    <span>Prepared {{.Prepared}}{{if .SentOn}} · sent {{.SentOn}}{{end}}{{if .PaidOn}} · paid {{.PaidOn}}{{end}} · Helpic</span>
+    <span>{{.Footer}} · Helpic</span>
     <span>{{.From.Name}}{{if ne .From.Name .From.Email}} ({{.From.Email}}){{end}}</span>
   </footer>
   {{- end}}

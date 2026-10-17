@@ -1,97 +1,45 @@
 package telegram
 
 import (
-	"fmt"
 	"html"
 	"net/url"
-	"time"
 
+	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/notifications"
 )
 
-// message words a notification for Telegram, as the app's bell does, with a
-// button to open what it is about.
-func (s *Service) message(n notifications.Notification) (string, *Button) {
+// message words a notification for Telegram in the locale, as the app's bell
+// does, with a button to open what it is about.
+func (s *Service) message(n notifications.Notification, locale string) (string, *Button) {
 	who := n.ActorName
 	if who == "" {
 		who = n.ActorEmail
 	}
-	subject := "“" + html.EscapeString(n.Subject) + "”"
-	detail := html.EscapeString(n.Detail)
-
-	// Reminders have no actor: the date came.
+	text := notifications.Phrase(n, locale,
+		"<b>"+html.EscapeString(who)+"</b>",
+		"“"+html.EscapeString(n.Subject)+"”",
+		html.EscapeString(notifications.Detail(n, locale)))
 	switch n.Kind {
 	case notifications.KindTaskDueSoon:
-		return "⏰ " + subject + " is due <b>tomorrow</b>", s.button(n)
+		text = "⏰ " + text
 	case notifications.KindTaskOverdue:
-		return "⚠️ " + subject + " is <b>overdue</b>: it was due " + html.EscapeString(dueDate(n.Detail)), s.button(n)
-	}
-
-	var what string
-	switch n.Kind {
-	case notifications.KindTaskCreated:
-		what = "added a task " + subject
-	case notifications.KindTaskStatus:
-		what = fmt.Sprintf("moved %s to <b>%s</b>", subject, detail)
-	case notifications.KindTaskUpdated:
-		what = "edited " + subject
-	case notifications.KindTaskDeleted:
-		what = "deleted " + subject
-	case notifications.KindProjectCreated:
-		what = "started a project " + subject
-	case notifications.KindClientJoined:
-		what = "accepted your invitation"
-	case notifications.KindMemberJoined:
-		what = "joined your team"
-	case notifications.KindReportSent:
-		what = "sent you a report " + subject
+		text = "⚠️ " + text
 	case notifications.KindReportPaid:
-		what = "marked " + subject + " as paid 💸"
+		text += " 💸"
 	case notifications.KindCommentAdded:
-		what = "commented on " + subject
-	case notifications.KindAttachmentAdded:
-		what = fmt.Sprintf("attached “%s” to %s", detail, subject)
-	default:
-		what = "changed " + subject
+		if n.Detail != "" {
+			text += "\n\n<i>" + html.EscapeString(n.Detail) + "</i>"
+		}
 	}
-
-	text := "<b>" + html.EscapeString(who) + "</b> " + what
-	if n.Kind == notifications.KindCommentAdded && n.Detail != "" {
-		text += "\n\n<i>" + detail + "</i>"
-	}
-	return text, s.button(n)
+	return text, s.button(n, locale)
 }
 
 // button opens what the notification is about in the app. Telegram refuses
 // buttons to local addresses, so there is none in development.
-func (s *Service) button(n notifications.Notification) *Button {
+func (s *Service) button(n notifications.Notification, locale string) *Button {
 	u, err := url.Parse(s.appURL)
 	if err != nil || u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "" {
 		return nil
 	}
-	var path string
-	switch {
-	case n.ReportID != "":
-		path = "/reports/" + n.ReportID
-	case n.TaskID != "":
-		path = "/tasks/" + n.TaskID
-	case n.ProjectID != "":
-		path = "/projects/" + n.ProjectID
-	case n.Kind == notifications.KindClientJoined:
-		path = "/clients"
-	case n.Kind == notifications.KindMemberJoined:
-		path = "/team"
-	default:
-		path = "/dashboard"
-	}
-	return &Button{Text: "Open in Helpic", URL: s.appURL + path}
-}
-
-// dueDate shows a YYYY-MM-DD due date as "17 Oct 2026".
-func dueDate(iso string) string {
-	d, err := time.Parse(time.DateOnly, iso)
-	if err != nil {
-		return iso
-	}
-	return d.Format("2 Jan 2006")
+	return &Button{Text: i18n.T(locale, "Open in Helpic"), URL: s.appURL + notifications.Path(n)}
 }

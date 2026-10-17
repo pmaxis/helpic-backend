@@ -52,6 +52,11 @@ func (r *Repository) SetPasswordHash(ctx context.Context, id, hash string) (user
 	return r.updateOne(ctx, `UPDATE users SET password_hash = $2 WHERE id = $1 RETURNING `+user.Columns, id, hash)
 }
 
+// SetLocale changes the user's language.
+func (r *Repository) SetLocale(ctx context.Context, id, locale string) (user.User, error) {
+	return r.updateOne(ctx, `UPDATE users SET locale = $2 WHERE id = $1 RETURNING `+user.Columns, id, locale)
+}
+
 // SetCurrency changes the billing currency.
 func (r *Repository) SetCurrency(ctx context.Context, id, currency string) (user.User, error) {
 	return r.updateOne(ctx, `UPDATE users SET currency = $2 WHERE id = $1 RETURNING `+user.Columns, id, currency)

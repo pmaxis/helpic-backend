@@ -7,14 +7,17 @@ import (
 	"html/template"
 	"strings"
 
+	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/money"
 )
 
 //go:embed templates/report.html
 var templateFS embed.FS
 
+// reportTmpl is parsed once; each render clones it with "t" speaking the
+// reader's language.
 var reportTmpl = template.Must(template.New("report.html").
-	Funcs(template.FuncMap{"inc": func(i int) int { return i + 1 }}).
+	Funcs(template.FuncMap{"inc": func(i int) int { return i + 1 }, "t": func(s string) string { return s }}).
 	ParseFS(templateFS, "templates/report.html"))
 
 // RenderMode selects what the HTML is for.
@@ -45,6 +48,8 @@ type viewItem struct {
 }
 
 type view struct {
+	// Locale is the reader's language.
+	Locale string
 	ForPDF bool
 	Draft  bool
 	// Detailed shows each task's notes under its title.
@@ -63,13 +68,11 @@ type view struct {
 	ShowPrice bool
 	Total     string
 	Items     []viewItem
-	Count     int
-	Prepared  string
-	SentOn    string
-	PaidOn    string
+	// Completed says how many tasks: "3 tasks completed".
+	Completed string
+	// Footer says when it was prepared, sent and paid.
+	Footer string
 }
-
-const printDate = "2 Jan 2006"
 
 func party(p Party) viewParty {
 	if p.Name == "" {
@@ -78,18 +81,19 @@ func party(p Party) viewParty {
 	return viewParty{Name: p.Name, Email: p.Email}
 }
 
-// PeriodLabel is "1 – 31 Oct 2026", "28 Sep – 3 Oct 2026" or one day.
-func PeriodLabel(r Report) string {
+// PeriodLabel is "1 – 31 Oct 2026", "28 Sep – 3 Oct 2026" or one day, in
+// the locale ("1 – 31 жовтня 2026").
+func PeriodLabel(r Report, locale string) string {
 	from, to := r.From, r.To
 	switch {
 	case from.Equal(to):
-		return from.Format(printDate)
+		return i18n.Date(locale, from)
 	case from.Year() == to.Year() && from.Month() == to.Month():
-		return fmt.Sprintf("%d – %s", from.Day(), to.Format(printDate))
+		return fmt.Sprintf("%d – %s", from.Day(), i18n.Date(locale, to))
 	case from.Year() == to.Year():
-		return from.Format("2 Jan") + " – " + to.Format(printDate)
+		return i18n.DayMonth(locale, from) + " – " + i18n.Date(locale, to)
 	}
-	return from.Format(printDate) + " – " + to.Format(printDate)
+	return i18n.Date(locale, from) + " – " + i18n.Date(locale, to)
 }
 
 var bulletPrefixes = []string{"- ", "* ", "• ", "– ", "— ", "-", "•"}
@@ -122,30 +126,32 @@ func splitText(s string) (paragraph string, bullets []string) {
 	return "", lines
 }
 
-func buildView(r Report, mode RenderMode) view {
+func buildView(r Report, mode RenderMode, locale string) view {
+	t := func(text string, args ...any) string { return i18n.T(locale, text, args...) }
 	v := view{
-		ForPDF:   mode == ModePDF,
-		Draft:    r.Status == StatusDraft && r.Client != nil,
-		Detailed: r.Kind == KindDetailed,
-		Title:    r.Title,
-		Period:   PeriodLabel(r),
-		Project:  r.ProjectNames(),
-		From:     party(r.Freelancer),
-		Count:    len(r.Items),
-		Prepared: r.CreatedAt.Format(printDate),
+		Locale:    locale,
+		ForPDF:    mode == ModePDF,
+		Draft:     r.Status == StatusDraft && r.Client != nil,
+		Detailed:  r.Kind == KindDetailed,
+		Title:     r.Title,
+		Period:    PeriodLabel(r, locale),
+		Project:   r.ProjectNames(),
+		From:      party(r.Freelancer),
+		Completed: t("%s completed", i18n.Count(locale, len(r.Items), "task")),
+		Footer:    t("Prepared %s", i18n.Date(locale, r.CreatedAt)),
 	}
 	if r.SentAt != nil {
-		v.SentOn = r.SentAt.Format(printDate)
+		v.Footer += " · " + t("sent %s", i18n.Date(locale, *r.SentAt))
 	}
 	if r.PaidAt != nil {
-		v.PaidOn = r.PaidAt.Format(printDate)
+		v.Footer += " · " + t("paid %s", i18n.Date(locale, *r.PaidAt))
 	}
 	v.SummaryText, v.SummaryBullets = splitText(r.Summary)
 	for _, it := range r.Items {
 		if len(r.Projects) != 1 && it.ProjectName != "" {
 			v.ShowProject = true
 		}
-		item := viewItem{Title: it.Title, ProjectName: it.ProjectName, Completed: it.CompletedOn.Format(printDate)}
+		item := viewItem{Title: it.Title, ProjectName: it.ProjectName, Completed: i18n.Date(locale, it.CompletedOn)}
 		if it.PriceCents != nil {
 			item.Price = money.Format(*it.PriceCents, r.Currency)
 		}
@@ -161,10 +167,15 @@ func buildView(r Report, mode RenderMode) view {
 	return v
 }
 
-// Render produces the report's HTML document.
-func Render(r Report, mode RenderMode) ([]byte, error) {
+// Render produces the report's HTML document in the reader's language.
+func Render(r Report, mode RenderMode, locale string) ([]byte, error) {
+	tmpl, err := reportTmpl.Clone()
+	if err != nil {
+		return nil, fmt.Errorf("clone report template: %w", err)
+	}
+	tmpl.Funcs(template.FuncMap{"t": func(s string) string { return i18n.T(locale, s) }})
 	var buf bytes.Buffer
-	if err := reportTmpl.Execute(&buf, buildView(r, mode)); err != nil {
+	if err := tmpl.Execute(&buf, buildView(r, mode, locale)); err != nil {
 		return nil, fmt.Errorf("render report: %w", err)
 	}
 	return buf.Bytes(), nil

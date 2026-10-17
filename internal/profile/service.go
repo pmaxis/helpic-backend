@@ -59,10 +59,15 @@ func (s *Service) ChangePassword(ctx context.Context, userID, sessionID, current
 	if err := s.sessions.EndOtherSessions(ctx, userID, sessionID); err != nil {
 		return user.User{}, err
 	}
-	if err := s.mail.Send(ctx, auth.PasswordChangedEmail(u.Email)); err != nil {
+	if err := s.mail.Send(ctx, auth.PasswordChangedEmail(u.Email, u.Locale)); err != nil {
 		slog.Error("failed to queue password changed email", "error", err)
 	}
 	return u, nil
+}
+
+// SetLocale changes the language the user reads Helpic in.
+func (s *Service) SetLocale(ctx context.Context, userID, locale string) (user.User, error) {
+	return s.repo.SetLocale(ctx, userID, locale)
 }
 
 // SetCurrency changes the currency a freelancer bills in.

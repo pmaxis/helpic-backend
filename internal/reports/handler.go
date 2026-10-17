@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/middleware"
 	"github.com/pmaxis/helpic/internal/request"
 	"github.com/pmaxis/helpic/internal/response"
@@ -341,7 +342,7 @@ func (h *Handler) HTML(w http.ResponseWriter, r *http.Request) {
 		writeReport(w, 0, Report{}, "", err)
 		return
 	}
-	html, err := Render(rep, ModePreview)
+	html, err := Render(rep, ModePreview, i18n.FromContext(r.Context()))
 	if err != nil {
 		response.Internal(w, err)
 		return
@@ -377,7 +378,7 @@ func (h *Handler) PDF(w http.ResponseWriter, r *http.Request) {
 		writeReport(w, 0, Report{}, "", err)
 		return
 	}
-	html, err := Render(rep, ModePDF)
+	html, err := Render(rep, ModePDF, i18n.FromContext(r.Context()))
 	if err != nil {
 		response.Internal(w, err)
 		return

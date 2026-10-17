@@ -80,6 +80,11 @@ func (b *fakeBot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // userSends queues a private message from a Telegram user.
 func (b *fakeBot) userSends(chatID int64, username, text string) {
+	b.userSendsIn(chatID, username, "", text)
+}
+
+// userSendsIn is userSends from a Telegram app in this language ("uk").
+func (b *fakeBot) userSendsIn(chatID int64, username, lang, text string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.nextID++
@@ -89,7 +94,7 @@ func (b *fakeBot) userSends(chatID int64, username, text string) {
 		"message": map[string]any{
 			"text": text,
 			"chat": map[string]any{"id": chatID, "type": "private"},
-			"from": map[string]any{"id": chatID, "username": username, "first_name": "Max"},
+			"from": map[string]any{"id": chatID, "username": username, "first_name": "Max", "language_code": lang},
 		},
 	})
 	var u map[string]any
@@ -316,7 +321,7 @@ func TestTelegram_Disconnect(t *testing.T) {
 func TestTelegram_StartWithoutCode(t *testing.T) {
 	_, bot := newAPIWithBot(t)
 	bot.userSends(99, "someone", "/start")
-	bot.waitSent(t, 99, "Settings → Telegram")
+	bot.waitSent(t, 99, "Settings → Notifications")
 	bot.userSends(99, "someone", "hello")
 	bot.waitSent(t, 99, "I only send Helpic notifications")
 }

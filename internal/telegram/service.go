@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/notifications"
 )
 
@@ -119,7 +120,7 @@ func (s *Service) Disconnect(ctx context.Context, userID string) error {
 		return err
 	}
 	if s.bot != nil {
-		s.reply(ctx, l.ChatID, "You disconnected Telegram in Helpic. No more notifications will come here.")
+		s.reply(ctx, l.ChatID, i18n.T(l.Locale, "You disconnected Telegram in Helpic. No more notifications will come here."))
 	}
 	return nil
 }
@@ -178,7 +179,7 @@ func (s *Service) deliver(ctx context.Context, n notifications.Notification) {
 	if !l.Wants(n.Kind) {
 		return
 	}
-	text, button := s.message(n)
+	text, button := s.message(n, l.Locale)
 	sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
 	err = s.bot.SendMessage(sendCtx, l.ChatID, text, button)
@@ -232,47 +233,56 @@ func (s *Service) poll(ctx context.Context) {
 }
 
 // handle answers a message to the bot: /start with a code connects the chat,
-// /stop disconnects it. Only private chats count.
+// /stop disconnects it. Only private chats count. It answers in the language
+// the sender's Telegram is in.
 func (s *Service) handle(ctx context.Context, m Message) {
 	if m.Chat.Type != "private" {
 		return
 	}
+	locale := i18n.Default
+	if m.From != nil {
+		locale = i18n.Normalize(m.From.LanguageCode)
+	}
+	t := func(text string) string { return i18n.T(locale, text) }
 	command, arg, _ := strings.Cut(strings.TrimSpace(m.Text), " ")
 	switch command {
 	case "/start":
 		if arg == "" {
-			s.reply(ctx, m.Chat.ID, "Hi! To get your Helpic notifications here, open Helpic → Settings → Telegram and press <b>Connect Telegram</b>.")
+			s.reply(ctx, m.Chat.ID, t("Hi! To get your Helpic notifications here, open Helpic → Settings → Notifications and press <b>Connect Telegram</b>."))
 			return
 		}
-		s.connect(ctx, m, strings.TrimSpace(arg))
+		s.connect(ctx, m, strings.TrimSpace(arg), locale)
 	case "/stop":
 		n, err := s.repo.DisconnectChat(ctx, m.Chat.ID)
 		if err != nil {
 			slog.Error("telegram: disconnect chat", "error", err)
-			s.reply(ctx, m.Chat.ID, "Something went wrong. Please try again.")
+			s.reply(ctx, m.Chat.ID, t("Something went wrong. Please try again."))
 			return
 		}
 		if n == 0 {
-			s.reply(ctx, m.Chat.ID, "This chat isn't connected to Helpic.")
+			s.reply(ctx, m.Chat.ID, t("This chat isn't connected to Helpic."))
 			return
 		}
-		s.reply(ctx, m.Chat.ID, "Disconnected. No more Helpic notifications will come here.")
+		s.reply(ctx, m.Chat.ID, t("Disconnected. No more Helpic notifications will come here."))
 	default:
-		s.reply(ctx, m.Chat.ID, "I only send Helpic notifications. Send /stop to turn them off.")
+		s.reply(ctx, m.Chat.ID, t("I only send Helpic notifications. Send /stop to turn them off."))
 	}
 }
 
-func (s *Service) connect(ctx context.Context, m Message, code string) {
-	userID, name, ok, err := s.repo.TakeCode(ctx, hashCode(code))
+// connect ties the chat to the account the code was made for. Until then it
+// speaks the sender's language; once connected, the account's.
+func (s *Service) connect(ctx context.Context, m Message, code, locale string) {
+	userID, name, userLocale, ok, err := s.repo.TakeCode(ctx, hashCode(code))
 	if err != nil {
 		slog.Error("telegram: take code", "error", err)
-		s.reply(ctx, m.Chat.ID, "Something went wrong. Please try again.")
+		s.reply(ctx, m.Chat.ID, i18n.T(locale, "Something went wrong. Please try again."))
 		return
 	}
 	if !ok {
-		s.reply(ctx, m.Chat.ID, "This link has expired or was already used. Get a new one in Helpic → Settings → Telegram.")
+		s.reply(ctx, m.Chat.ID, i18n.T(locale, "This link has expired or was already used. Get a new one in Helpic → Settings → Notifications."))
 		return
 	}
+	locale = userLocale
 	username := ""
 	if m.From != nil {
 		username = m.From.FirstName
@@ -282,11 +292,11 @@ func (s *Service) connect(ctx context.Context, m Message, code string) {
 	}
 	if err := s.repo.Connect(ctx, userID, m.Chat.ID, username, DefaultKinds); err != nil {
 		slog.Error("telegram: connect", "error", err)
-		s.reply(ctx, m.Chat.ID, "Something went wrong. Please try again.")
+		s.reply(ctx, m.Chat.ID, i18n.T(locale, "Something went wrong. Please try again."))
 		return
 	}
-	s.reply(ctx, m.Chat.ID, fmt.Sprintf(
-		"✅ Connected to Helpic as <b>%s</b>.\n\nImportant notifications will come here. Choose which in Settings → Telegram, or send /stop to turn them off.",
+	s.reply(ctx, m.Chat.ID, i18n.T(locale,
+		"✅ Connected to Helpic as <b>%s</b>.\n\nImportant notifications will come here. Choose which in Settings → Notifications, or send /stop to turn them off.",
 		html.EscapeString(name)))
 }
 

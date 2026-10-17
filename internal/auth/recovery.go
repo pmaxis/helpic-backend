@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/mail"
 	"github.com/pmaxis/helpic/internal/user"
 )
@@ -29,16 +30,17 @@ type Mailer interface {
 	Send(ctx context.Context, e mail.Email) error
 }
 
-// PasswordChangedEmail tells someone their password changed, in case it
-// wasn't them.
-func PasswordChangedEmail(to string) mail.Email {
+// PasswordChangedEmail tells someone, in their language, that their password
+// changed, in case it wasn't them.
+func PasswordChangedEmail(to, locale string) mail.Email {
 	return mail.Email{
 		To:      to,
-		Subject: "Your Helpic password was changed",
-		Heading: "Your password was changed",
+		Locale:  locale,
+		Subject: i18n.T(locale, "Your Helpic password was changed"),
+		Heading: i18n.T(locale, "Your password was changed"),
 		Paragraphs: []string{
-			"The password for your Helpic account, " + to + ", was just changed, and your other devices were signed out.",
-			"If that was you, there's nothing to do. If it wasn't, reset your password right away from the sign-in page, and check which devices are signed in under Settings → Sessions.",
+			i18n.T(locale, "The password for your Helpic account, %s, was just changed, and your other devices were signed out.", to),
+			i18n.T(locale, "If that was you, there's nothing to do. If it wasn't, reset your password right away from the sign-in page, and check which devices are signed in under Settings → Sessions."),
 		},
 	}
 }
@@ -60,22 +62,24 @@ func (s *Service) RequestReset(ctx context.Context, email string) error {
 	if err := s.repo.CreateReset(ctx, u.ID, hash, time.Now().Add(resetTTL)); err != nil {
 		return err
 	}
+	t := func(text string, args ...any) string { return i18n.T(u.Locale, text, args...) }
 	return s.mail.Send(ctx, mail.Email{
 		To:      u.Email,
-		Subject: "Reset your Helpic password",
-		Heading: "Reset your password",
+		Locale:  u.Locale,
+		Subject: t("Reset your Helpic password"),
+		Heading: t("Reset your password"),
 		Paragraphs: []string{
-			"Someone asked to reset the password for your Helpic account, " + u.Email + ". If it was you, set a new one below.",
+			t("Someone asked to reset the password for your Helpic account, %s. If it was you, set a new one below.", u.Email),
 		},
-		Button: &mail.Button{Text: "Set a new password", URL: s.appURL + "/reset-password/" + raw},
-		Note:   "The link works once, for an hour. If you didn't ask for it, ignore this email: your password stays as it is.",
+		Button: &mail.Button{Text: t("Set a new password"), URL: s.appURL + "/reset-password/" + raw},
+		Note:   t("The link works once, for an hour. If you didn't ask for it, ignore this email: your password stays as it is."),
 	})
 }
 
 // ResetPassword sets a new password with a reset link, signs out every
 // device and says so by email.
 func (s *Service) ResetPassword(ctx context.Context, raw, password string) error {
-	userID, email, err := s.repo.TakeReset(ctx, hashToken(raw))
+	userID, email, locale, err := s.repo.TakeReset(ctx, hashToken(raw))
 	if err != nil {
 		return err
 	}
@@ -86,7 +90,7 @@ func (s *Service) ResetPassword(ctx context.Context, raw, password string) error
 	if err := s.repo.SetPasswordAndSignOut(ctx, userID, string(hash)); err != nil {
 		return err
 	}
-	if err := s.mail.Send(ctx, PasswordChangedEmail(email)); err != nil {
+	if err := s.mail.Send(ctx, PasswordChangedEmail(email, locale)); err != nil {
 		slog.Error("failed to queue password changed email", "error", err)
 	}
 	return nil
@@ -111,24 +115,24 @@ func (r *Repository) CreateReset(ctx context.Context, userID string, hash []byte
 	return tx.Commit(ctx)
 }
 
-// TakeReset uses up a reset link and returns its user and their email.
-// ErrResetInvalid when it is unknown or expired.
-func (r *Repository) TakeReset(ctx context.Context, hash []byte) (userID, email string, err error) {
+// TakeReset uses up a reset link and returns its user, their email and
+// language. ErrResetInvalid when it is unknown or expired.
+func (r *Repository) TakeReset(ctx context.Context, hash []byte) (userID, email, locale string, err error) {
 	var live bool
 	err = r.db.QueryRow(ctx, `
 		DELETE FROM password_resets p USING users u
 		WHERE p.token_hash = $1 AND u.id = p.user_id
-		RETURNING p.user_id, u.email, p.expires_at > now()`, hash).Scan(&userID, &email, &live)
+		RETURNING p.user_id, u.email, u.locale, p.expires_at > now()`, hash).Scan(&userID, &email, &locale, &live)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", ErrResetInvalid
+		return "", "", "", ErrResetInvalid
 	}
 	if err != nil {
-		return "", "", fmt.Errorf("take password reset: %w", err)
+		return "", "", "", fmt.Errorf("take password reset: %w", err)
 	}
 	if !live {
-		return "", "", ErrResetInvalid
+		return "", "", "", ErrResetInvalid
 	}
-	return userID, email, nil
+	return userID, email, locale, nil
 }
 
 // SetPasswordAndSignOut sets the user's password and ends all their sessions.

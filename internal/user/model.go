@@ -27,6 +27,8 @@ type User struct {
 	Role string
 	// Currency is what a freelancer bills in (see package money).
 	Currency string
+	// Locale is the language they read Helpic in (see package i18n).
+	Locale string
 	// TeamOwnerID is set for a member of a client's company: its owner.
 	// TeamName is that company's name.
 	TeamOwnerID  *string
@@ -37,7 +39,7 @@ type User struct {
 }
 
 // Columns is the users column list matching Scan, for packages that read users.
-const Columns = `id, email, first_name, last_name, name, role, currency,
+const Columns = `id, email, first_name, last_name, name, role, currency, locale,
 	(SELECT c.owner_id::text FROM company_members m JOIN companies c ON c.id = m.company_id WHERE m.user_id = users.id),
 	coalesce((SELECT c.name FROM company_members m JOIN companies c ON c.id = m.company_id WHERE m.user_id = users.id), ''),
 	password_hash, created_at, updated_at`
@@ -45,6 +47,6 @@ const Columns = `id, email, first_name, last_name, name, role, currency,
 // Scan reads one users row selected with Columns.
 func Scan(row interface{ Scan(dest ...any) error }) (User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Email, &u.FirstName, &u.LastName, &u.Name, &u.Role, &u.Currency, &u.TeamOwnerID, &u.TeamName, &u.PasswordHash, &u.CreatedAt, &u.UpdatedAt)
+	err := row.Scan(&u.ID, &u.Email, &u.FirstName, &u.LastName, &u.Name, &u.Role, &u.Currency, &u.Locale, &u.TeamOwnerID, &u.TeamName, &u.PasswordHash, &u.CreatedAt, &u.UpdatedAt)
 	return u, err
 }

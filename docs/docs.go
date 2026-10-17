@@ -1701,6 +1701,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/me/locale": {
+            "put": {
+                "description": "\"en\" or \"uk\": the interface, and the email and Telegram messages you get.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Set your language",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/profile.LocaleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown language",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/me/password": {
             "put": {
                 "description": "Needs the current password. Signs out every other device.",
@@ -4342,6 +4388,14 @@ const docTemplate = `{
                 }
             }
         },
+        "profile.LocaleRequest": {
+            "type": "object",
+            "properties": {
+                "locale": {
+                    "type": "string"
+                }
+            }
+        },
         "profile.NameRequest": {
             "type": "object",
             "properties": {
@@ -5160,6 +5214,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "last_name": {
+                    "type": "string"
+                },
+                "locale": {
+                    "description": "Locale is the language they read Helpic in: \"en\" or \"uk\".",
                     "type": "string"
                 },
                 "member_of": {
