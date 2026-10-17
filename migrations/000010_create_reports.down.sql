@@ -1,0 +1,4 @@
+ALTER TABLE notifications DROP COLUMN IF EXISTS report_id;
+DROP TABLE IF EXISTS report_items;
+DROP TABLE IF EXISTS reports;
+ALTER TABLE tasks DROP COLUMN IF EXISTS completed_at;
