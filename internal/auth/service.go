@@ -16,11 +16,20 @@ import (
 type repository interface {
 	CreateUser(ctx context.Context, email, name, role, passwordHash string) (user.User, error)
 	GetByEmail(ctx context.Context, email string) (user.User, error)
+
+	CreateSession(ctx context.Context, userID string, refreshHash []byte, c Client, expiresAt time.Time) (Session, error)
+	Rotate(ctx context.Context, old, next []byte, expiresAt time.Time) (Session, string, error)
+	Replaced(ctx context.Context, hash []byte) (Session, time.Time, string, error)
+	DeleteSession(ctx context.Context, id string) error
+	DeleteByRefresh(ctx context.Context, hash []byte) error
+	ListSessions(ctx context.Context, userID string) ([]Session, error)
+	DeleteUserSession(ctx context.Context, userID, id string) error
+	DeleteOtherSessions(ctx context.Context, userID, keepID string) error
 }
 
-// tokenIssuer issues signed JWTs. Implemented by *token.Manager.
+// tokenIssuer issues signed access JWTs. Implemented by *token.Manager.
 type tokenIssuer interface {
-	Generate(userID, role string) (string, time.Time, error)
+	Generate(userID, role, sessionID string) (string, time.Time, error)
 }
 
 // dummyHash is a valid bcrypt hash compared against when the email is unknown,
@@ -28,15 +37,17 @@ type tokenIssuer interface {
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-password-for-timing"), bcrypt.DefaultCost)
 
 // Service contains authentication business logic: password hashing and
-// verification, registration rules and JWT issuance.
+// verification, registration rules and sessions (see session.go).
 type Service struct {
 	repo   repository
 	tokens tokenIssuer
+	// refreshTTL is how long a session lasts unused; every refresh extends it.
+	refreshTTL time.Duration
 }
 
 // NewService creates an auth Service.
-func NewService(repo repository, tokens tokenIssuer) *Service {
-	return &Service{repo: repo, tokens: tokens}
+func NewService(repo repository, tokens tokenIssuer, refreshTTL time.Duration) *Service {
+	return &Service{repo: repo, tokens: tokens, refreshTTL: refreshTTL}
 }
 
 // Register creates a new account with the given role. Public sign-up always
@@ -59,32 +70,27 @@ func (s *Service) Register(ctx context.Context, p RegisterParams, role string) (
 	return u, nil
 }
 
-// Login verifies credentials and, on success, issues a JWT and returns the
-// user. A wrong password and an unknown email both yield ErrInvalidCredentials.
-func (s *Service) Login(ctx context.Context, p LoginParams) (user.User, string, time.Time, error) {
+// Login verifies credentials and, on success, starts a session for the device
+// and returns the user. A wrong password and an unknown email both yield
+// ErrInvalidCredentials.
+func (s *Service) Login(ctx context.Context, p LoginParams, c Client) (user.User, Tokens, error) {
 	u, err := s.repo.GetByEmail(ctx, p.Email)
 	if errors.Is(err, user.ErrNotFound) {
 		// Perform a dummy hash comparison to keep timing consistent.
 		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(p.Password))
-		return user.User{}, "", time.Time{}, ErrInvalidCredentials
+		return user.User{}, Tokens{}, ErrInvalidCredentials
 	}
 	if err != nil {
-		return user.User{}, "", time.Time{}, err
+		return user.User{}, Tokens{}, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(p.Password)); err != nil {
-		return user.User{}, "", time.Time{}, ErrInvalidCredentials
+		return user.User{}, Tokens{}, ErrInvalidCredentials
 	}
 
-	jwtString, expiresAt, err := s.IssueToken(u)
+	tokens, err := s.StartSession(ctx, u, c)
 	if err != nil {
-		return user.User{}, "", time.Time{}, err
+		return user.User{}, Tokens{}, err
 	}
-	return u, jwtString, expiresAt, nil
-}
-
-// IssueToken signs a session token for an account that is already verified,
-// e.g. one just created from an invitation.
-func (s *Service) IssueToken(u user.User) (string, time.Time, error) {
-	return s.tokens.Generate(u.ID, u.Role)
+	return u, tokens, nil
 }

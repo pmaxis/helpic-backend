@@ -215,14 +215,14 @@ func (h *Handler) Join(w http.ResponseWriter, r *http.Request) {
 		response.ValidationError(w, fields)
 		return
 	}
-	session, err := h.svc.Join(r.Context(), chi.URLParam(r, "token"), p)
+	session, err := h.svc.Join(r.Context(), chi.URLParam(r, "token"), p, auth.ClientOf(r))
 	switch {
 	case errors.Is(err, auth.ErrEmailExists):
 		writeError(w, ErrInviteInvalid)
 	case err != nil:
 		writeError(w, err)
 	default:
-		h.cookie.Set(w, session.Token, session.ExpiresAt)
+		h.cookie.Set(w, session.Tokens)
 		response.JSON(w, http.StatusOK, user.NewResponse(session.User))
 	}
 }

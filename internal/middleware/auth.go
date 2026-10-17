@@ -7,23 +7,25 @@ import (
 	"net/http"
 
 	"github.com/pmaxis/helpic/internal/response"
+	"github.com/pmaxis/helpic/internal/token"
 )
 
 type contextKey string
 
 const (
-	userIDKey contextKey = "userID"
-	roleKey   contextKey = "role"
+	userIDKey    contextKey = "userID"
+	roleKey      contextKey = "role"
+	sessionIDKey contextKey = "sessionID"
 )
 
 // TokenVerifier is satisfied by *token.Manager.
 type TokenVerifier interface {
-	Verify(raw string) (userID, role string, err error)
+	Verify(raw string) (token.Claims, error)
 }
 
 // Auth returns middleware that reads the JWT from the HttpOnly cookie,
-// validates its signature and expiration, and stores the user ID and role in the
-// request context. Missing, malformed or expired tokens get a 401.
+// validates its signature and expiration, and stores the user ID, role and
+// session in the request context. Missing, malformed or expired tokens get a 401.
 func Auth(verifier TokenVerifier, cookieName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,13 +34,14 @@ func Auth(verifier TokenVerifier, cookieName string) func(http.Handler) http.Han
 				response.Error(w, http.StatusUnauthorized, response.CodeUnauthorized, "Authentication required")
 				return
 			}
-			userID, role, err := verifier.Verify(cookie.Value)
-			if err != nil || userID == "" {
+			c, err := verifier.Verify(cookie.Value)
+			if err != nil {
 				response.Error(w, http.StatusUnauthorized, response.CodeUnauthorized, "Authentication required")
 				return
 			}
-			ctx := context.WithValue(r.Context(), userIDKey, userID)
-			ctx = context.WithValue(ctx, roleKey, role)
+			ctx := context.WithValue(r.Context(), userIDKey, c.UserID)
+			ctx = context.WithValue(ctx, roleKey, c.Role)
+			ctx = context.WithValue(ctx, sessionIDKey, c.SessionID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -54,6 +57,12 @@ func UserID(ctx context.Context) (string, bool) {
 func Role(ctx context.Context) string {
 	role, _ := ctx.Value(roleKey).(string)
 	return role
+}
+
+// SessionID returns the session the request's token was issued for.
+func SessionID(ctx context.Context) string {
+	id, _ := ctx.Value(sessionIDKey).(string)
+	return id
 }
 
 // RequireRole lets through only users with the given role; others get a 403.
