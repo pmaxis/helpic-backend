@@ -6,6 +6,7 @@ package config
 import (
 	"fmt"
 	"net/http"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -55,6 +56,12 @@ type Config struct {
 	// off. TelegramAPIURL is the Bot API.
 	TelegramBotToken string
 	TelegramAPIURL   string
+
+	// RateLimit slows down password guessing and sign-up spam (on unless
+	// RATE_LIMIT says otherwise). TrustedProxies are the proxies whose
+	// X-Forwarded-For names the client; without any, the peer is the client.
+	RateLimit      bool
+	TrustedProxies []netip.Prefix
 }
 
 // IsProduction reports whether the app runs in a production environment.
@@ -111,6 +118,10 @@ func Load() (Config, error) {
 	cfg.AppURL = getEnv("APP_URL", cfg.CORSOrigin)
 	cfg.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	cfg.TelegramAPIURL = getEnv("TELEGRAM_API_URL", "https://api.telegram.org")
+	cfg.RateLimit = getEnvBool("RATE_LIMIT", true)
+	if cfg.TrustedProxies, err = parsePrefixes(os.Getenv("TRUSTED_PROXIES")); err != nil {
+		return Config{}, fmt.Errorf("invalid TRUSTED_PROXIES: %w", err)
+	}
 
 	return cfg, nil
 }
@@ -146,4 +157,30 @@ func parseSameSite(v string) http.SameSite {
 	default:
 		return http.SameSiteLaxMode
 	}
+}
+
+// parsePrefixes reads a comma-separated list of IPs and CIDRs.
+func parsePrefixes(list string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, item := range strings.Split(list, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if !strings.Contains(item, "/") {
+			ip, err := netip.ParseAddr(item)
+			if err != nil {
+				return nil, err
+			}
+			ip = ip.Unmap()
+			out = append(out, netip.PrefixFrom(ip, ip.BitLen()))
+			continue
+		}
+		p, err := netip.ParsePrefix(item)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p.Masked())
+	}
+	return out, nil
 }

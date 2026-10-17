@@ -247,6 +247,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
+                    },
+                    "429": {
+                        "description": "Too many attempts from this address, or wrong passwords for this email",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
                     }
                 }
             }
@@ -278,6 +284,12 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "No session, or it ended",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many refreshes from this address",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -323,6 +335,12 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "The email is taken",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many sign-ups from this address",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -1547,6 +1565,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
+                    },
+                    "429": {
+                        "description": "Too many attempts",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
                     }
                 }
             }
@@ -1590,6 +1614,12 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many attempts",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }

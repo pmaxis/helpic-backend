@@ -24,10 +24,11 @@ func NewHandler(svc *Service) *Handler {
 }
 
 // Routes mounts the endpoints. Must be called inside an authenticated group.
-func (h *Handler) Routes(r chi.Router) {
+// guard wraps the ones that check the current password, to limit guessing.
+func (h *Handler) Routes(r chi.Router, guard func(http.Handler) http.Handler) {
 	r.Put("/me", h.UpdateName)
-	r.Put("/me/email", h.ChangeEmail)
-	r.Put("/me/password", h.ChangePassword)
+	r.With(guard).Put("/me/email", h.ChangeEmail)
+	r.With(guard).Put("/me/password", h.ChangePassword)
 	r.Put("/me/currency", h.SetCurrency)
 }
 
@@ -71,6 +72,7 @@ func (h *Handler) UpdateName(w http.ResponseWriter, r *http.Request) {
 //	@Success		200		{object}	user.Response			"OK"
 //	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
 //	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		429		{object}	response.ErrorEnvelope	"Too many attempts"
 //	@Router			/me/email [put]
 func (h *Handler) ChangeEmail(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
@@ -105,6 +107,7 @@ func (h *Handler) ChangeEmail(w http.ResponseWriter, r *http.Request) {
 //	@Success		200		{object}	user.Response			"OK"
 //	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
 //	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		429		{object}	response.ErrorEnvelope	"Too many attempts"
 //	@Router			/me/password [put]
 func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)

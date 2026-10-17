@@ -38,6 +38,8 @@ services:
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
       APP_URL: ${APP_URL:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      RATE_LIMIT: ${RATE_LIMIT:-true}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
     volumes:
       - uploads:/app/uploads
     ports:

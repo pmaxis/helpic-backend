@@ -20,6 +20,7 @@ const (
 	CodeMethodNotAllowed  = "METHOD_NOT_ALLOWED"
 	CodeConflict          = "CONFLICT"
 	CodeUnprocessable     = "UNPROCESSABLE"
+	CodeRateLimited       = "RATE_LIMITED"
 	CodeInternal          = "INTERNAL_ERROR"
 )
 
