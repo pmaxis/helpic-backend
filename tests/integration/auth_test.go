@@ -73,7 +73,9 @@ func TestMain(m *testing.M) {
 		CookieSameSite:    http.SameSiteLaxMode,
 		// Never fall back to a browser installed on the machine: PDF export
 		// answers 503 here. The real PDF test is opt-in (HELPIC_PDF_TEST=1).
-		ChromePath: "/nonexistent/helpic-test-chrome",
+		ChromePath:   "/nonexistent/helpic-test-chrome",
+		Location:     time.UTC,
+		ReminderHour: 9,
 	}
 
 	if err := database.Migrate(dsn, "../../migrations", database.Up); err != nil {

@@ -62,6 +62,11 @@ type Config struct {
 	// X-Forwarded-For names the client; without any, the peer is the client.
 	RateLimit      bool
 	TrustedProxies []netip.Prefix
+
+	// Location is the app's time zone: due dates are days there, and
+	// deadline reminders go out from ReminderHour on.
+	Location     *time.Location
+	ReminderHour int
 }
 
 // IsProduction reports whether the app runs in a production environment.
@@ -119,6 +124,12 @@ func Load() (Config, error) {
 	cfg.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	cfg.TelegramAPIURL = getEnv("TELEGRAM_API_URL", "https://api.telegram.org")
 	cfg.RateLimit = getEnvBool("RATE_LIMIT", true)
+	if cfg.Location, err = time.LoadLocation(getEnv("APP_TIMEZONE", "UTC")); err != nil {
+		return Config{}, fmt.Errorf("invalid APP_TIMEZONE: %w", err)
+	}
+	if cfg.ReminderHour, err = strconv.Atoi(getEnv("REMINDER_HOUR", "9")); err != nil || cfg.ReminderHour < 0 || cfg.ReminderHour > 23 {
+		return Config{}, fmt.Errorf("invalid REMINDER_HOUR: a whole hour, 0 to 23")
+	}
 	if cfg.TrustedProxies, err = parsePrefixes(os.Getenv("TRUSTED_PROXIES")); err != nil {
 		return Config{}, fmt.Errorf("invalid TRUSTED_PROXIES: %w", err)
 	}

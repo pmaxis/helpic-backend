@@ -124,6 +124,11 @@ func (s *Service) Disconnect(ctx context.Context, userID string) error {
 	return nil
 }
 
+// Cleanup removes connect links nobody opened in time.
+func (s *Service) Cleanup(ctx context.Context) error {
+	return s.repo.DeleteExpiredCodes(ctx)
+}
+
 // Enqueue takes a stored notification to send to its recipient's chat, if
 // they want it there. It never blocks: when the queue is full the
 // notification is dropped (it is in the app anyway). Register it with

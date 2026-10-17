@@ -183,6 +183,11 @@ func (s *Service) EndOtherSessions(ctx context.Context, userID, keepID string) e
 	return s.repo.DeleteOtherSessions(ctx, userID, keepID)
 }
 
+// Cleanup removes sessions that have expired; they can't be refreshed anyway.
+func (s *Service) Cleanup(ctx context.Context) error {
+	return s.repo.DeleteExpiredSessions(ctx)
+}
+
 // --- repository ----------------------------------------------------------------
 
 const sessionColumns = `s.id, s.user_id, s.user_agent, s.ip, s.created_at, s.last_used_at, s.expires_at`
@@ -304,6 +309,14 @@ func (r *Repository) DeleteUserSession(ctx context.Context, userID, id string) e
 func (r *Repository) DeleteOtherSessions(ctx context.Context, userID, keepID string) error {
 	if _, err := r.db.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1 AND id::text <> $2`, userID, keepID); err != nil {
 		return fmt.Errorf("delete other sessions: %w", err)
+	}
+	return nil
+}
+
+// DeleteExpiredSessions removes every expired session.
+func (r *Repository) DeleteExpiredSessions(ctx context.Context) error {
+	if _, err := r.db.Exec(ctx, `DELETE FROM sessions WHERE expires_at <= now()`); err != nil {
+		return fmt.Errorf("delete expired sessions: %w", err)
 	}
 	return nil
 }

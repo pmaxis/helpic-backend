@@ -121,3 +121,11 @@ func (r *Repository) DisconnectChat(ctx context.Context, chatID int64) (int64, e
 	}
 	return tag.RowsAffected(), nil
 }
+
+// DeleteExpiredCodes removes connect codes nobody used in time.
+func (r *Repository) DeleteExpiredCodes(ctx context.Context) error {
+	if _, err := r.db.Exec(ctx, `DELETE FROM telegram_link_codes WHERE expires_at <= now()`); err != nil {
+		return fmt.Errorf("delete expired telegram codes: %w", err)
+	}
+	return nil
+}

@@ -25,6 +25,7 @@ type repository interface {
 	ListSessions(ctx context.Context, userID string) ([]Session, error)
 	DeleteUserSession(ctx context.Context, userID, id string) error
 	DeleteOtherSessions(ctx context.Context, userID, keepID string) error
+	DeleteExpiredSessions(ctx context.Context) error
 }
 
 // tokenIssuer issues signed access JWTs. Implemented by *token.Manager.

@@ -25,6 +25,10 @@ const (
 	KindAttachmentAdded = "attachment_added"
 	// KindCommentAdded: a comment on a task; Detail is its start.
 	KindCommentAdded = "comment_added"
+	// KindTaskDueSoon: an open task is due tomorrow; KindTaskOverdue: it was
+	// due yesterday. Detail is the due date (YYYY-MM-DD); there is no actor.
+	KindTaskDueSoon = "task_due_soon"
+	KindTaskOverdue = "task_overdue"
 )
 
 var ErrNotFound = errors.New("notification not found")
@@ -32,7 +36,8 @@ var ErrNotFound = errors.New("notification not found")
 // Notification is one thing that happened, for one recipient.
 type Notification struct {
 	ID string
-	// UserID receives the notification; ActorID did the thing.
+	// UserID receives the notification; ActorID did the thing, and is empty
+	// for a reminder, which nobody did.
 	UserID    string
 	ActorID   string
 	Kind      string

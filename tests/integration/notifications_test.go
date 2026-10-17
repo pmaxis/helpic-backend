@@ -20,10 +20,15 @@ func notifications(t *testing.T, srv *httptest.Server, c *http.Client) ([]note, 
 	var out []note
 	for _, x := range body["notifications"].([]any) {
 		m := x.(map[string]any)
-		out = append(out, note{
+		n := note{
 			ID: m["id"].(string), Kind: m["kind"].(string), Subject: m["subject"].(string), Detail: m["detail"].(string),
-			Actor: m["actor"].(map[string]any)["email"].(string), Read: m["read"] == true, TaskID: m["task_id"],
-		})
+			Read: m["read"] == true, TaskID: m["task_id"],
+		}
+		// A reminder has no actor.
+		if actor, ok := m["actor"].(map[string]any); ok {
+			n.Actor = actor["email"].(string)
+		}
+		out = append(out, n)
 	}
 	return out, int(body["unread"].(float64))
 }

@@ -37,6 +37,8 @@ var Kinds = []string{
 	notifications.KindTaskStatus,
 	notifications.KindTaskUpdated,
 	notifications.KindTaskDeleted,
+	notifications.KindTaskDueSoon,
+	notifications.KindTaskOverdue,
 	notifications.KindCommentAdded,
 	notifications.KindAttachmentAdded,
 	notifications.KindProjectCreated,
@@ -47,11 +49,13 @@ var Kinds = []string{
 }
 
 // DefaultKinds are the important ones, on when a chat is connected: new
-// work, its progress, the discussion, money and new people. Edits, deleted
-// tasks, files and new projects stay in the app.
+// work, its progress and deadlines, the discussion, money and new people.
+// Edits, deleted tasks, files and new projects stay in the app.
 var DefaultKinds = []string{
 	notifications.KindTaskCreated,
 	notifications.KindTaskStatus,
+	notifications.KindTaskDueSoon,
+	notifications.KindTaskOverdue,
 	notifications.KindCommentAdded,
 	notifications.KindReportSent,
 	notifications.KindReportPaid,

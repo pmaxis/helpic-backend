@@ -28,6 +28,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // APP_TIMEZONE works on images without zoneinfo
 
 	"github.com/pmaxis/helpic/internal/config"
 	"github.com/pmaxis/helpic/internal/database"
