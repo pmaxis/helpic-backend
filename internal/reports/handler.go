@@ -1,41 +1,25 @@
 package reports
 
 import (
-	"context"
 	"errors"
-	"fmt"
-	"log/slog"
 	"net/http"
-	"net/url"
-	"regexp"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/middleware"
-	"github.com/pmaxis/helpic/internal/pdf"
 	"github.com/pmaxis/helpic/internal/request"
 	"github.com/pmaxis/helpic/internal/response"
 	"github.com/pmaxis/helpic/internal/user"
 )
 
-// PDFPrinter turns a report's HTML (rendered in ModePDF) into a PDF. Render
-// returns pdf.ErrUnavailable when there is nothing to print with.
-type PDFPrinter interface {
-	Available() bool
-	Render(ctx context.Context, html []byte) ([]byte, error)
-}
-
 // Handler exposes the report endpoints over HTTP.
 type Handler struct {
 	svc *Service
-	pdf PDFPrinter
 }
 
 // NewHandler creates a reports Handler.
-func NewHandler(svc *Service, pdf PDFPrinter) *Handler {
-	return &Handler{svc: svc, pdf: pdf}
+func NewHandler(svc *Service) *Handler {
+	return &Handler{svc: svc}
 }
 
 // Routes mounts the endpoints. Must be called inside an authenticated group;
@@ -44,8 +28,6 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Route("/reports", func(r chi.Router) {
 		r.Get("/", h.List)
 		r.Get("/{id}", h.Get)
-		r.Get("/{id}/html", h.HTML)
-		r.Get("/{id}/pdf", h.PDF)
 		r.Get("/{id}/history", h.History)
 		r.Post("/{id}/paid", h.MarkPaid)
 
@@ -84,7 +66,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	for _, rep := range list {
 		out = append(out, ToDTO(rep, userID))
 	}
-	response.JSON(w, http.StatusOK, ListResponse{Reports: out, PDFAvailable: h.pdf.Available()})
+	response.JSON(w, http.StatusOK, ListResponse{Reports: out})
 }
 
 // Get handles GET /api/v1/reports/{id}.
@@ -327,114 +309,6 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// HTML handles GET /api/v1/reports/{id}/html: the on-screen sheet, for servers
-// that can't print PDFs.
-//
-//	@Summary		A report as an HTML sheet
-//	@Description	For servers that can't print PDFs.
-//	@Tags			reports
-//	@Produce		html
-//	@Param			id	path		string					true	"Report ID"
-//	@Success		200	{string}	string					"HTML"
-//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
-//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
-//	@Router			/reports/{id}/html [get]
-func (h *Handler) HTML(w http.ResponseWriter, r *http.Request) {
-	userID, ok := request.User(w, r)
-	if !ok {
-		return
-	}
-	rep, err := h.svc.Get(r.Context(), userID, chi.URLParam(r, "id"))
-	if err != nil {
-		writeReport(w, 0, Report{}, "", err)
-		return
-	}
-	html, err := Render(rep, ModePreview, i18n.FromContext(r.Context()))
-	if err != nil {
-		response.Internal(w, err)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	// Shown in a sandboxed iframe; forbid scripts outright.
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com")
-	_, _ = w.Write(html)
-}
-
-// PDF handles GET /api/v1/reports/{id}/pdf: the file, printed by the pdf service.
-// ?download=1 asks the browser to save it rather than show it.
-//
-//	@Summary		A report as PDF
-//	@Description	Printed by the pdf service (headless Chromium); 503 without it.
-//	@Tags			reports
-//	@Produce		application/pdf
-//	@Param			id			path		string					true	"Report ID"
-//	@Param			download	query		string					false	"1 to save it rather than show it"
-//	@Success		200			{file}		file					"PDF"
-//	@Failure		401			{object}	response.ErrorEnvelope	"Not signed in"
-//	@Failure		404			{object}	response.ErrorEnvelope	"Not found"
-//	@Failure		503			{object}	response.ErrorEnvelope	"No pdf service configured"
-//	@Router			/reports/{id}/pdf [get]
-func (h *Handler) PDF(w http.ResponseWriter, r *http.Request) {
-	userID, ok := request.User(w, r)
-	if !ok {
-		return
-	}
-	rep, err := h.svc.Get(r.Context(), userID, chi.URLParam(r, "id"))
-	if err != nil {
-		writeReport(w, 0, Report{}, "", err)
-		return
-	}
-	html, err := Render(rep, ModePDF, i18n.FromContext(r.Context()))
-	if err != nil {
-		response.Internal(w, err)
-		return
-	}
-	file, err := h.pdf.Render(r.Context(), html)
-	if errors.Is(err, pdf.ErrUnavailable) {
-		response.Error(w, http.StatusServiceUnavailable, response.CodeInternal, "PDF export is not available on this server")
-		return
-	}
-	if err != nil {
-		slog.Error("report pdf failed", "report_id", rep.ID, "error", err)
-		response.Error(w, http.StatusInternalServerError, response.CodeInternal, "Could not generate the PDF")
-		return
-	}
-	disposition := "inline"
-	if r.URL.Query().Get("download") != "" {
-		disposition = "attachment"
-	}
-	name := fileName(rep.Title)
-	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`%s; filename="%s"; filename*=UTF-8''%s`, disposition, asciiFallback(name), url.PathEscape(name)))
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(file)
-}
-
-var unsafeFileChars = regexp.MustCompile(`[\\/:*?"<>|\x00-\x1f]+`)
-
-// fileName builds e.g. "Work report — Oct 2026.pdf".
-func fileName(title string) string {
-	base := strings.TrimSpace(unsafeFileChars.ReplaceAllString(title, " "))
-	if base == "" {
-		base = "Work report"
-	}
-	return base + ".pdf"
-}
-
-// asciiFallback is the filename for clients that ignore filename*.
-func asciiFallback(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if r >= 0x20 && r < 0x7f && r != '"' && r != '\\' {
-			b.WriteRune(r)
-		} else {
-			b.WriteRune('_')
-		}
-	}
-	return b.String()
 }
 
 func writeReport(w http.ResponseWriter, status int, rep Report, viewerID string, err error) {

@@ -2721,47 +2721,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/reports/{id}/html": {
-            "get": {
-                "description": "For servers that can't print PDFs.",
-                "produces": [
-                    "text/html"
-                ],
-                "tags": [
-                    "reports"
-                ],
-                "summary": "A report as an HTML sheet",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Report ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "HTML",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "401": {
-                        "description": "Not signed in",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorEnvelope"
-                        }
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorEnvelope"
-                        }
-                    }
-                }
-            }
-        },
         "/reports/{id}/items/{itemID}": {
             "put": {
                 "consumes": [
@@ -2951,59 +2910,6 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Not sent, or already paid",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorEnvelope"
-                        }
-                    }
-                }
-            }
-        },
-        "/reports/{id}/pdf": {
-            "get": {
-                "description": "Printed by the pdf service (headless Chromium); 503 without it.",
-                "produces": [
-                    "application/pdf"
-                ],
-                "tags": [
-                    "reports"
-                ],
-                "summary": "A report as PDF",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Report ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "1 to save it rather than show it",
-                        "name": "download",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "PDF",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "401": {
-                        "description": "Not signed in",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorEnvelope"
-                        }
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorEnvelope"
-                        }
-                    },
-                    "503": {
-                        "description": "No pdf service configured",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -5027,9 +4933,6 @@ const docTemplate = `{
         "reports.ListResponse": {
             "type": "object",
             "properties": {
-                "pdf_available": {
-                    "type": "boolean"
-                },
                 "reports": {
                     "type": "array",
                     "items": {

@@ -102,7 +102,6 @@ var units = map[string][5]string{
 	"hour":   {"hour", "hours", "година", "години", "годин"},
 	"day":    {"day", "days", "день", "дні", "днів"},
 	"update": {"update", "updates", "оновлення", "оновлення", "оновлень"},
-	"task":   {"task", "tasks", "задача", "задачі", "задач"},
 }
 
 // Count says "3 minutes" or "3 хвилини": n of a unit (see units).
