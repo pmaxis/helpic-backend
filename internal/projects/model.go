@@ -19,16 +19,31 @@ var (
 	// ErrContractor is returned when a client company's contractor starts a
 	// project: they work in the company's projects, not shape them.
 	ErrContractor = errors.New("contractors can't start projects")
+	// ErrNotInvitable is returned when the author invites someone who isn't
+	// the project's freelancer or one of the client company's people.
+	ErrNotInvitable = errors.New("this person can't be invited to the project")
+	// ErrKeepAuthor is returned when the project's author would be removed.
+	ErrKeepAuthor = errors.New("the project's author stays")
 )
+
+// Person is someone who can be on a project: its freelancer, the client, or a
+// member or contractor of the client's company.
+type Person struct {
+	ID    string
+	Name  string
+	Email string
+	// Role is "freelancer", "owner", "member" or "contractor".
+	Role string
+}
 
 // PersonalFilter is the counterpart filter value that selects personal projects.
 const PersonalFilter = "personal"
 
 // Party is one side of a project.
 type Party struct {
-	ID    string
-	Name  string
-	Email string
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 // Project groups tasks between the same freelancer and client.
@@ -42,6 +57,8 @@ type Project struct {
 	Description string
 	OpenTasks   int
 	TotalTasks  int
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// Participants are the people on the project, the author first.
+	Participants []Party
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }

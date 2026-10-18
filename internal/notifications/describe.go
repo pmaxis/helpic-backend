@@ -19,6 +19,7 @@ var Kinds = []string{
 	KindCommentAdded,
 	KindAttachmentAdded,
 	KindProjectCreated,
+	KindProjectInvited,
 	KindReportSent,
 	KindReportPaid,
 	KindClientJoined,
@@ -39,6 +40,7 @@ var DefaultKinds = []string{
 	KindReportPaid,
 	KindClientJoined,
 	KindMemberJoined,
+	KindProjectInvited,
 }
 
 // Path is where in the app the notification leads: what it is about.
@@ -104,6 +106,8 @@ func Phrase(n Notification, locale, who, subject, detail string) string {
 		return t("%s added you to %s", who, subject)
 	case KindProjectCreated:
 		return t("%s started a project %s", who, subject)
+	case KindProjectInvited:
+		return t("%s invited you to the project %s", who, subject)
 	case KindClientJoined:
 		return t("%s accepted your invitation", who)
 	case KindMemberJoined:

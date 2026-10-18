@@ -64,17 +64,32 @@ type PartyDTO struct {
 
 // DTO is a project as one of its sides sees it.
 type DTO struct {
-	ID          string    `json:"id"`
-	Freelancer  PartyDTO  `json:"freelancer"`
-	Client      *PartyDTO `json:"client"`
-	CreatedBy   string    `json:"created_by"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	OpenTasks   int       `json:"open_tasks"`
-	TotalTasks  int       `json:"total_tasks"`
-	CanEdit     bool      `json:"can_edit"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           string     `json:"id"`
+	Freelancer   PartyDTO   `json:"freelancer"`
+	Client       *PartyDTO  `json:"client"`
+	CreatedBy    string     `json:"created_by"`
+	Name         string     `json:"name"`
+	Description  string     `json:"description"`
+	OpenTasks    int        `json:"open_tasks"`
+	TotalTasks   int        `json:"total_tasks"`
+	Participants []PartyDTO `json:"participants"`
+	CanEdit      bool       `json:"can_edit"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+// PersonDTO is someone on a project, or someone the author can invite.
+type PersonDTO struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	// Role is "freelancer", "owner", "member" or "contractor".
+	Role string `json:"role"`
+}
+
+// InviteRequest is the JSON body for POST /api/v1/projects/{id}/participants.
+type InviteRequest struct {
+	UserID string `json:"user_id"`
 }
 
 // ToDTO maps a project for the viewer.
@@ -90,6 +105,10 @@ func ToDTO(p Project, viewerID string) DTO {
 		CanEdit:     p.CreatedBy == viewerID,
 		CreatedAt:   p.CreatedAt,
 		UpdatedAt:   p.UpdatedAt,
+	}
+	d.Participants = make([]PartyDTO, len(p.Participants))
+	for i, person := range p.Participants {
+		d.Participants[i] = PartyDTO(person)
 	}
 	if p.Client != nil {
 		c := PartyDTO(*p.Client)
