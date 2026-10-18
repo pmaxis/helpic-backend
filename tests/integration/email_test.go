@@ -112,6 +112,9 @@ func TestPasswordReset(t *testing.T) {
 	resp = post(t, laptop, srv.URL+"/api/v1/auth/refresh", nil)
 	wantStatus(t, resp, http.StatusUnauthorized)
 	resp.Body.Close()
+	resp = get(t, laptop, srv.URL+"/api/v1/me")
+	wantStatus(t, resp, http.StatusUnauthorized)
+	resp.Body.Close()
 	if notice := lastEmailTo(t, "forgetful@example.com"); notice.Subject != "Your Helpic password was changed" {
 		t.Fatalf("notice = %+v", notice)
 	}

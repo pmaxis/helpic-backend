@@ -384,7 +384,7 @@ func TestMe_ExpiredJWT(t *testing.T) {
 	}
 
 	expiredManager := token.NewManager(testCfg.JWTSecret, -time.Hour)
-	expired, _, err := expiredManager.Generate(userID, "freelancer", "00000000-0000-0000-0000-000000000000")
+	expired, _, err := expiredManager.Generate(userID, "00000000-0000-0000-0000-000000000000")
 	if err != nil {
 		t.Fatalf("generate expired token: %v", err)
 	}

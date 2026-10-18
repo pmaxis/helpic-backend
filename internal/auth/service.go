@@ -20,8 +20,9 @@ type repository interface {
 	GetByEmail(ctx context.Context, email string) (user.User, error)
 
 	CreateSession(ctx context.Context, userID string, refreshHash []byte, c Client, expiresAt time.Time) (Session, error)
-	Rotate(ctx context.Context, old, next []byte, expiresAt time.Time) (Session, string, error)
-	Replaced(ctx context.Context, hash []byte) (Session, time.Time, string, error)
+	Rotate(ctx context.Context, old, next []byte, expiresAt time.Time) (Session, error)
+	Replaced(ctx context.Context, hash []byte) (Session, time.Time, error)
+	SessionRole(ctx context.Context, userID, sessionID string) (string, error)
 	DeleteSession(ctx context.Context, id string) error
 	DeleteByRefresh(ctx context.Context, hash []byte) error
 	ListSessions(ctx context.Context, userID string) ([]Session, error)
@@ -37,7 +38,7 @@ type repository interface {
 
 // tokenIssuer issues signed access JWTs. Implemented by *token.Manager.
 type tokenIssuer interface {
-	Generate(userID, role, sessionID string) (string, time.Time, error)
+	Generate(userID, sessionID string) (string, time.Time, error)
 }
 
 // dummyHash is a valid bcrypt hash compared against when the email is unknown,

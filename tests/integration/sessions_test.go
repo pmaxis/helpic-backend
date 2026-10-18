@@ -226,6 +226,9 @@ func TestSessions_ListAndEnd(t *testing.T) {
 	gone := post(t, phone, srv.URL+"/api/v1/auth/refresh", nil)
 	wantStatus(t, gone, http.StatusUnauthorized)
 	gone.Body.Close()
+	gone = get(t, phone, srv.URL+"/api/v1/me")
+	wantStatus(t, gone, http.StatusUnauthorized)
+	gone.Body.Close()
 
 	// Someone else's session, or none, is not found.
 	other := signUpFreelancer(t, srv, "stranger@example.com")
@@ -251,9 +254,44 @@ func TestSessions_ListAndEnd(t *testing.T) {
 	out := post(t, tablet, srv.URL+"/api/v1/auth/refresh", nil)
 	wantStatus(t, out, http.StatusUnauthorized)
 	out.Body.Close()
+	out = get(t, tablet, srv.URL+"/api/v1/me")
+	wantStatus(t, out, http.StatusUnauthorized)
+	out.Body.Close()
 	stays := post(t, laptop, srv.URL+"/api/v1/auth/refresh", nil)
 	wantStatus(t, stays, http.StatusNoContent)
 	stays.Body.Close()
+}
+
+func TestAccessToken_DiesWithTheSession(t *testing.T) {
+	srv, _ := newAPI(t)
+	c := signUpFreelancer(t, srv, "copied@example.com")
+	u, _ := url.Parse(srv.URL + "/api/v1/me")
+	stolen := c.Jar.Cookies(u)
+
+	resp := post(t, c, srv.URL+"/api/v1/auth/logout", nil)
+	wantStatus(t, resp, http.StatusNoContent)
+	resp.Body.Close()
+
+	thief := newClient()
+	thief.Jar.SetCookies(u, stolen)
+	me := get(t, thief, srv.URL+"/api/v1/me")
+	wantStatus(t, me, http.StatusUnauthorized)
+	me.Body.Close()
+}
+
+func TestAccessToken_RoleComesFromTheAccount(t *testing.T) {
+	srv, _ := newAPI(t)
+	c := signUpFreelancer(t, srv, "demoted@example.com")
+	resp := get(t, c, srv.URL+"/api/v1/clients")
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	if _, err := testPool.Exec(context.Background(), `UPDATE users SET role = 'client' WHERE email = 'demoted@example.com'`); err != nil {
+		t.Fatalf("change role: %v", err)
+	}
+	resp = get(t, c, srv.URL+"/api/v1/clients")
+	wantStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
 }
 
 func TestChangePassword_SignsOutOtherDevices(t *testing.T) {
@@ -270,6 +308,12 @@ func TestChangePassword_SignsOutOtherDevices(t *testing.T) {
 	out := post(t, there, srv.URL+"/api/v1/auth/refresh", nil)
 	wantStatus(t, out, http.StatusUnauthorized)
 	out.Body.Close()
+	out = get(t, there, srv.URL+"/api/v1/me")
+	wantStatus(t, out, http.StatusUnauthorized)
+	out.Body.Close()
+	me := get(t, here, srv.URL+"/api/v1/me")
+	wantStatus(t, me, http.StatusOK)
+	me.Body.Close()
 	stays := post(t, here, srv.URL+"/api/v1/auth/refresh", nil)
 	wantStatus(t, stays, http.StatusNoContent)
 	stays.Body.Close()

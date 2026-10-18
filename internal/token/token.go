@@ -15,11 +15,10 @@ import (
 // (including expired tokens).
 var ErrInvalid = errors.New("invalid token")
 
-// claims are the registered claims plus the account role, which never changes
-// for an account and so is safe to carry in the token, and the session the
-// token was issued for.
+// claims are the registered claims plus the session the token was issued for.
+// Nothing that can change (like the role) is carried: the middleware reads it
+// from the database with the session.
 type claims struct {
-	Role      string `json:"role"`
 	SessionID string `json:"sid"`
 	jwt.RegisteredClaims
 }
@@ -27,7 +26,6 @@ type claims struct {
 // Claims is what a verified token says about its bearer.
 type Claims struct {
 	UserID    string
-	Role      string
 	SessionID string
 }
 
@@ -43,13 +41,12 @@ func NewManager(secret string, expiration time.Duration) *Manager {
 }
 
 // Generate returns a signed JWT whose subject is the given user ID and which
-// carries the account role and the session, together with its expiry time
-// (useful for setting the cookie's Max-Age).
-func (m *Manager) Generate(userID, role, sessionID string) (string, time.Time, error) {
+// names the session, together with its expiry time (useful for setting the
+// cookie's Max-Age).
+func (m *Manager) Generate(userID, sessionID string) (string, time.Time, error) {
 	now := time.Now()
 	expiresAt := now.Add(m.expiration)
 	c := claims{
-		Role:      role,
 		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
@@ -64,9 +61,8 @@ func (m *Manager) Generate(userID, role, sessionID string) (string, time.Time, e
 	return signed, expiresAt, nil
 }
 
-// Verify validates the token and returns the user ID from its subject claim,
-// the account role and the session. A token without a session (issued before
-// sessions existed) is invalid.
+// Verify validates the token and returns the user ID from its subject claim
+// and the session. A token without a session is invalid.
 func (m *Manager) Verify(raw string) (Claims, error) {
 	c := &claims{}
 	parsed, err := jwt.ParseWithClaims(raw, c, func(t *jwt.Token) (any, error) {
@@ -78,8 +74,8 @@ func (m *Manager) Verify(raw string) (Claims, error) {
 	if err != nil || !parsed.Valid {
 		return Claims{}, ErrInvalid
 	}
-	if c.Subject == "" || c.Role == "" || c.SessionID == "" {
+	if c.Subject == "" || c.SessionID == "" {
 		return Claims{}, ErrInvalid
 	}
-	return Claims{UserID: c.Subject, Role: c.Role, SessionID: c.SessionID}, nil
+	return Claims{UserID: c.Subject, SessionID: c.SessionID}, nil
 }

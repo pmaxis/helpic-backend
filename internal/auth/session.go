@@ -103,7 +103,7 @@ func (s *Service) StartSession(ctx context.Context, u user.User, c Client) (Toke
 	if err != nil {
 		return Tokens{}, err
 	}
-	access, accessExpires, err := s.tokens.Generate(u.ID, u.Role, sess.ID)
+	access, accessExpires, err := s.tokens.Generate(u.ID, sess.ID)
 	if err != nil {
 		return Tokens{}, err
 	}
@@ -125,9 +125,9 @@ func (s *Service) Refresh(ctx context.Context, raw string) (Tokens, error) {
 	}
 	expires := time.Now().Add(s.refreshTTL)
 
-	sess, role, err := s.repo.Rotate(ctx, old, nextHash, expires)
+	sess, err := s.repo.Rotate(ctx, old, nextHash, expires)
 	if err == nil {
-		access, accessExpires, err := s.tokens.Generate(sess.UserID, role, sess.ID)
+		access, accessExpires, err := s.tokens.Generate(sess.UserID, sess.ID)
 		if err != nil {
 			return Tokens{}, err
 		}
@@ -137,7 +137,7 @@ func (s *Service) Refresh(ctx context.Context, raw string) (Tokens, error) {
 		return Tokens{}, err
 	}
 
-	sess, rotatedAt, role, err := s.repo.Replaced(ctx, old)
+	sess, rotatedAt, err := s.repo.Replaced(ctx, old)
 	if errors.Is(err, ErrSessionNotFound) {
 		return Tokens{}, ErrSessionInvalid
 	}
@@ -150,11 +150,25 @@ func (s *Service) Refresh(ctx context.Context, raw string) (Tokens, error) {
 		}
 		return Tokens{}, ErrSessionInvalid
 	}
-	access, accessExpires, err := s.tokens.Generate(sess.UserID, role, sess.ID)
+	access, accessExpires, err := s.tokens.Generate(sess.UserID, sess.ID)
 	if err != nil {
 		return Tokens{}, err
 	}
 	return Tokens{Access: access, AccessExpires: accessExpires}, nil
+}
+
+// SessionRole returns the role of the user whose live session this is, so an
+// access token stops working the moment its session ends. ok is false when
+// the user has no such live session.
+func (s *Service) SessionRole(ctx context.Context, userID, sessionID string) (string, bool, error) {
+	role, err := s.repo.SessionRole(ctx, userID, sessionID)
+	if errors.Is(err, ErrSessionNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return role, true, nil
 }
 
 // Logout ends the session the refresh token belongs to. An unknown token is
@@ -171,8 +185,8 @@ func (s *Service) Sessions(ctx context.Context, userID string) ([]Session, error
 	return s.repo.ListSessions(ctx, userID)
 }
 
-// EndSession signs one of the user's devices out. Its access token works
-// until it expires; it can't be refreshed.
+// EndSession signs one of the user's devices out; its access token stops
+// working at once.
 func (s *Service) EndSession(ctx context.Context, userID, id string) error {
 	return s.repo.DeleteUserSession(ctx, userID, id)
 }
@@ -215,44 +229,56 @@ func (r *Repository) CreateSession(ctx context.Context, userID string, refreshHa
 }
 
 // Rotate replaces a live session's current refresh token with next and
-// returns the session with its user's role. ErrSessionNotFound when old is
-// not a live session's current token.
-func (r *Repository) Rotate(ctx context.Context, old, next []byte, expiresAt time.Time) (Session, string, error) {
-	var role string
+// returns the session. ErrSessionNotFound when old is not a live session's
+// current token.
+func (r *Repository) Rotate(ctx context.Context, old, next []byte, expiresAt time.Time) (Session, error) {
 	sess, err := scanSession(r.db.QueryRow(ctx, `
 		UPDATE sessions s
 		SET prev_refresh_hash = s.refresh_hash, refresh_hash = $2, rotated_at = now(),
 		    last_used_at = now(), expires_at = $3
-		FROM users u
-		WHERE u.id = s.user_id AND s.refresh_hash = $1 AND s.expires_at > now()
-		RETURNING `+sessionColumns+`, u.role`, old, next, expiresAt), &role)
+		WHERE s.refresh_hash = $1 AND s.expires_at > now()
+		RETURNING `+sessionColumns, old, next, expiresAt))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Session{}, "", ErrSessionNotFound
+		return Session{}, ErrSessionNotFound
 	}
 	if err != nil {
-		return Session{}, "", fmt.Errorf("rotate session: %w", err)
+		return Session{}, fmt.Errorf("rotate session: %w", err)
 	}
-	return sess, role, nil
+	return sess, nil
 }
 
 // Replaced finds the live session whose previous refresh token this is, with
-// when it was replaced and the user's role. ErrSessionNotFound when none.
-func (r *Repository) Replaced(ctx context.Context, hash []byte) (Session, time.Time, string, error) {
-	var (
-		rotatedAt time.Time
-		role      string
-	)
+// when it was replaced. ErrSessionNotFound when none.
+func (r *Repository) Replaced(ctx context.Context, hash []byte) (Session, time.Time, error) {
+	var rotatedAt time.Time
 	sess, err := scanSession(r.db.QueryRow(ctx, `
-		SELECT `+sessionColumns+`, s.rotated_at, u.role
-		FROM sessions s JOIN users u ON u.id = s.user_id
-		WHERE s.prev_refresh_hash = $1 AND s.expires_at > now()`, hash), &rotatedAt, &role)
+		SELECT `+sessionColumns+`, s.rotated_at
+		FROM sessions s
+		WHERE s.prev_refresh_hash = $1 AND s.expires_at > now()`, hash), &rotatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Session{}, time.Time{}, "", ErrSessionNotFound
+		return Session{}, time.Time{}, ErrSessionNotFound
 	}
 	if err != nil {
-		return Session{}, time.Time{}, "", fmt.Errorf("find replaced session: %w", err)
+		return Session{}, time.Time{}, fmt.Errorf("find replaced session: %w", err)
 	}
-	return sess, rotatedAt, role, nil
+	return sess, rotatedAt, nil
+}
+
+// SessionRole returns the role of the user owning this live session.
+// ErrSessionNotFound when the user has no such live session.
+func (r *Repository) SessionRole(ctx context.Context, userID, sessionID string) (string, error) {
+	var role string
+	err := r.db.QueryRow(ctx, `
+		SELECT u.role
+		FROM sessions s JOIN users u ON u.id = s.user_id
+		WHERE s.id = $1 AND s.user_id = $2 AND s.expires_at > now()`, sessionID, userID).Scan(&role)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrSessionNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("find session role: %w", err)
+	}
+	return role, nil
 }
 
 // DeleteSession removes a session.
