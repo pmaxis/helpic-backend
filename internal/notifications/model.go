@@ -32,6 +32,9 @@ const (
 	// KindParticipantAdded tells someone they were added to a task — for a
 	// contractor, that it's now theirs to see.
 	KindParticipantAdded = "participant_added"
+	// KindProjectInvited tells someone the project's author invited them, so
+	// the project is now theirs to see.
+	KindProjectInvited = "project_invited"
 )
 
 var ErrNotFound = errors.New("notification not found")

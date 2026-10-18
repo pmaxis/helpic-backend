@@ -1,10 +1,11 @@
 // Package team gives a client a company and its people. The client a
 // freelancer invited owns the company; they invite people by link, as
-// members or contractors. Both act for the company: they see its freelancers,
-// projects and boards and set tasks for its freelancers (see the
-// acting_client SQL function). A member sees all the company's tasks, a
-// contractor only the ones they set or were added to (sees_task). Reports
-// stay the owner's alone.
+// members or contractors. Both act for the company: they see its freelancers
+// and set tasks for them (see the acting_client SQL function). A member sees
+// all the company's tasks; a contractor only the ones they set or were added
+// to (sees_task). A project is seen by its participants, and the author
+// invites them — the freelancer, the client, an employee or a contractor (sees_project).
+// Reports stay the owner's alone.
 package team
 
 import (

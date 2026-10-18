@@ -52,14 +52,83 @@ func TestContractors(t *testing.T) {
 	wantStatus(t, get(t, contractor, srv.URL+"/api/v1/comments?task="+ownerTask["id"].(string)), http.StatusNotFound)
 	wantStatus(t, get(t, owner, srv.URL+"/api/v1/comments?task="+ownerTask["id"].(string)), http.StatusOK)
 
-	// They see the project, counting only their task, and can't start one.
-	resp = get(t, contractor, srv.URL+"/api/v1/projects/"+project["id"].(string))
+	// A task in the project doesn't open it. The author invites them; then they
+	// see it, counting only their task. They still can't start a project.
+	projectID := project["id"].(string)
+	wantStatus(t, get(t, contractor, srv.URL+"/api/v1/projects/"+projectID), http.StatusNotFound)
+	resp = post(t, owner, srv.URL+"/api/v1/projects/"+projectID+"/participants", map[string]string{"user_id": contractorID})
+	wantStatus(t, resp, http.StatusOK)
+	body := decode(t, resp)
+	var invited bool
+	for _, x := range body["participants"].([]any) {
+		if x.(map[string]any)["id"] == contractorID && x.(map[string]any)["role"] == "contractor" {
+			invited = true
+		}
+	}
+	if !invited {
+		t.Fatalf("after inviting the contractor: %v", body)
+	}
+	resp = get(t, contractor, srv.URL+"/api/v1/projects/"+projectID)
 	wantStatus(t, resp, http.StatusOK)
 	if p := field(decode(t, resp), "project"); p["total_tasks"] != float64(1) {
 		t.Fatalf("contractor's project = %v", p)
 	}
 	resp = post(t, contractor, srv.URL+"/api/v1/projects", map[string]any{"freelancer_id": freelancerID, "name": "Mine"})
 	wantStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+	resp = post(t, owner, srv.URL+"/api/v1/projects/"+projectID+"/participants", map[string]string{"user_id": freelancerID})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	resp = post(t, freelancer, srv.URL+"/api/v1/projects/"+projectID+"/participants", map[string]string{"user_id": myID(t, srv, member)})
+	wantStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+
+	// Another project stays hidden from the member and the contractor until the
+	// author invites them. The role doesn't matter.
+	other := createProject(t, srv, owner, map[string]any{"freelancer_id": freelancerID, "name": "Other"})
+	otherID := other["id"].(string)
+	wantStatus(t, get(t, contractor, srv.URL+"/api/v1/projects/"+otherID), http.StatusNotFound)
+	wantStatus(t, get(t, contractor, srv.URL+"/api/v1/board?project="+otherID), http.StatusNotFound)
+	wantStatus(t, get(t, member, srv.URL+"/api/v1/projects/"+otherID), http.StatusNotFound)
+	resp = get(t, owner, srv.URL+"/api/v1/projects/"+otherID+"/people")
+	wantStatus(t, resp, http.StatusOK)
+	people := decode(t, resp)
+	var authorOn, freelancerOff, memberOff bool
+	for _, x := range people["participants"].([]any) {
+		if x.(map[string]any)["role"] == "owner" {
+			authorOn = true
+		}
+	}
+	for _, x := range people["candidates"].([]any) {
+		role := x.(map[string]any)["role"]
+		if role == "freelancer" {
+			freelancerOff = true
+		}
+		if x.(map[string]any)["id"] == myID(t, srv, member) && role == "member" {
+			memberOff = true
+		}
+	}
+	if !authorOn || !freelancerOff || !memberOff {
+		t.Fatalf("project people = %v", people)
+	}
+
+	resp = post(t, owner, srv.URL+"/api/v1/projects/"+otherID+"/participants", map[string]string{"user_id": myID(t, srv, member)})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	wantStatus(t, get(t, member, srv.URL+"/api/v1/projects/"+otherID), http.StatusOK)
+	resp = post(t, owner, srv.URL+"/api/v1/projects/"+otherID+"/participants", map[string]string{"user_id": contractorID})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	wantStatus(t, get(t, contractor, srv.URL+"/api/v1/projects/"+otherID), http.StatusOK)
+	wantStatus(t, get(t, contractor, srv.URL+"/api/v1/board?project="+otherID), http.StatusOK)
+
+	newTask(t, srv, owner, map[string]any{"freelancer_id": freelancerID, "title": "In other", "project_id": otherID})
+	resp = do(t, owner, http.MethodDelete, srv.URL+"/api/v1/projects/"+otherID+"/participants/"+contractorID, nil)
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	wantStatus(t, get(t, contractor, srv.URL+"/api/v1/projects/"+otherID), http.StatusNotFound)
+	resp = do(t, owner, http.MethodDelete, srv.URL+"/api/v1/projects/"+otherID+"/participants/"+myID(t, srv, owner), nil)
+	wantStatus(t, resp, http.StatusConflict)
 	resp.Body.Close()
 
 	// Added to the owner's task, they're told and see it.
@@ -109,7 +178,7 @@ func TestContractors(t *testing.T) {
 	resp = do(t, owner, http.MethodPut, srv.URL+"/api/v1/team/members/"+contractorID, map[string]string{"role": "member"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
-	if got := taskTitles(t, contractor, srv.URL); len(got) != 3 {
+	if got := taskTitles(t, contractor, srv.URL); len(got) != 4 {
 		t.Fatalf("contractor made a member sees %v", got)
 	}
 	resp = do(t, member, http.MethodPut, srv.URL+"/api/v1/team/members/"+contractorID, map[string]string{"role": "contractor"})

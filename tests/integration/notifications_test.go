@@ -84,10 +84,16 @@ func TestNotifications_SharedWork(t *testing.T) {
 		t.Fatalf("freelancer unread after read-all = %d", n)
 	}
 
-	// A shared project tells the other side too.
-	createProject(t, srv, freelancer, map[string]any{"client_id": myID(t, srv, client), "name": "Website"})
+	// Starting a project doesn't tell the other side. The author invites them.
+	project := createProject(t, srv, freelancer, map[string]any{"client_id": myID(t, srv, client), "name": "Website"})
+	if list, _ := notifications(t, srv, client); len(list) > 0 && list[0].Kind == "project_created" {
+		t.Fatalf("creating a project notified the client: %+v", list[0])
+	}
+	resp = post(t, freelancer, srv.URL+"/api/v1/projects/"+project["id"].(string)+"/participants", map[string]string{"user_id": myID(t, srv, client)})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
 	list, _ = notifications(t, srv, client)
-	if list[0].Kind != "project_created" || list[0].Subject != "Website" {
+	if list[0].Kind != "project_invited" || list[0].Subject != "Website" {
 		t.Fatalf("project notification = %+v", list[0])
 	}
 }

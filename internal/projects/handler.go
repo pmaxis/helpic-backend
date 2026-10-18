@@ -29,6 +29,9 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Get("/{id}", h.Get)
 		r.Put("/{id}", h.Update)
 		r.Delete("/{id}", h.Delete)
+		r.Get("/{id}/people", h.People)
+		r.Post("/{id}/participants", h.Invite)
+		r.Delete("/{id}/participants/{userID}", h.RemoveParticipant)
 	})
 }
 
@@ -169,6 +172,104 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// People handles GET /api/v1/projects/{id}/people.
+//
+//	@Summary		A project's participants
+//	@Description	Who is on the project. Its author also gets who they can still invite: the freelancer, and the client's employees and contractors.
+//	@Tags			projects
+//	@Produce		json
+//	@Param			id	path		string					true	"Project ID"
+//	@Success		200	{object}	map[string][]PersonDTO	"participants and candidates"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/projects/{id}/people [get]
+func (h *Handler) People(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	participants, candidates, err := h.svc.People(r.Context(), userID, chi.URLParam(r, "id"))
+	writePeople(w, http.StatusOK, participants, candidates, err)
+}
+
+// Invite handles POST /api/v1/projects/{id}/participants.
+//
+//	@Summary		Invite someone to a project
+//	@Description	The author only. A freelancer, an employee or a contractor; they're notified and can see the project.
+//	@Tags			projects
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Project ID"
+//	@Param			body	body		InviteRequest			true	"Request body"
+//	@Success		200		{object}	map[string][]PersonDTO	"participants and candidates"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Can't be invited"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not the author"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/projects/{id}/participants [post]
+func (h *Handler) Invite(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	var req InviteRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	participants, candidates, err := h.svc.Invite(r.Context(), userID, chi.URLParam(r, "id"), req.UserID)
+	writePeople(w, http.StatusOK, participants, candidates, err)
+}
+
+// RemoveParticipant handles DELETE /api/v1/projects/{id}/participants/{userID}.
+//
+//	@Summary		Take someone off a project
+//	@Description	The author only. The author stays. Someone taken off no longer sees the project.
+//	@Tags			projects
+//	@Param			id		path	string	true	"Project ID"
+//	@Param			userID	path	string	true	"Participant's user ID"
+//	@Success		200		{object}	map[string][]PersonDTO	"participants and candidates"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not the author"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409		{object}	response.ErrorEnvelope	"The author"
+//	@Router			/projects/{id}/participants/{userID} [delete]
+func (h *Handler) RemoveParticipant(w http.ResponseWriter, r *http.Request) {
+	userID, _, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	participants, candidates, err := h.svc.RemoveParticipant(r.Context(), userID, chi.URLParam(r, "id"), chi.URLParam(r, "userID"))
+	writePeople(w, http.StatusOK, participants, candidates, err)
+}
+
+func writePeople(w http.ResponseWriter, status int, participants, candidates []Person, err error) {
+	switch {
+	case errors.Is(err, ErrNotFound):
+		response.Error(w, http.StatusNotFound, response.CodeNotFound, "Project not found")
+	case errors.Is(err, ErrNotOwner):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the project's author can change its participants")
+	case errors.Is(err, ErrNotInvitable):
+		response.ValidationError(w, map[string]string{"user_id": "This person can't be invited to the project"})
+	case errors.Is(err, ErrKeepAuthor):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "The project's author stays")
+	case err != nil:
+		response.Internal(w, err)
+	default:
+		response.JSON(w, status, map[string]any{
+			"participants": peopleDTO(participants),
+			"candidates":   peopleDTO(candidates),
+		})
+	}
+}
+
+func peopleDTO(list []Person) []PersonDTO {
+	out := make([]PersonDTO, 0, len(list))
+	for _, p := range list {
+		out = append(out, PersonDTO(p))
+	}
+	return out
 }
 
 func writeProject(w http.ResponseWriter, status int, p Project, viewerID string, err error) {

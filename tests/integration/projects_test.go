@@ -26,17 +26,25 @@ func TestProjects_SharedAndPersonal(t *testing.T) {
 	}
 	fromClient := createProject(t, srv, client, map[string]any{"freelancer_id": myID(t, srv, freelancer), "name": "Mobile app"})
 
+	// Each person sees the projects they started. The other side joins when invited.
 	resp := get(t, freelancer, srv.URL+"/api/v1/projects")
 	wantStatus(t, resp, http.StatusOK)
-	if list, _ := decode(t, resp)["projects"].([]any); len(list) != 3 {
-		t.Fatalf("freelancer projects = %d, want 3", len(list))
+	if list, _ := decode(t, resp)["projects"].([]any); len(list) != 2 {
+		t.Fatalf("freelancer projects = %d, want 2", len(list))
 	}
 	resp = get(t, client, srv.URL+"/api/v1/projects")
 	wantStatus(t, resp, http.StatusOK)
-	if list, _ := decode(t, resp)["projects"].([]any); len(list) != 2 {
-		t.Fatalf("client projects = %d, want 2 (personal hidden)", len(list))
+	if list, _ := decode(t, resp)["projects"].([]any); len(list) != 1 {
+		t.Fatalf("client projects = %d, want 1", len(list))
 	}
 	wantStatus(t, get(t, client, srv.URL+"/api/v1/projects/"+personal["id"].(string)), http.StatusNotFound)
+	wantStatus(t, get(t, client, srv.URL+"/api/v1/projects/"+shared["id"].(string)), http.StatusNotFound)
+	wantStatus(t, get(t, freelancer, srv.URL+"/api/v1/projects/"+fromClient["id"].(string)), http.StatusNotFound)
+
+	resp = post(t, freelancer, srv.URL+"/api/v1/projects/"+shared["id"].(string)+"/participants", map[string]string{"user_id": clientID})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	wantStatus(t, get(t, client, srv.URL+"/api/v1/projects/"+shared["id"].(string)), http.StatusOK)
 
 	// Only the creator changes a project.
 	resp = do(t, client, http.MethodPut, srv.URL+"/api/v1/projects/"+shared["id"].(string), map[string]any{"name": "Hijack"})

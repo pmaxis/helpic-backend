@@ -2,6 +2,7 @@ package projects
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -30,7 +31,11 @@ func selectProject(viewer string) string {
 		(SELECT count(*) FROM tasks t WHERE t.project_id = p.id AND t.status IN ('new', 'in_progress')
 			AND sees_task(` + viewer + `, t.id, t.freelancer_id, t.client_id)),
 		(SELECT count(*) FROM tasks t WHERE t.project_id = p.id
-			AND sees_task(` + viewer + `, t.id, t.freelancer_id, t.client_id))
+			AND sees_task(` + viewer + `, t.id, t.freelancer_id, t.client_id)),
+		coalesce((SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email)
+				ORDER BY u.id = p.created_by DESC, lower(u.name), u.email)
+			FROM project_participants pp JOIN users u ON u.id = pp.user_id
+			WHERE pp.project_id = p.id), '[]')
 	FROM projects p
 	JOIN users f ON f.id = p.freelancer_id
 	LEFT JOIN users c ON c.id = p.client_id`
@@ -40,26 +45,33 @@ func scanProject(row pgx.Row) (Project, error) {
 	var (
 		p                          Project
 		clientID, clientName, mail *string
+		participants               []byte
 	)
 	err := row.Scan(&p.ID, &p.CreatedBy, &p.Name, &p.Description, &p.CreatedAt, &p.UpdatedAt,
 		&p.Freelancer.ID, &p.Freelancer.Name, &p.Freelancer.Email,
-		&clientID, &clientName, &mail, &p.OpenTasks, &p.TotalTasks)
-	if err == nil && clientID != nil {
+		&clientID, &clientName, &mail, &p.OpenTasks, &p.TotalTasks, &participants)
+	if err != nil {
+		return p, err
+	}
+	if err := json.Unmarshal(participants, &p.Participants); err != nil {
+		return p, fmt.Errorf("decode participants: %w", err)
+	}
+	if clientID != nil {
 		p.Client = &Party{ID: *clientID, Name: *clientName, Email: *mail}
 	}
-	return p, err
+	return p, nil
 }
 
 // List returns the user's projects, alphabetically. counterpartID keeps the
 // projects with one client (for a freelancer) or one freelancer (for a
-// client); PersonalFilter keeps a freelancer's personal projects.
+// client); PersonalFilter keeps a freelancer's personal projects. A project
+// shows up for its participants (sees_project).
 func (r *Repository) List(ctx context.Context, userID, role, counterpartID string) ([]Project, error) {
-	// A client acts for their company, so a member sees the owner's projects.
-	own, other := "p.freelancer_id = $1", "p.client_id"
+	other := "p.client_id"
 	if role == user.RoleClient {
-		own, other = "p.client_id = acting_client($1)", "p.freelancer_id"
+		other = "p.freelancer_id"
 	}
-	rows, err := r.db.Query(ctx, selectProject("$1::uuid")+` WHERE `+own+`
+	rows, err := r.db.Query(ctx, selectProject("$1::uuid")+` WHERE sees_project($1::uuid, p.id)
 		AND ($2 = '' OR `+other+`::text = $2 OR ($2 = '`+PersonalFilter+`' AND `+other+` IS NULL))
 		ORDER BY lower(p.name), p.created_at`, userID, counterpartID)
 	if err != nil {
@@ -75,7 +87,7 @@ func (r *Repository) List(ctx context.Context, userID, role, counterpartID strin
 // Get loads a project the user takes part in, or ErrNotFound.
 func (r *Repository) Get(ctx context.Context, userID, id string) (Project, error) {
 	p, err := scanProject(r.db.QueryRow(ctx, selectProject("$2::uuid")+`
-		WHERE p.id::text = $1 AND (p.freelancer_id = $2 OR p.client_id = acting_client($2))`, id, userID))
+		WHERE p.id::text = $1 AND sees_project($2::uuid, p.id)`, id, userID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Project{}, ErrNotFound
 	}
@@ -104,22 +116,41 @@ func (r *Repository) IsContractor(ctx context.Context, userID string) (bool, err
 	return ok, nil
 }
 
-// CreatePersonal inserts a freelancer's personal project.
+// CreatePersonal inserts a freelancer's personal project. They are its only participant.
 func (r *Repository) CreatePersonal(ctx context.Context, freelancerID string, p Params) (string, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
 	var id string
-	err := r.db.QueryRow(ctx, `INSERT INTO projects (freelancer_id, created_by, name, description)
+	err = tx.QueryRow(ctx, `INSERT INTO projects (freelancer_id, created_by, name, description)
 		VALUES ($1, $1, $2, $3) RETURNING id`, freelancerID, p.Name, p.Description).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("create personal project: %w", err)
+	}
+	if err := addParticipants(ctx, tx, id, freelancerID, freelancerID); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("commit project: %w", err)
 	}
 	return id, nil
 }
 
 // Create inserts a project between a linked freelancer and client; when they
-// aren't linked it returns ErrNotLinked.
+// aren't linked it returns ErrNotLinked. Only the author is a participant.
+// They invite the freelancer, the client, an employee or a contractor.
 func (r *Repository) Create(ctx context.Context, freelancerID, clientID, createdBy string, p Params) (string, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
 	var id string
-	err := r.db.QueryRow(ctx, `INSERT INTO projects (freelancer_id, client_id, created_by, name, description)
+	err = tx.QueryRow(ctx, `INSERT INTO projects (freelancer_id, client_id, created_by, name, description)
 		SELECT fc.freelancer_id, fc.client_id, $3, $4, $5
 		FROM freelancer_clients fc
 		WHERE fc.freelancer_id::text = $1 AND fc.client_id::text = $2
@@ -130,7 +161,119 @@ func (r *Repository) Create(ctx context.Context, freelancerID, clientID, created
 	if err != nil {
 		return "", fmt.Errorf("create project: %w", err)
 	}
+	if err := addParticipants(ctx, tx, id, createdBy, createdBy); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("commit project: %w", err)
+	}
 	return id, nil
+}
+
+// whoCanJoin is the project's freelancer, its client, and the client's
+// employees and contractors — the people the author may invite.
+const whoCanJoin = `
+	SELECT p.freelancer_id AS id, 'freelancer' AS role FROM projects p WHERE p.id = $1::uuid
+	UNION ALL
+	SELECT p.client_id, 'owner' FROM projects p WHERE p.id = $1::uuid AND p.client_id IS NOT NULL
+	UNION ALL
+	SELECT m.user_id, m.role
+	FROM projects p
+	JOIN companies c ON c.owner_id = p.client_id
+	JOIN company_members m ON m.company_id = c.id
+	WHERE p.id = $1::uuid AND m.role IN ('member', 'contractor')`
+
+// Participants lists who is on the project: the author first, then by name.
+func (r *Repository) Participants(ctx context.Context, projectID string) ([]Person, error) {
+	rows, err := r.db.Query(ctx, `SELECT u.id, u.name, u.email, j.role
+		FROM project_participants pp
+		JOIN users u ON u.id = pp.user_id
+		JOIN (`+whoCanJoin+`) j ON j.id = u.id
+		WHERE pp.project_id = $1::uuid
+		ORDER BY u.id = (SELECT created_by FROM projects WHERE id = $1::uuid) DESC, lower(u.name), u.email`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list project participants: %w", err)
+	}
+	return collectPeople(rows)
+}
+
+// Candidates lists who the author may still invite.
+func (r *Repository) Candidates(ctx context.Context, projectID string) ([]Person, error) {
+	rows, err := r.db.Query(ctx, `SELECT u.id, u.name, u.email, j.role
+		FROM (`+whoCanJoin+`) j
+		JOIN users u ON u.id = j.id
+		WHERE NOT EXISTS (
+			SELECT 1 FROM project_participants pp WHERE pp.project_id = $1::uuid AND pp.user_id = u.id
+		)
+		ORDER BY j.role, lower(u.name), u.email`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list invite candidates: %w", err)
+	}
+	return collectPeople(rows)
+}
+
+func collectPeople(rows pgx.Rows) ([]Person, error) {
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Person, error) {
+		var p Person
+		return p, row.Scan(&p.ID, &p.Name, &p.Email, &p.Role)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan people: %w", err)
+	}
+	return out, nil
+}
+
+// Invite puts someone on the project. False means they aren't someone the
+// author can invite; true with already means they were on it.
+func (r *Repository) Invite(ctx context.Context, projectID, userID, invitedBy string) (added bool, err error) {
+	var id string
+	err = r.db.QueryRow(ctx, `INSERT INTO project_participants (project_id, user_id, invited_by)
+		SELECT $1::uuid, j.id, $3::uuid FROM (`+whoCanJoin+`) j WHERE j.id::text = $2
+		ON CONFLICT DO NOTHING
+		RETURNING user_id`, projectID, userID, invitedBy).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		var on bool
+		if err := r.db.QueryRow(ctx, `SELECT EXISTS (
+			SELECT 1 FROM project_participants WHERE project_id = $1::uuid AND user_id::text = $2)`, projectID, userID).Scan(&on); err != nil {
+			return false, fmt.Errorf("check participant: %w", err)
+		}
+		if on {
+			return false, nil
+		}
+		return false, ErrNotInvitable
+	}
+	if err != nil {
+		return false, fmt.Errorf("invite to project: %w", err)
+	}
+	return true, nil
+}
+
+// RemoveParticipant takes someone off the project. False means they weren't on it.
+func (r *Repository) RemoveParticipant(ctx context.Context, projectID, userID string) (bool, error) {
+	tag, err := r.db.Exec(ctx, `DELETE FROM project_participants WHERE project_id = $1::uuid AND user_id::text = $2`, projectID, userID)
+	if err != nil {
+		return false, fmt.Errorf("remove project participant: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// addParticipants inserts the given users, skipping blanks and repeats.
+func addParticipants(ctx context.Context, tx pgx.Tx, projectID, invitedBy string, userIDs ...string) error {
+	seen := map[string]bool{}
+	var ids []string
+	for _, id := range userIDs {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO project_participants (project_id, user_id, invited_by)
+		SELECT $1::uuid, u::uuid, $2::uuid FROM unnest($3::text[]) AS u
+		ON CONFLICT DO NOTHING`, projectID, invitedBy, ids); err != nil {
+		return fmt.Errorf("add project participants: %w", err)
+	}
+	return nil
 }
 
 // Update rewrites the project's name and description.

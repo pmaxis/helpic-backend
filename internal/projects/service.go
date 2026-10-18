@@ -8,7 +8,7 @@ import (
 	"github.com/pmaxis/helpic/internal/user"
 )
 
-// notifier tells the other side about a new shared project. Implemented by
+// notifier tells someone the author invited them to a project. Implemented by
 // *notifications.Service.
 type notifier interface {
 	Notify(ctx context.Context, n notifications.Notification)
@@ -67,17 +67,7 @@ func (s *Service) Create(ctx context.Context, userID, role string, p Params) (Pr
 	if err != nil {
 		return Project{}, err
 	}
-	proj, err := s.repo.Get(ctx, userID, id)
-	if err == nil && proj.Client != nil {
-		// The other side: the freelancer, or the client company's owner.
-		n := notifications.Notification{ActorID: userID, Kind: notifications.KindProjectCreated, ProjectID: proj.ID, Subject: proj.Name}
-		n.UserID = proj.Freelancer.ID
-		if userID == proj.Freelancer.ID {
-			n.UserID = proj.Client.ID
-		}
-		s.notify.Notify(ctx, n)
-	}
-	return proj, err
+	return s.repo.Get(ctx, userID, id)
 }
 
 // Update renames or re-describes a project; only its creator may.
@@ -97,6 +87,59 @@ func (s *Service) Delete(ctx context.Context, userID, id string) error {
 		return err
 	}
 	return s.repo.Delete(ctx, id)
+}
+
+// People lists the project's participants, and, for its author, who they can
+// still invite: the freelancer, the client, and the client's employees and contractors.
+func (s *Service) People(ctx context.Context, userID, id string) (participants, candidates []Person, err error) {
+	p, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	if participants, err = s.repo.Participants(ctx, id); err != nil {
+		return nil, nil, err
+	}
+	if p.CreatedBy != userID {
+		return participants, []Person{}, nil
+	}
+	candidates, err = s.repo.Candidates(ctx, id)
+	return participants, candidates, err
+}
+
+// Invite adds someone the author chose. They're told, and the project is
+// theirs to see from now on. The role doesn't matter: a freelancer, an
+// employee and a contractor are invited the same way.
+func (s *Service) Invite(ctx context.Context, userID, id, personID string) ([]Person, []Person, error) {
+	p, err := s.owned(ctx, userID, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	added, err := s.repo.Invite(ctx, id, personID, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if added && personID != userID {
+		s.notify.Notify(ctx, notifications.Notification{
+			UserID: personID, ActorID: userID, Kind: notifications.KindProjectInvited, ProjectID: p.ID, Subject: p.Name,
+		})
+	}
+	return s.People(ctx, userID, id)
+}
+
+// RemoveParticipant takes someone off the project; only its author may, and
+// the author stays. They no longer see the project.
+func (s *Service) RemoveParticipant(ctx context.Context, userID, id, personID string) ([]Person, []Person, error) {
+	p, err := s.owned(ctx, userID, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	if personID == p.CreatedBy {
+		return nil, nil, ErrKeepAuthor
+	}
+	if _, err := s.repo.RemoveParticipant(ctx, id, personID); err != nil {
+		return nil, nil, err
+	}
+	return s.People(ctx, userID, id)
 }
 
 func (s *Service) owned(ctx context.Context, userID, id string) (Project, error) {
