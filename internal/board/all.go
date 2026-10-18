@@ -10,11 +10,12 @@ import (
 	"github.com/pmaxis/helpic/internal/user"
 )
 
-// The "all" board is a freelancer's every task — every client's and their
-// personal ones — on one board. Each pair keeps its own columns, so the all
-// board merges columns that share a category and a name ("Done" of every
-// pair is one lane). A card dropped on a lane goes to the task's own pair's
-// column of that name, or else to its first column of that category.
+// The "all" board is every task the user can see on one board: a freelancer's
+// work with every client and their personal tasks, or a client's work with
+// every freelancer. Each pair keeps its own columns, so the all board merges
+// columns that share a category and a name ("Done" of every pair is one lane).
+// A card dropped on a lane goes to the task's own pair's column of that name,
+// or else to its first column of that category.
 
 // AllWith is the Scope.With value that asks for the all board.
 const AllWith = "all"
@@ -42,6 +43,30 @@ func (r *Repository) AllColumns(ctx context.Context, freelancerID string) ([]Col
 		WHERE ws.freelancer_id = $1 ORDER BY ws.position, ws.created_at`, freelancerID)
 	if err != nil {
 		return nil, fmt.Errorf("list all columns: %w", err)
+	}
+	defer rows.Close()
+	var out []Column
+	for rows.Next() {
+		c, err := scanColumn(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan column: %w", err)
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// ClientColumns lists every column of the client's boards with freelancers,
+// creating each board's defaults the first time.
+func (r *Repository) ClientColumns(ctx context.Context, clientID string) ([]Column, error) {
+	if _, err := r.db.Exec(ctx, `SELECT ensure_workflow(freelancer_id, client_id)
+		FROM freelancer_clients WHERE client_id = $1::uuid`, clientID); err != nil {
+		return nil, fmt.Errorf("ensure workflows: %w", err)
+	}
+	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM `+columnFrom+`
+		WHERE ws.client_id = $1::uuid ORDER BY ws.position, ws.created_at`, clientID)
+	if err != nil {
+		return nil, fmt.Errorf("list client columns: %w", err)
 	}
 	defer rows.Close()
 	var out []Column
@@ -88,13 +113,9 @@ func mergeColumns(cols []Column) []Column {
 	return out
 }
 
-// AllBoard returns the freelancer's all board, optionally only some projects'
-// tasks.
+// AllBoard returns the user's all board, optionally only some projects' tasks.
 func (s *Service) AllBoard(ctx context.Context, userID, role string, sc Scope) ([]Lane, error) {
-	if role != user.RoleFreelancer {
-		return nil, ErrNoBoard
-	}
-	cols, err := s.repo.AllColumns(ctx, userID)
+	cols, err := s.allColumns(ctx, userID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -104,6 +125,21 @@ func (s *Service) AllBoard(ctx context.Context, userID, role string, sc Scope) (
 	}
 	list = filterProjects(list, sc.Projects)
 	return placeOnMerged(cols, list), nil
+}
+
+// allColumns lists the columns the all board merges.
+func (s *Service) allColumns(ctx context.Context, userID, role string) ([]Column, error) {
+	if role == user.RoleFreelancer {
+		return s.repo.AllColumns(ctx, userID)
+	}
+	if role != user.RoleClient {
+		return nil, ErrNoBoard
+	}
+	clientID, err := s.repo.ActingClient(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.ClientColumns(ctx, clientID)
 }
 
 // placeOnMerged lays tasks onto lanes merged by category and column name,
