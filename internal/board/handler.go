@@ -31,7 +31,6 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Put("/columns/{id}", h.UpdateColumn)
 		r.Delete("/columns/{id}", h.DeleteColumn)
 		r.Post("/moves", h.Move)
-		h.categoryRoutes(r)
 		h.labelRoutes(r)
 	})
 }
@@ -79,12 +78,7 @@ func (h *Handler) Board(w http.ResponseWriter, r *http.Request) {
 		response.JSON(w, http.StatusOK, MergedDTO(lanes, role, userID))
 		return
 	}
-	dto := LanesDTO(p, lanes, role, userID)
-	if err := h.attachCategories(r, p, &dto); err != nil {
-		writeErr(w, err)
-		return
-	}
-	response.JSON(w, http.StatusOK, dto)
+	response.JSON(w, http.StatusOK, LanesDTO(p, lanes, role, userID))
 }
 
 // Columns handles GET /api/v1/board/columns with the same query as Board.
@@ -109,12 +103,7 @@ func (h *Handler) Columns(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	dto := ColumnsDTO(p, cols, userID)
-	if err := h.attachCategories(r, p, &dto); err != nil {
-		writeErr(w, err)
-		return
-	}
-	response.JSON(w, http.StatusOK, dto)
+	response.JSON(w, http.StatusOK, ColumnsDTO(p, cols, userID))
 }
 
 // CreateColumn handles POST /api/v1/board/columns.
@@ -182,7 +171,7 @@ func (h *Handler) UpdateColumn(w http.ResponseWriter, r *http.Request) {
 // DeleteColumn handles DELETE /api/v1/board/columns/{id}.
 //
 //	@Summary		Delete a column
-//	@Description	Its tasks move to another column of the same category.
+//	@Description	Its tasks move to another column of the same bucket.
 //	@Tags			board
 //	@Param			id	path	string	true	"Column ID"
 //	@Success		204	"No content"
@@ -261,15 +250,6 @@ func (h *Handler) Move(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]tasks.DTO{"task": tasks.ToDTO(t, role, userID)})
 }
 
-func (h *Handler) attachCategories(r *http.Request, p Pair, dto *BoardDTO) error {
-	cats, err := h.svc.Categories(r.Context(), p)
-	if err != nil {
-		return err
-	}
-	dto.Categories = CategoryDTOs(cats)
-	return nil
-}
-
 func writeDone(w http.ResponseWriter, status int, err error) {
 	switch {
 	case err != nil:
@@ -290,17 +270,9 @@ func writeErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrNotManager):
 		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the freelancer or the project's author can change the board's columns")
 	case errors.Is(err, ErrHasTasks):
-		response.Error(w, http.StatusConflict, response.CodeConflict, "This column has tasks. Move them to another column first, or add another column of the same category")
+		response.Error(w, http.StatusConflict, response.CodeConflict, "This column has tasks. Move them to another column first, or add another column that counts the same way")
 	case errors.Is(err, ErrLastColumn):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "A board needs at least one column")
-	case errors.Is(err, ErrCategoryNotFound):
-		response.Error(w, http.StatusBadRequest, response.CodeValidation, "Category not found")
-	case errors.Is(err, ErrCategoryExists):
-		response.Error(w, http.StatusConflict, response.CodeConflict, "A category with this name already exists")
-	case errors.Is(err, ErrCategoryInUse):
-		response.Error(w, http.StatusConflict, response.CodeConflict, "This category has columns. Move them to another category first")
-	case errors.Is(err, ErrLastCategory):
-		response.Error(w, http.StatusConflict, response.CodeConflict, "A board needs at least one category")
 	case errors.Is(err, tasks.ErrTransition):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "You can't move this task to that column")
 	case errors.Is(err, tasks.ErrNotFound):

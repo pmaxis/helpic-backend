@@ -72,7 +72,7 @@ func Describe(n Notification, locale string) string {
 }
 
 // defaultColumns are the names Helpic gives the columns it makes.
-var defaultColumns = map[string]bool{"New": true, "In progress": true, "Done": true, "Cancelled": true, "Paid": true}
+var defaultColumns = map[string]bool{"New": true, "In progress": true, "Done": true, "Paid": true}
 
 // Detail is the notification's detail as shown: a status change names a
 // column, and a column Helpic made by default is named in the locale; one the

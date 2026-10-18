@@ -93,7 +93,9 @@ definitions:
   board.BoardDTO:
     properties:
       can_manage:
-        description: CanManage is true for the freelancer, who manages the columns.
+        description: |-
+          CanManage is true for the freelancer, and for the author of the project
+          the board was opened for.
         type: boolean
       columns:
         items:
@@ -113,6 +115,10 @@ definitions:
         type: string
       name:
         type: string
+      participants_can_move:
+        type: boolean
+      status_category:
+        type: string
       tasks:
         items:
           $ref: '#/definitions/tasks.DTO'
@@ -120,11 +126,11 @@ definitions:
     type: object
   board.ColumnRequest:
     properties:
-      category:
-        type: string
       name:
         type: string
       project_id:
+        type: string
+      status_category:
         type: string
       with:
         type: string
@@ -422,9 +428,18 @@ definitions:
         type: string
       open_tasks:
         type: integer
+      participants:
+        items:
+          $ref: '#/definitions/projects.PartyDTO'
+        type: array
       total_tasks:
         type: integer
       updated_at:
+        type: string
+    type: object
+  projects.InviteRequest:
+    properties:
+      user_id:
         type: string
     type: object
   projects.PartyDTO:
@@ -434,6 +449,18 @@ definitions:
       id:
         type: string
       name:
+        type: string
+    type: object
+  projects.PersonDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      role:
+        description: Role is "freelancer", "owner", "member" or "contractor".
         type: string
     type: object
   projects.Request:
@@ -1300,8 +1327,8 @@ paths:
       - auth
   /board:
     get:
-      description: 'One pair''s board, a project''s, or with=all: a freelancer''s
-        every task, the boards'' columns merged by name.'
+      description: 'One pair''s board, a project''s, or with=all: every task the user
+        can see, the boards'' columns merged by name.'
       parameters:
       - description: 'A counterpart''s ID, '
         in: query
@@ -1366,7 +1393,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: The board's freelancer only.
+      description: The board's freelancer, or the author of the project (project_id).
       parameters:
       - description: Request body
         in: body
@@ -1428,7 +1455,7 @@ paths:
       - board
   /board/columns/{id}:
     delete:
-      description: Its tasks move to another column of the same category.
+      description: Its tasks move to another column of the same bucket.
       parameters:
       - description: Column ID
         in: path
@@ -2629,6 +2656,129 @@ paths:
       summary: Edit a project
       tags:
       - projects
+  /projects/{id}/participants:
+    post:
+      consumes:
+      - application/json
+      description: The author only. A freelancer, an employee or a contractor; they're
+        notified and can see the project.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/projects.InviteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: participants and candidates
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/projects.PersonDTO'
+              type: array
+            type: object
+        "400":
+          description: Can't be invited
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not the author
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Invite someone to a project
+      tags:
+      - projects
+  /projects/{id}/participants/{userID}:
+    delete:
+      description: The author only. The author stays. Someone taken off no longer
+        sees the project.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Participant's user ID
+        in: path
+        name: userID
+        required: true
+        type: string
+      responses:
+        "200":
+          description: participants and candidates
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/projects.PersonDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not the author
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: The author
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Take someone off a project
+      tags:
+      - projects
+  /projects/{id}/people:
+    get:
+      description: 'Who is on the project. Its author also gets who they can still
+        invite: the freelancer, and the client''s employees and contractors.'
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: participants and candidates
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/projects.PersonDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A project's participants
+      tags:
+      - projects
   /reports:
     get:
       description: A freelancer's own; a client's once sent. Team members get none.
@@ -2988,7 +3138,7 @@ paths:
     get:
       description: Open ones first, then by due date.
       parameters:
-      - description: 'Comma-separated: new,in_progress,done,cancelled'
+      - description: 'Comma-separated: new,in_progress,done'
         in: query
         name: status
         type: string

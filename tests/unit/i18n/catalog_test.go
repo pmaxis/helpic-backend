@@ -88,7 +88,7 @@ func TestEveryTextIsTranslated(t *testing.T) {
 }
 
 func TestDefaultColumnsAreTranslated(t *testing.T) {
-	for _, name := range []string{"New", "In progress", "Done", "Cancelled", "Paid"} {
+	for _, name := range []string{"New", "In progress", "Done", "Paid"} {
 		if !i18n.Has(name) {
 			t.Errorf("the default column %q has no Ukrainian name", name)
 		}

@@ -55,25 +55,25 @@ func TestBoard_SharedWorkflow(t *testing.T) {
 	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
 	freelancerID, clientID := myID(t, srv, freelancer), myID(t, srv, client)
 
-	// Both sides open the same board; it starts with one column per category.
+	// Both sides open the same board; it starts with the three default statuses.
 	fb := getBoard(t, srv, freelancer, "?with="+clientID)
 	cb := getBoard(t, srv, client, "?with="+freelancerID)
-	if len(fb.Columns) != 4 || fb.Columns[0].ID != cb.Columns[0].ID || !fb.CanManage || cb.CanManage {
+	if len(fb.Columns) != 3 || fb.Columns[0].ID != cb.Columns[0].ID || !fb.CanManage || cb.CanManage {
 		t.Fatalf("freelancer board = %+v, client board = %+v", fb, cb)
 	}
 
 	// The freelancer adds "Review"; the client can't touch the columns.
-	resp := post(t, freelancer, srv.URL+"/api/v1/board/columns", map[string]string{"with": clientID, "name": "Review", "category": "in_progress"})
+	resp := post(t, freelancer, srv.URL+"/api/v1/board/columns", map[string]string{"with": clientID, "name": "Review"})
 	wantStatus(t, resp, http.StatusCreated)
 	resp.Body.Close()
-	resp = post(t, client, srv.URL+"/api/v1/board/columns", map[string]string{"with": freelancerID, "name": "Mine", "category": "new"})
+	resp = post(t, client, srv.URL+"/api/v1/board/columns", map[string]string{"with": freelancerID, "name": "Mine"})
 	wantStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 	review := column(getBoard(t, srv, client, "?with="+freelancerID), "Review")
 	if review.ID == "" {
 		t.Fatal("client doesn't see the Review column")
 	}
-	resp = do(t, client, http.MethodPut, srv.URL+"/api/v1/board/columns/"+review.ID, map[string]string{"name": "X", "category": "in_progress"})
+	resp = do(t, client, http.MethodPut, srv.URL+"/api/v1/board/columns/"+review.ID, map[string]string{"name": "X"})
 	wantStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 
@@ -94,31 +94,34 @@ func TestBoard_SharedWorkflow(t *testing.T) {
 		t.Fatalf("client sees status %v", got)
 	}
 
-	// Role rules follow the category: the client can't put it in Done.
+	// The client can't put it in Done.
 	done := column(getBoard(t, srv, client, "?with="+freelancerID), "Done")
 	resp = post(t, client, srv.URL+"/api/v1/board/moves", map[string]string{"task_id": task["id"].(string), "column_id": done.ID})
 	wantStatus(t, resp, http.StatusConflict)
 	resp.Body.Close()
 
-	// Renaming a column renames the task's status; re-categorising changes its category.
-	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/board/columns/"+review.ID, map[string]string{"name": "QA", "category": "done"})
+	// Renaming a column renames the task's status and leaves its bucket.
+	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/board/columns/"+review.ID, map[string]string{"name": "QA"})
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
 	resp = get(t, client, srv.URL+"/api/v1/tasks/"+task["id"].(string))
 	wantStatus(t, resp, http.StatusOK)
 	got := field(decode(t, resp), "task")
-	if got["status_name"] != "QA" || got["status"] != "done" {
-		t.Fatalf("after re-categorising = %v", got)
+	if got["status_name"] != "QA" || got["status"] != "in_progress" {
+		t.Fatalf("after renaming = %v", got)
 	}
 
-	// Deleting the column moves its tasks to the other column of the category.
+	// Deleting the column moves its tasks to the other column of the same bucket.
 	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/v1/board/columns/"+review.ID, nil)
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
-	if got := column(getBoard(t, srv, freelancer, "?with="+clientID), "Done").Tasks; len(got) != 1 || got[0] != "Logo" {
-		t.Fatalf("Done after delete = %v", got)
+	if got := column(getBoard(t, srv, freelancer, "?with="+clientID), "In progress").Tasks; len(got) != 1 || got[0] != "Logo" {
+		t.Fatalf("In progress after delete = %v", got)
 	}
 	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/v1/board/columns/"+done.ID, nil)
+	wantStatus(t, resp, http.StatusNoContent)
+	resp.Body.Close()
+	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/v1/board/columns/"+column(getBoard(t, srv, freelancer, "?with="+clientID), "In progress").ID, nil)
 	wantStatus(t, resp, http.StatusConflict)
 	resp.Body.Close()
 }
@@ -185,10 +188,7 @@ func TestBoard_DeletingColumns(t *testing.T) {
 		resp.Body.Close()
 	}
 
-	// An empty column goes, even the only one of its category.
-	del("Cancelled", http.StatusNoContent)
-
-	// A column with tasks and no other column of its category stays.
+	// A column with tasks and no other column of its bucket stays.
 	task := newTask(t, srv, freelancer, map[string]any{"title": "Ship it", "status_id": column(b, "Done").ID})
 	del("Done", http.StatusConflict)
 
@@ -198,8 +198,8 @@ func TestBoard_DeletingColumns(t *testing.T) {
 		t.Fatalf("new task went to %v", got["status_name"])
 	}
 
-	// Moving a task into a category the board has no column for is refused cleanly.
-	resp := post(t, freelancer, srv.URL+"/api/v1/tasks/"+task["id"].(string)+"/status", map[string]string{"status": "cancelled"})
+	// Moving a task into a bucket the board has no column for is refused cleanly.
+	resp := post(t, freelancer, srv.URL+"/api/v1/tasks/"+task["id"].(string)+"/status", map[string]string{"status": "new"})
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 
@@ -231,7 +231,7 @@ func TestBoard_ProjectAuthor(t *testing.T) {
 	if !getBoard(t, srv, client, "?project="+ownedID).CanManage {
 		t.Fatal("the project's author can't manage its columns")
 	}
-	resp := post(t, client, srv.URL+"/api/v1/board/columns", map[string]string{"project_id": ownedID, "name": "Review", "category": "in_progress"})
+	resp := post(t, client, srv.URL+"/api/v1/board/columns", map[string]string{"project_id": ownedID, "name": "Review"})
 	wantStatus(t, resp, http.StatusCreated)
 	resp.Body.Close()
 	board := getBoard(t, srv, client, "?project="+ownedID)
@@ -243,7 +243,7 @@ func TestBoard_ProjectAuthor(t *testing.T) {
 	if column(getBoard(t, srv, freelancer, "?with="+clientID), "Review").ID == "" {
 		t.Fatal("freelancer doesn't see the author's column")
 	}
-	resp = do(t, client, http.MethodPut, srv.URL+"/api/v1/board/columns/"+review.ID, map[string]string{"name": "QA", "category": "in_progress"})
+	resp = do(t, client, http.MethodPut, srv.URL+"/api/v1/board/columns/"+review.ID, map[string]string{"name": "QA"})
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
 
@@ -279,70 +279,13 @@ func TestBoard_ProjectAuthor(t *testing.T) {
 	if getBoard(t, srv, client, "?project="+sharedID).CanManage {
 		t.Fatal("an invited client manages someone else's project")
 	}
-	resp = post(t, client, srv.URL+"/api/v1/board/columns", map[string]string{"project_id": sharedID, "name": "Mine", "category": "new"})
+	resp = post(t, client, srv.URL+"/api/v1/board/columns", map[string]string{"project_id": sharedID, "name": "Mine"})
 	wantStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 	sharedDone := column(getBoard(t, srv, client, "?project="+sharedID), "Done")
 	resp = post(t, client, srv.URL+"/api/v1/tasks", map[string]any{"project_id": sharedID, "title": "Nope", "status_id": sharedDone.ID})
 	wantStatus(t, resp, http.StatusConflict)
 	resp.Body.Close()
-}
-
-func TestBoard_CustomCategory(t *testing.T) {
-	srv, _ := newAPI(t)
-	freelancer := signUpFreelancer(t, srv, "free@example.com")
-	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
-	freelancerID, clientID := myID(t, srv, freelancer), myID(t, srv, client)
-
-	owned := createProject(t, srv, client, map[string]any{"freelancer_id": freelancerID, "name": "Mobile app"})
-	ownedID := owned["id"].(string)
-
-	resp := post(t, client, srv.URL+"/api/v1/board/categories", map[string]any{
-		"project_id": ownedID, "name": "Review", "effect": "open", "participants_can_move": false,
-	})
-	wantStatus(t, resp, http.StatusCreated)
-	catID := field(decode(t, resp), "category")["id"].(string)
-
-	resp = post(t, client, srv.URL+"/api/v1/board/columns", map[string]any{
-		"project_id": ownedID, "name": "QA", "category_id": catID,
-	})
-	wantStatus(t, resp, http.StatusCreated)
-	resp.Body.Close()
-
-	qa := column(getBoard(t, srv, client, "?project="+ownedID), "QA")
-	if qa.ID == "" || qa.Category != "in_progress" {
-		t.Fatalf("QA column = %+v", qa)
-	}
-	if column(getBoard(t, srv, freelancer, "?with="+clientID), "QA").ID == "" {
-		t.Fatal("freelancer doesn't see the author's column")
-	}
-
-	task := newTask(t, srv, client, map[string]any{"project_id": ownedID, "title": "Check the copy", "status_id": qa.ID})
-	if task["status"] != "in_progress" || task["status_name"] != "QA" {
-		t.Fatalf("created in QA = %v", task)
-	}
-
-	// A column of another project is not on this task's board.
-	shared := createProject(t, srv, freelancer, map[string]any{"client_id": clientID, "name": "Website"})
-	logo := newTask(t, srv, freelancer, map[string]any{"project_id": shared["id"], "title": "Logo"})
-	resp = post(t, client, srv.URL+"/api/v1/board/moves", map[string]string{"task_id": logo["id"].(string), "column_id": qa.ID})
-	wantStatus(t, resp, http.StatusNotFound)
-	resp.Body.Close()
-
-	resp = do(t, client, http.MethodDelete, srv.URL+"/api/v1/board/categories/"+catID, nil)
-	wantStatus(t, resp, http.StatusConflict)
-	resp.Body.Close()
-
-	resp = do(t, client, http.MethodPut, srv.URL+"/api/v1/board/categories/"+catID, map[string]any{
-		"name": "Shipped", "effect": "done", "participants_can_move": false,
-	})
-	wantStatus(t, resp, http.StatusOK)
-	resp.Body.Close()
-	resp = get(t, client, srv.URL+"/api/v1/tasks/"+task["id"].(string))
-	wantStatus(t, resp, http.StatusOK)
-	if got := field(decode(t, resp), "task"); got["status"] != "done" || got["status_name"] != "QA" {
-		t.Fatalf("after the category became finished = %v", got)
-	}
 }
 
 func TestBoard_ProjectsHaveTheirOwnWorkflow(t *testing.T) {
@@ -355,28 +298,58 @@ func TestBoard_ProjectsHaveTheirOwnWorkflow(t *testing.T) {
 	site := createProject(t, srv, client, map[string]any{"freelancer_id": freelancerID, "name": "Website"})
 	appID, siteID := app["id"].(string), site["id"].(string)
 
-	resp := post(t, client, srv.URL+"/api/v1/board/categories", map[string]any{
-		"project_id": appID, "name": "Review", "effect": "open", "participants_can_move": true,
-	})
-	wantStatus(t, resp, http.StatusCreated)
-	catID := field(decode(t, resp), "category")["id"].(string)
-	resp = post(t, client, srv.URL+"/api/v1/board/columns", map[string]any{"project_id": appID, "name": "QA", "category_id": catID})
+	resp := post(t, client, srv.URL+"/api/v1/board/columns", map[string]string{"project_id": appID, "name": "QA"})
 	wantStatus(t, resp, http.StatusCreated)
 	resp.Body.Close()
 
+	qa := column(getBoard(t, srv, client, "?project="+appID), "QA")
+	if qa.Category != "in_progress" {
+		t.Fatalf("a new status counts as %s", qa.Category)
+	}
 	if column(getBoard(t, srv, client, "?project="+siteID), "QA").ID != "" {
 		t.Fatal("the other project picked up the column")
 	}
-	names := map[string]bool{}
-	resp = get(t, client, srv.URL+"/api/v1/board?project="+siteID)
+	if column(getBoard(t, srv, client, "?project="+siteID), "New").ID == "" {
+		t.Fatal("the other project has no statuses of its own")
+	}
+
+	task := newTask(t, srv, client, map[string]any{"project_id": appID, "title": "Check the copy", "status_id": qa.ID})
+	resp = do(t, client, http.MethodPut, srv.URL+"/api/v1/board/columns/"+qa.ID, map[string]string{"name": "Shipped"})
+	wantStatus(t, resp, http.StatusNoContent)
+	resp.Body.Close()
+	resp = get(t, client, srv.URL+"/api/v1/tasks/"+task["id"].(string))
 	wantStatus(t, resp, http.StatusOK)
-	for _, c := range decode(t, resp)["categories"].([]any) {
-		names[c.(map[string]any)["name"].(string)] = true
+	if got := field(decode(t, resp), "task"); got["status"] != "in_progress" || got["status_name"] != "Shipped" {
+		t.Fatalf("after renaming = %v", got)
 	}
-	if names["Review"] {
-		t.Fatal("the other project lists the category")
+
+	resp = post(t, client, srv.URL+"/api/v1/board/columns", map[string]string{
+		"project_id": appID, "name": "Won't do", "status_category": "done",
+	})
+	wantStatus(t, resp, http.StatusCreated)
+	resp.Body.Close()
+	wont := column(getBoard(t, srv, client, "?project="+appID), "Won't do")
+	if wont.Category != "done" {
+		t.Fatalf("Won't do counts as %s", wont.Category)
 	}
-	if !names["New"] {
-		t.Fatal("the other project has no categories of its own")
+	dropped := newTask(t, srv, client, map[string]any{"project_id": appID, "title": "Skip it", "status_id": wont.ID})
+	if dropped["status"] != "done" {
+		t.Fatalf("created in a done status = %v", dropped["status"])
 	}
+	resp = do(t, client, http.MethodPut, srv.URL+"/api/v1/board/columns/"+wont.ID, map[string]string{
+		"name": "Later", "status_category": "todo",
+	})
+	wantStatus(t, resp, http.StatusNoContent)
+	resp.Body.Close()
+	resp = get(t, client, srv.URL+"/api/v1/tasks/"+dropped["id"].(string))
+	wantStatus(t, resp, http.StatusOK)
+	if got := field(decode(t, resp), "task"); got["status"] != "new" || got["status_name"] != "Later" {
+		t.Fatalf("after the category became to do = %v", got)
+	}
+
+	resp = post(t, client, srv.URL+"/api/v1/board/columns", map[string]string{
+		"project_id": appID, "name": "Nope", "status_category": "cancelled",
+	})
+	wantStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
 }

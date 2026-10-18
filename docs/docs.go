@@ -430,7 +430,7 @@ const docTemplate = `{
         },
         "/board": {
             "get": {
-                "description": "One pair's board, a project's, or with=all: a freelancer's every task, the boards' columns merged by name.",
+                "description": "One pair's board, a project's, or with=all: every task the user can see, the boards' columns merged by name.",
                 "produces": [
                     "application/json"
                 ],
@@ -569,7 +569,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "The board's freelancer only.",
+                "description": "The board's freelancer, or the author of the project (project_id).",
                 "consumes": [
                     "application/json"
                 ],
@@ -683,7 +683,7 @@ const docTemplate = `{
                 }
             },
             "delete": {
-                "description": "Its tasks move to another column of the same category.",
+                "description": "Its tasks move to another column of the same bucket.",
                 "tags": [
                     "board"
                 ],
@@ -2439,6 +2439,187 @@ const docTemplate = `{
                 }
             }
         },
+        "/projects/{id}/participants": {
+            "post": {
+                "description": "The author only. A freelancer, an employee or a contractor; they're notified and can see the project.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Invite someone to a project",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/projects.InviteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "participants and candidates",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/projects.PersonDTO"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Can't be invited",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not the author",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/participants/{userID}": {
+            "delete": {
+                "description": "The author only. The author stays. Someone taken off no longer sees the project.",
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Take someone off a project",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Participant's user ID",
+                        "name": "userID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "participants and candidates",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/projects.PersonDTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not the author",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "The author",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/people": {
+            "get": {
+                "description": "Who is on the project. Its author also gets who they can still invite: the freelancer, and the client's employees and contractors.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "A project's participants",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "participants and candidates",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/projects.PersonDTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/reports": {
             "get": {
                 "description": "A freelancer's own; a client's once sent. Team members get none.",
@@ -2984,7 +3165,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Comma-separated: new,in_progress,done,cancelled",
+                        "description": "Comma-separated: new,in_progress,done",
                         "name": "status",
                         "in": "query"
                     },
@@ -4221,7 +4402,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "can_manage": {
-                    "description": "CanManage is true for the freelancer, who manages the columns.",
+                    "description": "CanManage is true for the freelancer, and for the author of the project\nthe board was opened for.",
                     "type": "boolean"
                 },
                 "columns": {
@@ -4248,6 +4429,12 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
+                "participants_can_move": {
+                    "type": "boolean"
+                },
+                "status_category": {
+                    "type": "string"
+                },
                 "tasks": {
                     "type": "array",
                     "items": {
@@ -4259,13 +4446,13 @@ const docTemplate = `{
         "board.ColumnRequest": {
             "type": "object",
             "properties": {
-                "category": {
-                    "type": "string"
-                },
                 "name": {
                     "type": "string"
                 },
                 "project_id": {
+                    "type": "string"
+                },
+                "status_category": {
                     "type": "string"
                 },
                 "with": {
@@ -4716,10 +4903,24 @@ const docTemplate = `{
                 "open_tasks": {
                     "type": "integer"
                 },
+                "participants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/projects.PartyDTO"
+                    }
+                },
                 "total_tasks": {
                     "type": "integer"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "projects.InviteRequest": {
+            "type": "object",
+            "properties": {
+                "user_id": {
                     "type": "string"
                 }
             }
@@ -4734,6 +4935,24 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "projects.PersonDTO": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "role": {
+                    "description": "Role is \"freelancer\", \"owner\", \"member\" or \"contractor\".",
                     "type": "string"
                 }
             }

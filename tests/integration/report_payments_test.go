@@ -76,7 +76,7 @@ func TestReports_PaidAndHistory(t *testing.T) {
 		names = append(names, c.Name)
 	}
 	paid := column(b, "Paid")
-	if len(names) != 5 || names[3] != "Paid" || paid.Category != "done" || len(paid.Tasks) != 1 || paid.Tasks[0] != "Logo" {
+	if len(names) != 4 || names[3] != "Paid" || paid.Category != "done" || len(paid.Tasks) != 1 || paid.Tasks[0] != "Logo" {
 		t.Fatalf("board after payment = %+v", b.Columns)
 	}
 	resp = get(t, freelancer, srv.URL+"/api/v1/tasks/"+landing)
@@ -136,7 +136,7 @@ func TestReports_PaidAndHistory(t *testing.T) {
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 	b = getBoard(t, srv, freelancer, "?with="+clientID)
-	if len(b.Columns) != 5 || len(column(b, "Paid").Tasks) != 2 {
+	if len(b.Columns) != 4 || len(column(b, "Paid").Tasks) != 2 {
 		t.Fatalf("board after the second payment = %+v", b.Columns)
 	}
 }

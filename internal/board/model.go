@@ -1,12 +1,11 @@
 // Package board is the Jira-style board shared by a freelancer and a client.
 // Every project has its own workflow, and so does a freelancer–client pair's
 // work outside any project (and a freelancer's personal work): an ordered
-// list of statuses, which are the board's columns.
-// Each status belongs to a category (new, in progress, done, cancelled), which
-// keeps the role rules, open counts and list filters working whatever the
-// statuses are called. The freelancer manages the columns, and so does the
-// author of a project on that board. Both sides move cards, and moving a card
-// sets the task's status.
+// list of statuses, which are the board's columns. A status keeps a bucket
+// (new, in progress, done) so open counts, list filters and who
+// may move a card still work whatever the status is called. The freelancer
+// manages the columns, and so does the author of a project on that board.
+// Both sides move cards, and moving a card sets the task's status.
 package board
 
 import (
@@ -24,18 +23,10 @@ var (
 	// nor authored a project on it tries to change the columns.
 	ErrNotManager = errors.New("only the freelancer or the project's author manages the board")
 	// ErrHasTasks is returned when removing a column whose tasks have no
-	// other column of the same category to move to.
-	ErrHasTasks = errors.New("column has tasks and no other column of its category")
+	// other column of the same bucket to move to.
+	ErrHasTasks = errors.New("column has tasks and no other column of its bucket")
 	// ErrLastColumn is returned when removing a board's only column.
 	ErrLastColumn = errors.New("a board needs at least one column")
-	// ErrCategoryNotFound is returned for a category that isn't on this board.
-	ErrCategoryNotFound = errors.New("category not found")
-	// ErrCategoryExists is returned for a second category with the same name.
-	ErrCategoryExists = errors.New("category already exists")
-	// ErrCategoryInUse is returned when removing a category that still has columns.
-	ErrCategoryInUse = errors.New("category has columns")
-	// ErrLastCategory is returned when removing a board's only category.
-	ErrLastCategory = errors.New("a board needs at least one category")
 )
 
 // Pair identifies a workflow: a freelancer and a client, or a freelancer's
@@ -49,74 +40,52 @@ type Pair struct {
 	AuthorID     string
 }
 
-// Category is a status group the board's manager named. Its settings decide
-// whether tasks in it count as open or finished, and who may move a task in.
-type Category struct {
-	ID                  string
-	Pair                Pair
-	Name                string
-	CountsOpen          bool
-	CountsDone          bool
-	AllowsDelete        bool
-	ParticipantsCanMove bool
-	Position            int
-	SystemKey           string
+// OpenToParticipants reports whether someone who doesn't manage the board may
+// move a card into a status of this bucket. Done is the manager's.
+func OpenToParticipants(bucket string) bool {
+	return bucket != tasks.StatusDone
 }
 
-// Effect is how the owner describes the category: open, done or closed.
-func (c Category) Effect() string {
-	switch {
-	case c.CountsDone:
-		return EffectDone
-	case c.CountsOpen:
-		return EffectOpen
-	default:
-		return EffectClosed
-	}
-}
-
-// Bucket is the task status the rest of the product stores: new, in progress,
-// done or cancelled.
-func (c Category) Bucket() string {
-	switch {
-	case c.CountsDone:
-		return tasks.StatusDone
-	case !c.CountsOpen:
-		return tasks.StatusCancelled
-	case c.AllowsDelete:
-		return tasks.StatusNew
-	default:
-		return tasks.StatusInProgress
-	}
-}
-
-// Apply sets the stored flags from the effect the owner chose.
-func (c *Category) Apply(effect string, participantsCanMove, allowsDelete bool) {
-	c.ParticipantsCanMove = participantsCanMove
-	switch effect {
-	case EffectDone:
-		c.CountsDone, c.CountsOpen, c.AllowsDelete = true, false, false
-	case EffectClosed:
-		c.CountsDone, c.CountsOpen, c.AllowsDelete = false, false, false
-	default:
-		c.CountsDone, c.CountsOpen, c.AllowsDelete = false, true, allowsDelete
-	}
-}
-
+// A status's category is fixed, the way Jira's is: to do, in progress, or done.
 const (
-	EffectOpen   = "open"
-	EffectDone   = "done"
-	EffectClosed = "closed"
+	StatusCategoryTodo       = "todo"
+	StatusCategoryInProgress = "in_progress"
+	StatusCategoryDone       = "done"
 )
 
-// Column is a workflow status — one column of the board.
+// StatusCategoryOf is the category behind a stored bucket.
+func StatusCategoryOf(bucket string) string {
+	switch bucket {
+	case tasks.StatusNew:
+		return StatusCategoryTodo
+	case tasks.StatusInProgress:
+		return StatusCategoryInProgress
+	default:
+		return StatusCategoryDone
+	}
+}
+
+// BucketOfStatusCategory maps a category to the bucket tasks store.
+func BucketOfStatusCategory(category string) (string, bool) {
+	switch category {
+	case StatusCategoryTodo:
+		return tasks.StatusNew, true
+	case StatusCategoryInProgress:
+		return tasks.StatusInProgress, true
+	case StatusCategoryDone:
+		return tasks.StatusDone, true
+	default:
+		return "", false
+	}
+}
+
+// Column is a workflow status — one column of the board. Category is the
+// bucket the rest of the product stores: new, in progress, or done.
 type Column struct {
 	ID                  string
 	Pair                Pair
 	Name                string
 	Category            string
-	CategoryID          string
-	CategoryName        string
 	ParticipantsCanMove bool
 	Position            int
 }

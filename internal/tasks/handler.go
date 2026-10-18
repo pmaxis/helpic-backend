@@ -46,7 +46,7 @@ func (h *Handler) Routes(r chi.Router) {
 //	@Description	Open ones first, then by due date.
 //	@Tags			tasks
 //	@Produce		json
-//	@Param			status	query		string					false	"Comma-separated: new,in_progress,done,cancelled"
+//	@Param			status	query		string					false	"Comma-separated: new,in_progress,done"
 //	@Param			with	query		string					false	"A counterpart's ID, or "personal""
 //	@Param			project	query		string					false	"A project ID"
 //	@Success		200		{object}	map[string][]DTO		"tasks"
