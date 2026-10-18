@@ -36,8 +36,9 @@ type movedTask struct {
 	From string
 }
 
-// MarkPaid marks a sent report paid and moves its tasks to the pair's Paid
-// column, making the column right after the last done one if the board has
+// MarkPaid marks a sent report paid and moves each task to the Paid column of
+// its own workflow (the project's, or the pair's when the task is outside a
+// project), making that column right after the last done one if the board has
 // none. It returns the tasks it moved, with the status each came from.
 func (r *Repository) MarkPaid(ctx context.Context, id string, at time.Time) ([]movedTask, error) {
 	tx, err := r.db.Begin(ctx)
@@ -57,43 +58,43 @@ func (r *Repository) MarkPaid(ctx context.Context, id string, at time.Time) ([]m
 		return nil, fmt.Errorf("mark report paid: %w", err)
 	}
 
-	// The same lock ensure_workflow takes, so columns don't change under us.
-	if _, err := tx.Exec(ctx, `SELECT ensure_workflow($1, $2)`, freelancerID, clientID); err != nil {
-		return nil, fmt.Errorf("ensure workflow: %w", err)
-	}
-	var paidID string
-	err = tx.QueryRow(ctx, `SELECT id FROM workflow_statuses
-		WHERE freelancer_id = $1 AND client_id IS NOT DISTINCT FROM $2 AND category = 'done' AND lower(name) = lower($3)
-		ORDER BY position LIMIT 1`, freelancerID, clientID, PaidColumn).Scan(&paidID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		paidID, err = createPaidColumn(ctx, tx, freelancerID, clientID)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("find paid column: %w", err)
-	}
-
-	rows, err := tx.Query(ctx, `SELECT t.id, ws.name FROM report_items i
+	rows, err := tx.Query(ctx, `SELECT t.id, ws.name, coalesce(t.project_id::text, '') FROM report_items i
 		JOIN tasks t ON t.id = i.task_id
 		JOIN workflow_statuses ws ON ws.id = t.status_id
-		WHERE i.report_id = $1 AND t.status_id <> $2`, id, paidID)
+		WHERE i.report_id = $1`, id)
 	if err != nil {
 		return nil, fmt.Errorf("list report tasks: %w", err)
 	}
-	moved, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (movedTask, error) {
-		var m movedTask
-		return m, row.Scan(&m.ID, &m.From)
+	type item struct {
+		id, from, projectID string
+	}
+	items, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (item, error) {
+		var it item
+		return it, row.Scan(&it.id, &it.from, &it.projectID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("scan report tasks: %w", err)
 	}
-	ids := make([]string, len(moved))
-	for i, m := range moved {
-		ids[i] = m.ID
-	}
-	if _, err := tx.Exec(ctx, `UPDATE tasks SET status_id = $2, status = 'done', position = NULL,
-			completed_at = coalesce(completed_at, now())
-		WHERE id = ANY($1::uuid[])`, ids, paidID); err != nil {
-		return nil, fmt.Errorf("move tasks to paid: %w", err)
+	paidByProject := map[string]string{}
+	var moved []movedTask
+	for _, it := range items {
+		paidID, ok := paidByProject[it.projectID]
+		if !ok {
+			paidID, err = paidColumn(ctx, tx, freelancerID, clientID, it.projectID)
+			if err != nil {
+				return nil, err
+			}
+			paidByProject[it.projectID] = paidID
+		}
+		tag, err := tx.Exec(ctx, `UPDATE tasks SET status_id = $2, status = 'done', position = NULL,
+				completed_at = coalesce(completed_at, now())
+			WHERE id = $1 AND status_id <> $2`, it.id, paidID)
+		if err != nil {
+			return nil, fmt.Errorf("move tasks to paid: %w", err)
+		}
+		if tag.RowsAffected() > 0 {
+			moved = append(moved, movedTask{ID: it.id, From: it.from})
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
@@ -101,21 +102,62 @@ func (r *Repository) MarkPaid(ctx context.Context, id string, at time.Time) ([]m
 	return moved, nil
 }
 
-// createPaidColumn adds the Paid column right after the pair's last done one.
-func createPaidColumn(ctx context.Context, tx pgx.Tx, freelancerID string, clientID *string) (string, error) {
+// paidColumn is a workflow's Paid column, created after its last done column
+// the first time a payment needs it. projectID "" is the pair's workflow.
+func paidColumn(ctx context.Context, tx pgx.Tx, freelancerID string, clientID *string, projectID string) (string, error) {
+	var err error
+	if projectID != "" {
+		_, err = tx.Exec(ctx, `SELECT ensure_project_workflow($1::uuid)`, projectID)
+	} else {
+		_, err = tx.Exec(ctx, `SELECT ensure_workflow($1, $2)`, freelancerID, clientID)
+	}
+	if err != nil {
+		return "", fmt.Errorf("ensure workflow: %w", err)
+	}
+	var id string
+	err = tx.QueryRow(ctx, `SELECT id FROM workflow_statuses
+		WHERE freelancer_id = $1 AND client_id IS NOT DISTINCT FROM $2
+		  AND project_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid
+		  AND category = 'done' AND lower(name) = lower($4)
+		ORDER BY position LIMIT 1`, freelancerID, clientID, projectID, PaidColumn).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return createPaidColumn(ctx, tx, freelancerID, clientID, projectID)
+	}
+	if err != nil {
+		return "", fmt.Errorf("find paid column: %w", err)
+	}
+	return id, nil
+}
+
+// createPaidColumn adds the Paid column right after a workflow's last done one.
+func createPaidColumn(ctx context.Context, tx pgx.Tx, freelancerID string, clientID *string, projectID string) (string, error) {
 	var after int
 	err := tx.QueryRow(ctx, `SELECT coalesce(max(position) FILTER (WHERE category = 'done'), max(position), -1)
-		FROM workflow_statuses WHERE freelancer_id = $1 AND client_id IS NOT DISTINCT FROM $2`, freelancerID, clientID).Scan(&after)
+		FROM workflow_statuses
+		WHERE freelancer_id = $1 AND client_id IS NOT DISTINCT FROM $2
+		  AND project_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid`, freelancerID, clientID, projectID).Scan(&after)
 	if err != nil {
 		return "", err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE workflow_statuses SET position = position + 1
-		WHERE freelancer_id = $1 AND client_id IS NOT DISTINCT FROM $2 AND position > $3`, freelancerID, clientID, after); err != nil {
+		WHERE freelancer_id = $1 AND client_id IS NOT DISTINCT FROM $2
+		  AND project_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid
+		  AND position > $4`, freelancerID, clientID, projectID, after); err != nil {
 		return "", err
 	}
 	var id string
-	err = tx.QueryRow(ctx, `INSERT INTO workflow_statuses (freelancer_id, client_id, name, category, position)
-		VALUES ($1, $2, $3, 'done', $4) RETURNING id`, freelancerID, clientID, PaidColumn, after+1).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO workflow_statuses (freelancer_id, client_id, project_id, name, category, category_id, position)
+		SELECT $1, $2, NULLIF($3, '')::uuid, $4, 'done', c.id, $5
+		FROM workflow_categories c
+		WHERE c.freelancer_id = $1 AND c.client_id IS NOT DISTINCT FROM $2
+		  AND c.project_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid
+		  AND c.counts_done
+		ORDER BY c.system_key = 'done' DESC, c.position
+		LIMIT 1
+		RETURNING id`, freelancerID, clientID, projectID, PaidColumn, after+1).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", fmt.Errorf("no done category")
+	}
 	return id, err
 }
 

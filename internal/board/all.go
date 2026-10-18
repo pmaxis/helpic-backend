@@ -38,8 +38,8 @@ func (r *Repository) AllColumns(ctx context.Context, freelancerID string) ([]Col
 	if _, err := r.db.Exec(ctx, `SELECT ensure_workflow($1::uuid, NULL)`, freelancerID); err != nil {
 		return nil, fmt.Errorf("ensure workflow: %w", err)
 	}
-	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM workflow_statuses
-		WHERE freelancer_id = $1 ORDER BY position, created_at`, freelancerID)
+	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM `+columnFrom+`
+		WHERE ws.freelancer_id = $1 ORDER BY ws.position, ws.created_at`, freelancerID)
 	if err != nil {
 		return nil, fmt.Errorf("list all columns: %w", err)
 	}
@@ -103,24 +103,26 @@ func (s *Service) AllBoard(ctx context.Context, userID, role string, sc Scope) (
 		return nil, err
 	}
 	list = filterProjects(list, sc.Projects)
-	// Place each task by its own column's lane.
+	return placeOnMerged(cols, list), nil
+}
+
+// placeOnMerged lays tasks onto lanes merged by category and column name,
+// then gives each task its real status id back.
+func placeOnMerged(cols []Column, list []tasks.Task) []Lane {
 	placed := make([]tasks.Task, len(list))
+	real := make(map[string]string, len(list))
 	for i, t := range list {
+		real[t.ID] = t.StatusID
 		t.StatusID = laneKey(t.Status, t.StatusName)
 		placed[i] = t
 	}
 	lanes := Arrange(mergeColumns(cols), placed)
-	// Give the tasks back their real status IDs.
-	real := make(map[string]string, len(list))
-	for _, t := range list {
-		real[t.ID] = t.StatusID
-	}
 	for i := range lanes {
 		for j := range lanes[i].Tasks {
 			lanes[i].Tasks[j].StatusID = real[lanes[i].Tasks[j].ID]
 		}
 	}
-	return lanes, nil
+	return lanes
 }
 
 // MoveToLane puts a task into the all board's lane: its own pair's column of
@@ -137,6 +139,9 @@ func (s *Service) MoveToLane(ctx context.Context, userID, role, taskID, key stri
 	p := Pair{FreelancerID: t.Freelancer.ID}
 	if t.Client != nil {
 		p.ClientID = t.Client.ID
+	}
+	if t.Project != nil {
+		p.ProjectID = t.Project.ID
 	}
 	cols, err := s.repo.Columns(ctx, p)
 	if err != nil {
