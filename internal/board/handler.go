@@ -42,10 +42,10 @@ func scopeOf(r *http.Request) Scope {
 }
 
 // Board handles GET /api/v1/board?with={clientID|personal|freelancerID|all}&project={id}&projects={id,…|none}.
-// with=all is a freelancer's every task on one board, its columns merged by name.
+// with=all is every task the user can see, the boards' columns merged by name.
 //
 //	@Summary		A board with its tasks
-//	@Description	One pair's board, a project's, or with=all: a freelancer's every task, the boards' columns merged by name.
+//	@Description	One pair's board, a project's, or with=all: every task the user can see, the boards' columns merged by name.
 //	@Tags			board
 //	@Produce		json
 //	@Param			with		query		string					false	"A counterpart's ID, "personal", or "all""
