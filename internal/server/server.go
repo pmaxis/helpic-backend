@@ -24,6 +24,7 @@ import (
 	"github.com/pmaxis/helpic/internal/mail"
 	"github.com/pmaxis/helpic/internal/middleware"
 	"github.com/pmaxis/helpic/internal/notifications"
+	"github.com/pmaxis/helpic/internal/pdf"
 	"github.com/pmaxis/helpic/internal/profile"
 	"github.com/pmaxis/helpic/internal/projects"
 	"github.com/pmaxis/helpic/internal/reminders"
@@ -140,7 +141,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	commentsHandler := comments.NewHandler(comments.NewService(comments.NewRepository(pool), tasksSvc))
 
 	// --- reports of work done, sent to clients ------------------------------
-	reportsHandler := reports.NewHandler(reports.NewService(reports.NewRepository(pool), notifier, tasksSvc), reports.NewPDFRenderer(cfg.ChromePath))
+	reportsHandler := reports.NewHandler(reports.NewService(reports.NewRepository(pool), notifier, tasksSvc), pdf.NewClient(cfg.PDFURL))
 
 	// --- reminders before and after due dates ---------------------------------
 	remindersSvc := reminders.NewService(reminders.NewRepository(pool), notifier, cfg.Location, cfg.ReminderHour)

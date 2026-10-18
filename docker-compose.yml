@@ -26,8 +26,18 @@ services:
     ports:
       - "${MAILPIT_PORT:-8025}:8025"
 
+  # Prints report PDFs with headless Chromium, apart from the API. Internal
+  # only: no published port, no secrets, no volumes.
+  pdf:
+    build:
+      context: .
+      target: pdf
+    restart: unless-stopped
+
   backend:
-    build: .
+    build:
+      context: .
+      target: api
     restart: unless-stopped
     environment:
       APP_ENV: ${APP_ENV:-development}
@@ -55,6 +65,7 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-Helpic <no-reply@helpic.local>}
+      PDF_URL: ${PDF_URL:-http://pdf:8081}
     volumes:
       - uploads:/app/uploads
     ports:
@@ -63,6 +74,8 @@ services:
       postgres:
         condition: service_healthy
       mailpit:
+        condition: service_started
+      pdf:
         condition: service_started
 
 volumes:

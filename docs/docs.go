@@ -2960,7 +2960,7 @@ const docTemplate = `{
         },
         "/reports/{id}/pdf": {
             "get": {
-                "description": "Printed by headless Chromium; 503 without it.",
+                "description": "Printed by the pdf service (headless Chromium); 503 without it.",
                 "produces": [
                     "application/pdf"
                 ],
@@ -3003,7 +3003,7 @@ const docTemplate = `{
                         }
                     },
                     "503": {
-                        "description": "No Chromium on this server",
+                        "description": "No pdf service configured",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }

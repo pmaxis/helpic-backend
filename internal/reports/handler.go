@@ -1,6 +1,7 @@
 package reports
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,19 +14,27 @@ import (
 
 	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/middleware"
+	"github.com/pmaxis/helpic/internal/pdf"
 	"github.com/pmaxis/helpic/internal/request"
 	"github.com/pmaxis/helpic/internal/response"
 	"github.com/pmaxis/helpic/internal/user"
 )
 
+// PDFPrinter turns a report's HTML (rendered in ModePDF) into a PDF. Render
+// returns pdf.ErrUnavailable when there is nothing to print with.
+type PDFPrinter interface {
+	Available() bool
+	Render(ctx context.Context, html []byte) ([]byte, error)
+}
+
 // Handler exposes the report endpoints over HTTP.
 type Handler struct {
 	svc *Service
-	pdf *PDFRenderer
+	pdf PDFPrinter
 }
 
 // NewHandler creates a reports Handler.
-func NewHandler(svc *Service, pdf *PDFRenderer) *Handler {
+func NewHandler(svc *Service, pdf PDFPrinter) *Handler {
 	return &Handler{svc: svc, pdf: pdf}
 }
 
@@ -354,11 +363,11 @@ func (h *Handler) HTML(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(html)
 }
 
-// PDF handles GET /api/v1/reports/{id}/pdf: the file, printed by headless Chrome.
+// PDF handles GET /api/v1/reports/{id}/pdf: the file, printed by the pdf service.
 // ?download=1 asks the browser to save it rather than show it.
 //
 //	@Summary		A report as PDF
-//	@Description	Printed by headless Chromium; 503 without it.
+//	@Description	Printed by the pdf service (headless Chromium); 503 without it.
 //	@Tags			reports
 //	@Produce		application/pdf
 //	@Param			id			path		string					true	"Report ID"
@@ -366,7 +375,7 @@ func (h *Handler) HTML(w http.ResponseWriter, r *http.Request) {
 //	@Success		200			{file}		file					"PDF"
 //	@Failure		401			{object}	response.ErrorEnvelope	"Not signed in"
 //	@Failure		404			{object}	response.ErrorEnvelope	"Not found"
-//	@Failure		503			{object}	response.ErrorEnvelope	"No Chromium on this server"
+//	@Failure		503			{object}	response.ErrorEnvelope	"No pdf service configured"
 //	@Router			/reports/{id}/pdf [get]
 func (h *Handler) PDF(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
@@ -383,8 +392,8 @@ func (h *Handler) PDF(w http.ResponseWriter, r *http.Request) {
 		response.Internal(w, err)
 		return
 	}
-	pdf, err := h.pdf.Render(r.Context(), html)
-	if errors.Is(err, ErrPDFUnavailable) {
+	file, err := h.pdf.Render(r.Context(), html)
+	if errors.Is(err, pdf.ErrUnavailable) {
 		response.Error(w, http.StatusServiceUnavailable, response.CodeInternal, "PDF export is not available on this server")
 		return
 	}
@@ -401,7 +410,7 @@ func (h *Handler) PDF(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`%s; filename="%s"; filename*=UTF-8''%s`, disposition, asciiFallback(name), url.PathEscape(name)))
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(pdf)
+	_, _ = w.Write(file)
 }
 
 var unsafeFileChars = regexp.MustCompile(`[\\/:*?"<>|\x00-\x1f]+`)

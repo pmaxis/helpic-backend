@@ -71,9 +71,8 @@ func TestMain(m *testing.M) {
 		RefreshCookiePath: "/api/v1/auth",
 		CookieSecure:      false,
 		CookieSameSite:    http.SameSiteLaxMode,
-		// Never fall back to a browser installed on the machine: PDF export
-		// answers 503 here. The real PDF test is opt-in (HELPIC_PDF_TEST=1).
-		ChromePath:   "/nonexistent/helpic-test-chrome",
+		// No PDFURL: PDF export answers 503 here. The real PDF test is
+		// opt-in (HELPIC_PDF_TEST=1).
 		AppURL:       "http://app.test",
 		Location:     time.UTC,
 		ReminderHour: 9,

@@ -2970,7 +2970,7 @@ paths:
       - reports
   /reports/{id}/pdf:
     get:
-      description: Printed by headless Chromium; 503 without it.
+      description: Printed by the pdf service (headless Chromium); 503 without it.
       parameters:
       - description: Report ID
         in: path
@@ -2997,7 +2997,7 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
         "503":
-          description: No Chromium on this server
+          description: No pdf service configured
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: A report as PDF
