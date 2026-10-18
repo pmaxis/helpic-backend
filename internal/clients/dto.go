@@ -36,9 +36,17 @@ func (r InviteRequest) Validate() (InviteParams, map[string]string) {
 	return p, fields
 }
 
-// AcceptRequest is the JSON body for POST /api/v1/invites/{token}/accept. A new
-// account needs all three fields; an existing one only the password.
+// LookupRequest is the JSON body for POST /api/v1/invites/lookup. The token
+// travels in the body, never in a URL that logs and Referer headers keep.
+type LookupRequest struct {
+	Token string `json:"token"`
+}
+
+// AcceptRequest is the JSON body for POST /api/v1/invites/accept. A new
+// account needs the name, password and confirmation; an existing one only the
+// password.
 type AcceptRequest struct {
+	Token                string `json:"token"`
 	Name                 string `json:"name"`
 	Password             string `json:"password"`
 	PasswordConfirmation string `json:"password_confirmation"`
@@ -72,13 +80,12 @@ func toPartyDTO(p Party) PartyDTO {
 	return PartyDTO{ID: p.ID, Name: p.Name, Email: p.Email}
 }
 
-// InvitationDTO is a pending invitation as its freelancer sees it. The token is
-// included so the freelancer can copy the link again.
+// InvitationDTO is a pending invitation as its freelancer sees it. The link
+// is not included: only the invited address gets it.
 type InvitationDTO struct {
 	ID        string    `json:"id"`
 	Email     string    `json:"email"`
 	Name      string    `json:"name"`
-	Token     string    `json:"token"`
 	Expired   bool      `json:"expired"`
 	ExpiresAt time.Time `json:"expires_at"`
 	CreatedAt time.Time `json:"created_at"`
@@ -86,7 +93,7 @@ type InvitationDTO struct {
 
 func toInvitationDTO(i Invitation) InvitationDTO {
 	return InvitationDTO{
-		ID: i.ID, Email: i.Email, Name: i.Name, Token: i.Token,
+		ID: i.ID, Email: i.Email, Name: i.Name,
 		Expired: i.Expired(), ExpiresAt: i.ExpiresAt, CreatedAt: i.CreatedAt,
 	}
 }

@@ -103,11 +103,11 @@ func (r *Repository) Members(ctx context.Context, companyID string) ([]Member, e
 	return out, nil
 }
 
-const inviteColumns = `id, company_id, email, name, role, token, expires_at, created_at`
+const inviteColumns = `id, company_id, email, name, role, expires_at, created_at`
 
 func scanInvite(row pgx.Row) (Invite, error) {
 	var i Invite
-	err := row.Scan(&i.ID, &i.CompanyID, &i.Email, &i.Name, &i.Role, &i.Token, &i.ExpiresAt, &i.CreatedAt)
+	err := row.Scan(&i.ID, &i.CompanyID, &i.Email, &i.Name, &i.Role, &i.ExpiresAt, &i.CreatedAt)
 	return i, err
 }
 
@@ -135,9 +135,9 @@ func (r *Repository) EmailTaken(ctx context.Context, email string) (bool, error)
 	return ok, nil
 }
 
-// CreateInvite stores a pending invitation; an expired one for the same email
-// is replaced, a live one yields ErrAlreadyInvited.
-func (r *Repository) CreateInvite(ctx context.Context, companyID, email, name, role, token string, expiresAt time.Time) (Invite, error) {
+// CreateInvite stores a pending invitation by its link's hash; an expired one
+// for the same email is replaced, a live one yields ErrAlreadyInvited.
+func (r *Repository) CreateInvite(ctx context.Context, companyID, email, name, role string, tokenHash []byte, expiresAt time.Time) (Invite, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return Invite{}, fmt.Errorf("begin: %w", err)
@@ -148,8 +148,8 @@ func (r *Repository) CreateInvite(ctx context.Context, companyID, email, name, r
 		WHERE company_id = $1 AND email = $2 AND accepted_at IS NULL AND expires_at <= now()`, companyID, email); err != nil {
 		return Invite{}, fmt.Errorf("drop expired invite: %w", err)
 	}
-	inv, err := scanInvite(tx.QueryRow(ctx, `INSERT INTO company_invites (company_id, email, name, role, token, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING `+inviteColumns, companyID, email, name, role, token, expiresAt))
+	inv, err := scanInvite(tx.QueryRow(ctx, `INSERT INTO company_invites (company_id, email, name, role, token_hash, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING `+inviteColumns, companyID, email, name, role, tokenHash, expiresAt))
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return Invite{}, ErrAlreadyInvited
@@ -201,20 +201,21 @@ func (r *Repository) SetRole(ctx context.Context, companyID, userID, role string
 	return nil
 }
 
-// InviteByToken loads a pending invitation with its company's name and owner;
-// unknown, used and expired ones yield ErrInviteInvalid.
-func (r *Repository) InviteByToken(ctx context.Context, token string) (Invite, string, Person, error) {
+// InviteByToken loads the pending invitation whose link has this hash, with
+// its company's name and owner; unknown, used and expired ones yield
+// ErrInviteInvalid.
+func (r *Repository) InviteByToken(ctx context.Context, tokenHash []byte) (Invite, string, Person, error) {
 	var (
 		i       Invite
 		company string
 		owner   Person
 		used    *time.Time
 	)
-	err := r.db.QueryRow(ctx, `SELECT i.id, i.company_id, i.email, i.name, i.role, i.token, i.expires_at, i.created_at, i.accepted_at,
+	err := r.db.QueryRow(ctx, `SELECT i.id, i.company_id, i.email, i.name, i.role, i.expires_at, i.created_at, i.accepted_at,
 			c.name, u.id, u.name, u.email
 		FROM company_invites i JOIN companies c ON c.id = i.company_id JOIN users u ON u.id = c.owner_id
-		WHERE i.token = $1`, token).
-		Scan(&i.ID, &i.CompanyID, &i.Email, &i.Name, &i.Role, &i.Token, &i.ExpiresAt, &i.CreatedAt, &used, &company, &owner.ID, &owner.Name, &owner.Email)
+		WHERE i.token_hash = $1`, tokenHash).
+		Scan(&i.ID, &i.CompanyID, &i.Email, &i.Name, &i.Role, &i.ExpiresAt, &i.CreatedAt, &used, &company, &owner.ID, &owner.Name, &owner.Email)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (used != nil || i.Expired())) {
 		return Invite{}, "", Person{}, ErrInviteInvalid
 	}

@@ -73,7 +73,7 @@ func TestRateLimit_SignInAttemptsPerAddress(t *testing.T) {
 	wantLimited(t, login(t, srv, c, "late@example.com", "whatever1"))
 
 	// Invitations share the budget: they sign in or make accounts too.
-	wantLimited(t, get(t, c, srv.URL+"/api/v1/invites/some-token"))
+	wantLimited(t, post(t, c, srv.URL+"/api/v1/invites/lookup", map[string]string{"token": "some-token"}))
 
 	// Signing out and refreshing are not sign-in attempts.
 	resp := post(t, c, srv.URL+"/api/v1/auth/logout", nil)

@@ -2,10 +2,7 @@ package clients
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -81,15 +78,15 @@ func (s *Service) Invite(ctx context.Context, freelancerID string, p InviteParam
 		}
 	}
 
-	token, err := newToken()
+	token, hash, err := auth.NewToken()
 	if err != nil {
 		return Invitation{}, err
 	}
-	inv, err := s.repo.CreateInvitation(ctx, freelancerID, p.Email, p.Name, token, time.Now().Add(InvitationTTL))
+	inv, err := s.repo.CreateInvitation(ctx, freelancerID, p.Email, p.Name, hash, time.Now().Add(InvitationTTL))
 	if err != nil {
 		return Invitation{}, err
 	}
-	s.emailInvitation(ctx, freelancerID, inv)
+	s.emailInvitation(ctx, freelancerID, inv, token)
 	return inv, nil
 }
 
@@ -103,7 +100,7 @@ type Lookup struct {
 // Find resolves an invitation token. Accepted and expired invitations yield
 // ErrInvitationInvalid.
 func (s *Service) Find(ctx context.Context, token string) (Lookup, error) {
-	inv, freelancer, err := s.repo.InvitationByToken(ctx, token)
+	inv, freelancer, err := s.repo.InvitationByToken(ctx, auth.HashToken(token))
 	if errors.Is(err, ErrNotFound) {
 		return Lookup{}, ErrInvitationInvalid
 	}
@@ -176,12 +173,4 @@ func (s *Service) AcceptExisting(ctx context.Context, l Lookup, password string,
 	}
 	s.joined(ctx, l, u.ID)
 	return Session{User: u, Tokens: tokens}, nil
-}
-
-func newToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("generate invitation token: %w", err)
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
 }

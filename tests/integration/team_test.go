@@ -18,19 +18,35 @@ func joinTeam(t *testing.T, srv *httptest.Server, owner *http.Client, email stri
 // default.
 func joinTeamAs(t *testing.T, srv *httptest.Server, owner *http.Client, email, role string) *http.Client {
 	t.Helper()
-	resp := post(t, owner, srv.URL+"/api/v1/team/invites", map[string]string{"email": email, "name": "Max", "role": role})
-	wantStatus(t, resp, http.StatusCreated)
-	token := field(decode(t, resp), "invite")["token"].(string)
+	token := teamInvite(t, srv, owner, map[string]string{"email": email, "name": "Max", "role": role})
 
 	member := newClient()
-	resp = post(t, member, srv.URL+"/api/v1/team-invites/"+token+"/accept", map[string]string{
-		"name": "Max Member", "password": "membersecret", "password_confirmation": "membersecret",
+	resp := post(t, member, srv.URL+"/api/v1/team-invites/accept", map[string]string{
+		"token": token, "name": "Max Member", "password": "membersecret", "password_confirmation": "membersecret",
 	})
 	wantStatus(t, resp, http.StatusOK)
 	if u := field(decode(t, resp), "user"); u["role"] != "client" || u["member_of"] == nil {
 		t.Fatalf("new member = %v", u)
 	}
 	return member
+}
+
+// teamInvite invites someone to the owner's company and returns the token,
+// read from the email sent to them: the API never gives it to the owner.
+func teamInvite(t *testing.T, srv *httptest.Server, owner *http.Client, body map[string]string) string {
+	t.Helper()
+	resp := post(t, owner, srv.URL+"/api/v1/team/invites", body)
+	wantStatus(t, resp, http.StatusCreated)
+	if _, leaked := field(decode(t, resp), "invite")["token"]; leaked {
+		t.Fatal("the invite's token reached the owner")
+	}
+	return linkToken(t, lastEmailTo(t, body["email"]), "/join#")
+}
+
+// lookupTeamInvite opens the join page for the token.
+func lookupTeamInvite(t *testing.T, srv *httptest.Server, token string) *http.Response {
+	t.Helper()
+	return post(t, newClient(), srv.URL+"/api/v1/team-invites/lookup", map[string]string{"token": token})
 }
 
 func TestTeam(t *testing.T) {
@@ -49,10 +65,8 @@ func TestTeam(t *testing.T) {
 	wantStatus(t, resp, http.StatusBadRequest) // already has an account
 	resp.Body.Close()
 
-	resp = post(t, owner, srv.URL+"/api/v1/team/invites", map[string]string{"email": "max@acme.example"})
-	wantStatus(t, resp, http.StatusCreated)
-	token := field(decode(t, resp), "invite")["token"].(string)
-	resp = get(t, newClient(), srv.URL+"/api/v1/team-invites/"+token)
+	token := teamInvite(t, srv, owner, map[string]string{"email": "max@acme.example"})
+	resp = lookupTeamInvite(t, srv, token)
 	wantStatus(t, resp, http.StatusOK)
 	if got := field(decode(t, resp), "invite"); got["company"] != "Acme Inc" || got["email"] != "max@acme.example" {
 		t.Fatalf("invite lookup = %v", got)
@@ -60,7 +74,7 @@ func TestTeam(t *testing.T) {
 	resp = do(t, owner, http.MethodDelete, srv.URL+"/api/v1/team/invites/"+field(decode(t, get(t, owner, srv.URL+"/api/v1/team")), "team")["invites"].([]any)[0].(map[string]any)["id"].(string), nil)
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
-	wantStatus(t, get(t, newClient(), srv.URL+"/api/v1/team-invites/"+token), http.StatusNotFound)
+	wantStatus(t, lookupTeamInvite(t, srv, token), http.StatusNotFound)
 
 	member := joinTeam(t, srv, owner, "max@acme.example")
 	memberID := myID(t, srv, member)

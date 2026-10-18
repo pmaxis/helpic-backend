@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -48,12 +49,32 @@ func signUpFreelancer(t *testing.T, srv *httptest.Server, email string) *http.Cl
 	return c
 }
 
-// invite creates an invitation and returns its token.
+// invite creates an invitation and returns its token, read from the email
+// sent to the client: the API never gives it to the freelancer.
 func invite(t *testing.T, srv *httptest.Server, freelancer *http.Client, email string) string {
 	t.Helper()
 	resp := post(t, freelancer, srv.URL+"/api/v1/invitations", map[string]string{"email": email, "name": "Acme"})
 	wantStatus(t, resp, http.StatusCreated)
-	return field(decode(t, resp), "invitation")["token"].(string)
+	if _, leaked := field(decode(t, resp), "invitation")["token"]; leaked {
+		t.Fatal("the invitation's token reached the freelancer")
+	}
+	return linkToken(t, lastEmailTo(t, strings.ToLower(email)), "/invite#")
+}
+
+// lookupInvite opens the invitation page for the token.
+func lookupInvite(t *testing.T, srv *httptest.Server, token string) *http.Response {
+	t.Helper()
+	return post(t, newClient(), srv.URL+"/api/v1/invites/lookup", map[string]string{"token": token})
+}
+
+// acceptInvite accepts the invitation with the token and the form's fields.
+func acceptInvite(t *testing.T, srv *httptest.Server, c *http.Client, token string, form map[string]string) *http.Response {
+	t.Helper()
+	body := map[string]string{"token": token}
+	for k, v := range form {
+		body[k] = v
+	}
+	return post(t, c, srv.URL+"/api/v1/invites/accept", body)
 }
 
 // acceptNew accepts an invitation with a new client account and returns the
@@ -61,7 +82,7 @@ func invite(t *testing.T, srv *httptest.Server, freelancer *http.Client, email s
 func acceptNew(t *testing.T, srv *httptest.Server, token string) *http.Client {
 	t.Helper()
 	c := newClient()
-	resp := post(t, c, srv.URL+"/api/v1/invites/"+token+"/accept", map[string]string{
+	resp := acceptInvite(t, srv, c, token, map[string]string{
 		"name": "Acme Inc", "password": "clientsecret", "password_confirmation": "clientsecret",
 	})
 	wantStatus(t, resp, http.StatusOK)
@@ -83,7 +104,7 @@ func TestInvitation_NewClientAcceptsAndIsLinked(t *testing.T) {
 	freelancer := signUpFreelancer(t, srv, "free@example.com")
 	token := invite(t, srv, freelancer, "Client@Example.com")
 
-	resp := get(t, newClient(), srv.URL+"/api/v1/invites/"+token)
+	resp := lookupInvite(t, srv, token)
 	wantStatus(t, resp, http.StatusOK)
 	inv := field(decode(t, resp), "invitation")
 	if inv["email"] != "client@example.com" || inv["account_exists"] != false || inv["name"] != "Acme" {
@@ -109,7 +130,7 @@ func TestInvitation_NewClientAcceptsAndIsLinked(t *testing.T) {
 	}
 
 	// The link is single-use.
-	wantStatus(t, get(t, newClient(), srv.URL+"/api/v1/invites/"+token), http.StatusNotFound)
+	wantStatus(t, lookupInvite(t, srv, token), http.StatusNotFound)
 	resp = get(t, freelancer, srv.URL+"/api/v1/invitations")
 	wantStatus(t, resp, http.StatusOK)
 	if list, _ := decode(t, resp)["invitations"].([]any); len(list) != 0 {
@@ -125,18 +146,18 @@ func TestInvitation_ExistingClientSignsInToAccept(t *testing.T) {
 	second := signUpFreelancer(t, srv, "second@example.com")
 	token := invite(t, srv, second, "client@example.com")
 
-	resp := get(t, newClient(), srv.URL+"/api/v1/invites/"+token)
+	resp := lookupInvite(t, srv, token)
 	wantStatus(t, resp, http.StatusOK)
 	if field(decode(t, resp), "invitation")["account_exists"] != true {
 		t.Fatal("account_exists = false, want true")
 	}
 
 	c := newClient()
-	wrong := post(t, c, srv.URL+"/api/v1/invites/"+token+"/accept", map[string]string{"password": "nope-nope"})
+	wrong := acceptInvite(t, srv, c, token, map[string]string{"password": "nope-nope"})
 	wantStatus(t, wrong, http.StatusBadRequest)
 	wrong.Body.Close()
 
-	resp = post(t, c, srv.URL+"/api/v1/invites/"+token+"/accept", map[string]string{"password": "clientsecret"})
+	resp = acceptInvite(t, srv, c, token, map[string]string{"password": "clientsecret"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 

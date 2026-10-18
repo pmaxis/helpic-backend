@@ -2,9 +2,6 @@ package team
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
-	"fmt"
 	"strings"
 	"time"
 
@@ -106,15 +103,15 @@ func (s *Service) Invite(ctx context.Context, userID string, p InviteParams) (In
 	if taken {
 		return Invite{}, ErrAccountExists
 	}
-	token, err := newToken()
+	token, hash, err := auth.NewToken()
 	if err != nil {
 		return Invite{}, err
 	}
-	inv, err := s.repo.CreateInvite(ctx, companyID, p.Email, p.Name, p.Role, token, time.Now().Add(InviteTTL))
+	inv, err := s.repo.CreateInvite(ctx, companyID, p.Email, p.Name, p.Role, hash, time.Now().Add(InviteTTL))
 	if err != nil {
 		return Invite{}, err
 	}
-	s.emailInvite(ctx, userID, inv)
+	s.emailInvite(ctx, userID, inv, token)
 	return inv, nil
 }
 
@@ -157,7 +154,7 @@ type Lookup struct {
 
 // Find resolves an invitation token for the join page.
 func (s *Service) Find(ctx context.Context, token string) (Lookup, error) {
-	inv, company, owner, err := s.repo.InviteByToken(ctx, token)
+	inv, company, owner, err := s.repo.InviteByToken(ctx, auth.HashToken(token))
 	if err != nil {
 		return Lookup{}, err
 	}
@@ -199,12 +196,4 @@ func (s *Service) Join(ctx context.Context, token string, p JoinParams, c auth.C
 	// The account was read before it joined; say it's a member now.
 	u.TeamOwnerID, u.TeamName, u.TeamRole = &l.Owner.ID, l.Company, l.Invite.Role
 	return Session{User: u, Tokens: tokens}, nil
-}
-
-func newToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("generate invite token: %w", err)
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
 }

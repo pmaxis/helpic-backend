@@ -193,6 +193,8 @@ definitions:
         type: string
       password_confirmation:
         type: string
+      token:
+        type: string
     type: object
   clients.InvitationDTO:
     properties:
@@ -207,8 +209,6 @@ definitions:
       id:
         type: string
       name:
-        type: string
-      token:
         type: string
     type: object
   clients.InviteRequest:
@@ -242,6 +242,11 @@ definitions:
       freelancer:
         $ref: '#/definitions/clients.PartyDTO'
       name:
+        type: string
+    type: object
+  clients.LookupRequest:
+    properties:
+      token:
         type: string
     type: object
   clients.PartyDTO:
@@ -826,8 +831,6 @@ definitions:
         type: string
       role:
         type: string
-      token:
-        type: string
     type: object
   team.InviteRequest:
     properties:
@@ -847,6 +850,8 @@ definitions:
         type: string
       password_confirmation:
         type: string
+      token:
+        type: string
     type: object
   team.LookupDTO:
     properties:
@@ -862,6 +867,11 @@ definitions:
         $ref: '#/definitions/team.PersonDTO'
       role:
         description: 'Role is what they join as: "member" or "contractor".'
+        type: string
+    type: object
+  team.LookupRequest:
+    properties:
+      token:
         type: string
     type: object
   team.MemberDTO:
@@ -1901,7 +1911,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Returns the invitation with the token for its link (/invite/{token}).
+      description: Emails the invitation link to the client; only they get it.
       parameters:
       - description: Request body
         in: body
@@ -1959,32 +1969,7 @@ paths:
       summary: Revoke a client invitation
       tags:
       - people
-  /invites/{token}:
-    get:
-      description: 'Public: the invitation page.'
-      parameters:
-      - description: Invitation token
-        in: path
-        name: token
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: invitation
-          schema:
-            additionalProperties:
-              $ref: '#/definitions/clients.LookupDTO'
-            type: object
-        "404":
-          description: Invalid, used or expired
-          schema:
-            $ref: '#/definitions/response.ErrorEnvelope'
-      summary: Look up a client invitation
-      tags:
-      - invitations
-  /invites/{token}/accept:
+  /invites/accept:
     post:
       consumes:
       - application/json
@@ -1992,11 +1977,6 @@ paths:
         or signs in to the existing one (password), links it with the freelancer and
         sets the auth cookie.
       parameters:
-      - description: Invitation token
-        in: path
-        name: token
-        required: true
-        type: string
       - description: Request body
         in: body
         name: body
@@ -2019,6 +1999,34 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Accept a client invitation
+      tags:
+      - invitations
+  /invites/lookup:
+    post:
+      consumes:
+      - application/json
+      description: 'Public: the invitation page.'
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/clients.LookupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: invitation
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/clients.LookupDTO'
+            type: object
+        "404":
+          description: Invalid, used or expired
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Look up a client invitation
       tags:
       - invitations
   /me:
@@ -3525,43 +3533,13 @@ paths:
       summary: Name your company
       tags:
       - team
-  /team-invites/{token}:
-    get:
-      description: 'Public: the join page.'
-      parameters:
-      - description: Invitation token
-        in: path
-        name: token
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: invite
-          schema:
-            additionalProperties:
-              $ref: '#/definitions/team.LookupDTO'
-            type: object
-        "404":
-          description: Invalid, used or expired
-          schema:
-            $ref: '#/definitions/response.ErrorEnvelope'
-      summary: Look up a team invitation
-      tags:
-      - invitations
-  /team-invites/{token}/accept:
+  /team-invites/accept:
     post:
       consumes:
       - application/json
       description: Public. Creates the member's account, adds it to the company and
         sets the auth cookie.
       parameters:
-      - description: Invitation token
-        in: path
-        name: token
-        required: true
-        type: string
       - description: Request body
         in: body
         name: body
@@ -3586,11 +3564,40 @@ paths:
       summary: Join a team
       tags:
       - invitations
+  /team-invites/lookup:
+    post:
+      consumes:
+      - application/json
+      description: 'Public: the join page.'
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/team.LookupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: invite
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/team.LookupDTO'
+            type: object
+        "404":
+          description: Invalid, used or expired
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Look up a team invitation
+      tags:
+      - invitations
   /team/invites:
     post:
       consumes:
       - application/json
-      description: They join with a new account through /join/{token}.
+      description: Emails the join link to the invited address; only they get it.
+        They join with a new account.
       parameters:
       - description: Request body
         in: body

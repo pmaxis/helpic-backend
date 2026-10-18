@@ -49,7 +49,6 @@ type Invite struct {
 	Email     string
 	Name      string
 	Role      string
-	Token     string
 	ExpiresAt time.Time
 	CreatedAt time.Time
 }

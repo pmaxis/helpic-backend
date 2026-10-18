@@ -27,8 +27,8 @@ func NewHandler(svc *Service, repo *Repository, cookie auth.CookieConfig) *Handl
 
 // PublicRoutes mounts the invitation page endpoints, which need no session.
 func (h *Handler) PublicRoutes(r chi.Router) {
-	r.Get("/invites/{token}", h.FindInvite)
-	r.Post("/invites/{token}/accept", h.AcceptInvite)
+	r.Post("/invites/lookup", h.FindInvite)
+	r.Post("/invites/accept", h.AcceptInvite)
 }
 
 // FreelancerRoutes mounts the freelancer-only endpoints.
@@ -121,7 +121,7 @@ func (h *Handler) ListInvitations(w http.ResponseWriter, r *http.Request) {
 // Invite handles POST /api/v1/invitations.
 //
 //	@Summary		Invite a client
-//	@Description	Returns the invitation with the token for its link (/invite/{token}).
+//	@Description	Emails the invitation link to the client; only they get it.
 //	@Tags			people
 //	@Accept			json
 //	@Produce		json
@@ -192,18 +192,23 @@ func (h *Handler) DeleteInvitation(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// FindInvite handles GET /api/v1/invites/{token}.
+// FindInvite handles POST /api/v1/invites/lookup.
 //
 //	@Summary		Look up a client invitation
 //	@Description	Public: the invitation page.
 //	@Tags			invitations
+//	@Accept			json
 //	@Produce		json
-//	@Param			token	path		string					true	"Invitation token"
+//	@Param			body	body		LookupRequest			true	"Request body"
 //	@Success		200		{object}	map[string]LookupDTO	"invitation"
 //	@Failure		404		{object}	response.ErrorEnvelope	"Invalid, used or expired"
-//	@Router			/invites/{token} [get]
+//	@Router			/invites/lookup [post]
 func (h *Handler) FindInvite(w http.ResponseWriter, r *http.Request) {
-	l, ok := h.lookup(w, r)
+	var req LookupRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	l, ok := h.lookup(w, r, req.Token)
 	if !ok {
 		return
 	}
@@ -216,7 +221,7 @@ func (h *Handler) FindInvite(w http.ResponseWriter, r *http.Request) {
 	}})
 }
 
-// AcceptInvite handles POST /api/v1/invites/{token}/accept. It creates the client
+// AcceptInvite handles POST /api/v1/invites/accept. It creates the client
 // account (or signs in to the existing one), links it with the freelancer and
 // starts a session.
 //
@@ -225,18 +230,17 @@ func (h *Handler) FindInvite(w http.ResponseWriter, r *http.Request) {
 //	@Tags			invitations
 //	@Accept			json
 //	@Produce		json
-//	@Param			token	path		string					true	"Invitation token"
 //	@Param			body	body		AcceptRequest			true	"Request body"
 //	@Success		200		{object}	user.Response			"OK"
 //	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
 //	@Failure		404		{object}	response.ErrorEnvelope	"Invalid, used or expired"
-//	@Router			/invites/{token}/accept [post]
+//	@Router			/invites/accept [post]
 func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	var req AcceptRequest
 	if !request.Decode(w, r, &req) {
 		return
 	}
-	l, ok := h.lookup(w, r)
+	l, ok := h.lookup(w, r, req.Token)
 	if !ok {
 		return
 	}
@@ -275,8 +279,8 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) lookup(w http.ResponseWriter, r *http.Request) (Lookup, bool) {
-	l, err := h.svc.Find(r.Context(), chi.URLParam(r, "token"))
+func (h *Handler) lookup(w http.ResponseWriter, r *http.Request, token string) (Lookup, bool) {
+	l, err := h.svc.Find(r.Context(), token)
 	if errors.Is(err, ErrInvitationInvalid) || errors.Is(err, ErrNotClientEmail) {
 		writeInvalidInvite(w)
 		return Lookup{}, false
