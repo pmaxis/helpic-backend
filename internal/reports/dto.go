@@ -198,11 +198,9 @@ type DTO struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// ListResponse is the reports the viewer may see, and whether the server can
-// print PDFs (it needs the pdf service).
+// ListResponse is the reports the viewer may see.
 type ListResponse struct {
-	Reports      []DTO `json:"reports"`
-	PDFAvailable bool  `json:"pdf_available"`
+	Reports []DTO `json:"reports"`
 }
 
 // ToDTO maps a report for the viewer.

@@ -21,22 +21,3 @@ func TestParsePrice(t *testing.T) {
 		}
 	}
 }
-
-func TestFormat(t *testing.T) {
-	cases := []struct {
-		cents    int64
-		currency string
-		want     string
-	}{
-		{0, "USD", "$0.00"},
-		{5, "EUR", "€0.05"},
-		{123450, "UAH", "₴1,234.50"},
-		{100000000, "GBP", "£1,000,000.00"},
-		{9990, "XYZ", "99.90 XYZ"},
-	}
-	for _, c := range cases {
-		if got := money.Format(c.cents, c.currency); got != c.want {
-			t.Errorf("Format(%d, %s) = %q, want %q", c.cents, c.currency, got, c.want)
-		}
-	}
-}

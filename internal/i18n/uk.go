@@ -85,20 +85,7 @@ var uk = map[string]string{
 	"Paid":        "Оплачено",
 
 	// --- report ------------------------------------------------------------------
-	"Work report":     "Звіт про роботу",
-	"Draft":           "Чернетка",
-	"%s completed":    "Виконано: %s",
-	"Summary":         "Підсумок",
-	"Completed tasks": "Виконані задачі",
-	"Task":            "Задача",
-	"Project":         "Проєкт",
-	"Completed":       "Виконано",
-	"Price":           "Ціна",
-	"Total":           "Разом",
-	"No tasks were completed in this period.": "За цей період не виконано жодної задачі.",
-	"Prepared %s": "Підготовлено %s",
-	"sent %s":     "надіслано %s",
-	"paid %s":     "оплачено %s",
+	"Work report": "Звіт про роботу",
 
 	// --- API errors: general -----------------------------------------------------
 	"The request contains invalid fields":    "Деякі поля заповнено неправильно",

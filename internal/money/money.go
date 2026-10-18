@@ -15,9 +15,6 @@ const DefaultCurrency = "USD"
 // Currencies lists the currencies a freelancer can bill in.
 var Currencies = []string{"USD", "EUR", "GBP", "UAH", "PLN", "CAD"}
 
-// symbols put in front of an amount; the same table lives in the frontend.
-var symbols = map[string]string{"USD": "$", "EUR": "€", "GBP": "£", "UAH": "₴", "PLN": "zł ", "CAD": "CA$"}
-
 // MaxCents caps a price at 1 000 000 000.00.
 const MaxCents = 100_000_000_000
 
@@ -57,18 +54,4 @@ func digits(s string) bool {
 		}
 	}
 	return true
-}
-
-// Format writes cents as "$1,234.50" (or "1,234.50 XYZ" for an unknown code).
-func Format(cents int64, currency string) string {
-	units, rest := cents/100, cents%100
-	s := strconv.FormatInt(units, 10)
-	for i := len(s) - 3; i > 0; i -= 3 {
-		s = s[:i] + "," + s[i:]
-	}
-	s += "." + strconv.FormatInt(100+rest, 10)[1:]
-	if sym, ok := symbols[currency]; ok {
-		return sym + s
-	}
-	return s + " " + currency
 }

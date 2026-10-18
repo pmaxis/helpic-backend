@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 COMPOSE := docker compose
 
-.PHONY: help dev up down build logs pdf test test-unit test-integration migrate-up migrate-down psql fmt swagger
+.PHONY: help dev up down build logs test test-unit test-integration migrate-up migrate-down psql fmt swagger
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -18,9 +18,6 @@ down: ## Stop and remove the containers
 
 build: ## Build the Docker images
 	$(COMPOSE) build
-
-pdf: ## Run the pdf service locally (needs Chrome/Chromium; API: PDF_URL=http://localhost:8081)
-	go run ./cmd/pdf
 
 logs: ## Follow container logs
 	$(COMPOSE) logs -f

@@ -566,8 +566,6 @@ definitions:
     type: object
   reports.ListResponse:
     properties:
-      pdf_available:
-        type: boolean
       reports:
         items:
           $ref: '#/definitions/reports.DTO'
@@ -2810,33 +2808,6 @@ paths:
       summary: A report's history
       tags:
       - reports
-  /reports/{id}/html:
-    get:
-      description: For servers that can't print PDFs.
-      parameters:
-      - description: Report ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - text/html
-      responses:
-        "200":
-          description: HTML
-          schema:
-            type: string
-        "401":
-          description: Not signed in
-          schema:
-            $ref: '#/definitions/response.ErrorEnvelope'
-        "404":
-          description: Not found
-          schema:
-            $ref: '#/definitions/response.ErrorEnvelope'
-      summary: A report as an HTML sheet
-      tags:
-      - reports
   /reports/{id}/items/{itemID}:
     delete:
       parameters:
@@ -2966,41 +2937,6 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Mark a sent report paid
-      tags:
-      - reports
-  /reports/{id}/pdf:
-    get:
-      description: Printed by the pdf service (headless Chromium); 503 without it.
-      parameters:
-      - description: Report ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: 1 to save it rather than show it
-        in: query
-        name: download
-        type: string
-      produces:
-      - application/pdf
-      responses:
-        "200":
-          description: PDF
-          schema:
-            type: file
-        "401":
-          description: Not signed in
-          schema:
-            $ref: '#/definitions/response.ErrorEnvelope'
-        "404":
-          description: Not found
-          schema:
-            $ref: '#/definitions/response.ErrorEnvelope'
-        "503":
-          description: No pdf service configured
-          schema:
-            $ref: '#/definitions/response.ErrorEnvelope'
-      summary: A report as PDF
       tags:
       - reports
   /reports/{id}/send:

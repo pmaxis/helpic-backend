@@ -137,7 +137,7 @@ func TestReports_PersonalWork(t *testing.T) {
 	resp.Body.Close()
 }
 
-func TestReports_Documents(t *testing.T) {
+func TestReports_DraftHiddenFromClient(t *testing.T) {
 	srv, _ := newAPI(t)
 	freelancer := signUpFreelancer(t, srv, "free@example.com")
 	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
@@ -146,26 +146,10 @@ func TestReports_Documents(t *testing.T) {
 	wantStatus(t, resp, http.StatusCreated)
 	id := field(decode(t, resp), "report")["id"].(string)
 
-	resp = get(t, freelancer, srv.URL+"/api/v1/reports/"+id+"/html")
+	resp = get(t, freelancer, srv.URL+"/api/v1/reports/"+id)
 	wantStatus(t, resp, http.StatusOK)
-	if ct := resp.Header.Get("Content-Type"); ct != "text/html; charset=utf-8" {
-		t.Fatalf("html content type = %q", ct)
-	}
 	resp.Body.Close()
-
-	// The client can't read a draft in any form.
-	wantStatus(t, get(t, client, srv.URL+"/api/v1/reports/"+id+"/html"), http.StatusNotFound)
-	wantStatus(t, get(t, client, srv.URL+"/api/v1/reports/"+id+"/pdf"), http.StatusNotFound)
-
-	// No Chrome in tests: the PDF says so instead of failing.
-	resp = get(t, freelancer, srv.URL+"/api/v1/reports/"+id+"/pdf")
-	wantStatus(t, resp, http.StatusServiceUnavailable)
-	resp.Body.Close()
-	resp = get(t, freelancer, srv.URL+"/api/v1/reports")
-	wantStatus(t, resp, http.StatusOK)
-	if got := decode(t, resp)["pdf_available"]; got != false {
-		t.Fatalf("pdf_available = %v, want false", got)
-	}
+	wantStatus(t, get(t, client, srv.URL+"/api/v1/reports/"+id), http.StatusNotFound)
 }
 
 func TestReports_SeveralProjects(t *testing.T) {
