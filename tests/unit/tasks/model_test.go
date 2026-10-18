@@ -22,15 +22,13 @@ func TestNextStatuses(t *testing.T) {
 		want   []string
 	}{
 		{"personal task goes anywhere", tasks.Task{Status: tasks.StatusInProgress, CreatedBy: freelancer},
-			user.RoleFreelancer, freelancer, []string{tasks.StatusNew, tasks.StatusDone, tasks.StatusCancelled}},
+			user.RoleFreelancer, freelancer, []string{tasks.StatusNew, tasks.StatusDone}},
 		{"freelancer moves client work back to new", shared(tasks.StatusInProgress, client),
 			user.RoleFreelancer, freelancer, []string{tasks.StatusNew, tasks.StatusDone}},
-		{"freelancer can't cancel a client's task", shared(tasks.StatusNew, client),
+		{"freelancer moves their own shared task", shared(tasks.StatusNew, freelancer),
 			user.RoleFreelancer, freelancer, []string{tasks.StatusInProgress, tasks.StatusDone}},
-		{"freelancer cancels their own shared task", shared(tasks.StatusNew, freelancer),
-			user.RoleFreelancer, freelancer, []string{tasks.StatusInProgress, tasks.StatusDone, tasks.StatusCancelled}},
 		{"client can't mark done", shared(tasks.StatusInProgress, client),
-			user.RoleClient, client, []string{tasks.StatusCancelled}},
+			user.RoleClient, client, nil},
 	}
 	for _, c := range cases {
 		got := tasks.NextStatuses(c.task, c.role, c.viewer)
@@ -58,7 +56,7 @@ func TestCanEdit(t *testing.T) {
 		{"creator edits a done shared task", shared(tasks.StatusDone, client), client, true},
 		{"freelancer edits what the client set", shared(tasks.StatusDone, client), freelancer, true},
 		{"client can't edit what the freelancer set", shared(tasks.StatusNew, freelancer), client, false},
-		{"a cancelled personal task stays editable", tasks.Task{Status: tasks.StatusCancelled, CreatedBy: freelancer, Freelancer: tasks.Party{ID: freelancer}}, freelancer, true},
+		{"a done personal task stays editable", tasks.Task{Status: tasks.StatusDone, CreatedBy: freelancer, Freelancer: tasks.Party{ID: freelancer}}, freelancer, true},
 	}
 	for _, c := range cases {
 		if got := tasks.CanEdit(c.task, c.viewer); got != c.want {

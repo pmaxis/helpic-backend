@@ -227,8 +227,8 @@ func (h *Handler) Invite(w http.ResponseWriter, r *http.Request) {
 //	@Summary		Take someone off a project
 //	@Description	The author only. The author stays. Someone taken off no longer sees the project.
 //	@Tags			projects
-//	@Param			id		path	string	true	"Project ID"
-//	@Param			userID	path	string	true	"Participant's user ID"
+//	@Param			id		path		string					true	"Project ID"
+//	@Param			userID	path		string					true	"Participant's user ID"
 //	@Success		200		{object}	map[string][]PersonDTO	"participants and candidates"
 //	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
 //	@Failure		403		{object}	response.ErrorEnvelope	"Not the author"

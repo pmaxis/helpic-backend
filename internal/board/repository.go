@@ -21,22 +21,20 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 const columnFields = `ws.id, ws.freelancer_id, coalesce(ws.client_id::text, ''), coalesce(ws.project_id::text, ''),
-	ws.name, ws.category, ws.position, ws.category_id::text, c.name, c.participants_can_move`
+	ws.name, ws.category, ws.position`
 
 // workflowOf is the freelancer, client and project a workflow belongs to.
 const workflowOf = `freelancer_id = $1::uuid AND client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid
 	AND project_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid`
 
-const columnFrom = `workflow_statuses ws JOIN workflow_categories c ON c.id = ws.category_id`
-
 func scanColumn(row pgx.Row) (Column, error) {
 	var c Column
-	err := row.Scan(&c.ID, &c.Pair.FreelancerID, &c.Pair.ClientID, &c.Pair.ProjectID, &c.Name, &c.Category, &c.Position,
-		&c.CategoryID, &c.CategoryName, &c.ParticipantsCanMove)
+	err := row.Scan(&c.ID, &c.Pair.FreelancerID, &c.Pair.ClientID, &c.Pair.ProjectID, &c.Name, &c.Category, &c.Position)
+	c.ParticipantsCanMove = OpenToParticipants(c.Category)
 	return c, err
 }
 
-// ensure makes sure a workflow's default categories and columns exist.
+// ensure makes sure a workflow's default columns exist.
 func (r *Repository) ensure(ctx context.Context, p Pair) error {
 	var err error
 	if p.ProjectID != "" {
@@ -56,7 +54,7 @@ func (r *Repository) Columns(ctx context.Context, p Pair) ([]Column, error) {
 	if err := r.ensure(ctx, p); err != nil {
 		return nil, err
 	}
-	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM `+columnFrom+`
+	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM workflow_statuses ws
 		WHERE ws.freelancer_id::text = $1 AND ws.client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid
 		  AND ws.project_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid
 		ORDER BY ws.position, ws.created_at`, p.FreelancerID, p.ClientID, p.ProjectID)
@@ -72,7 +70,7 @@ func (r *Repository) Columns(ctx context.Context, p Pair) ([]Column, error) {
 
 // Column returns one column, or ErrNotFound.
 func (r *Repository) Column(ctx context.Context, id string) (Column, error) {
-	c, err := scanColumn(r.db.QueryRow(ctx, `SELECT `+columnFields+` FROM `+columnFrom+` WHERE ws.id::text = $1`, id))
+	c, err := scanColumn(r.db.QueryRow(ctx, `SELECT `+columnFields+` FROM workflow_statuses ws WHERE ws.id::text = $1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Column{}, ErrNotFound
 	}
@@ -85,7 +83,7 @@ func (r *Repository) Column(ctx context.Context, id string) (Column, error) {
 // ProjectColumns lists the columns of every project on a pair. The pair's own
 // workflow (tasks outside a project) is not included.
 func (r *Repository) ProjectColumns(ctx context.Context, p Pair) ([]Column, error) {
-	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM `+columnFrom+`
+	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM workflow_statuses ws
 		WHERE ws.freelancer_id::text = $1 AND ws.client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid
 		  AND ws.project_id IS NOT NULL
 		ORDER BY ws.position, ws.created_at`, p.FreelancerID, p.ClientID)
@@ -100,32 +98,39 @@ func (r *Repository) ProjectColumns(ctx context.Context, p Pair) ([]Column, erro
 }
 
 // Create appends a column to the end of a workflow.
-func (r *Repository) Create(ctx context.Context, p Pair, name, categoryID, bucket string) error {
-	_, err := r.db.Exec(ctx, `INSERT INTO workflow_statuses (freelancer_id, client_id, project_id, name, category, category_id, position)
-		SELECT $1::uuid, NULLIF($2, '')::uuid, NULLIF($3, '')::uuid, $4, $5, $6::uuid, coalesce(max(position) + 1, 0)
+func (r *Repository) Create(ctx context.Context, p Pair, name, bucket string) error {
+	_, err := r.db.Exec(ctx, `INSERT INTO workflow_statuses (freelancer_id, client_id, project_id, name, category, position)
+		SELECT $1::uuid, NULLIF($2, '')::uuid, NULLIF($3, '')::uuid, $4, $5, coalesce(max(position) + 1, 0)
 		FROM workflow_statuses
 		WHERE `+workflowOf,
-		p.FreelancerID, p.ClientID, p.ProjectID, name, bucket, categoryID)
+		p.FreelancerID, p.ClientID, p.ProjectID, name, bucket)
 	if err != nil {
 		return fmt.Errorf("create column: %w", err)
 	}
 	return nil
 }
 
-// Update renames a column and sets its category; the tasks in it take the new
-// category.
-func (r *Repository) Update(ctx context.Context, id, name, categoryID, category string) error {
+// Rename changes a column's name. Its bucket, and the tasks in it, stay as they are.
+func (r *Repository) Rename(ctx context.Context, id, name string) error {
+	if _, err := r.db.Exec(ctx, `UPDATE workflow_statuses SET name = $2 WHERE id::text = $1`, id, name); err != nil {
+		return fmt.Errorf("rename column: %w", err)
+	}
+	return nil
+}
+
+// Update renames a column and sets its bucket; the tasks in it take that bucket.
+func (r *Repository) Update(ctx context.Context, id, name, bucket string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if _, err := tx.Exec(ctx, `UPDATE workflow_statuses SET name = $2, category = $3, category_id = $4::uuid WHERE id::text = $1`, id, name, category, categoryID); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE workflow_statuses SET name = $2, category = $3 WHERE id::text = $1`, id, name, bucket); err != nil {
 		return fmt.Errorf("update column: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE tasks SET status = $2,
 			completed_at = CASE WHEN $2 = 'done' THEN coalesce(completed_at, now()) END
-		WHERE status_id::text = $1 AND status <> $2`, id, category); err != nil {
+		WHERE status_id::text = $1 AND status <> $2`, id, bucket); err != nil {
 		return fmt.Errorf("recategorise tasks: %w", err)
 	}
 	return tx.Commit(ctx)
@@ -149,7 +154,10 @@ func (r *Repository) Delete(ctx context.Context, id, fallbackID string) error {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	if fallbackID != "" {
-		if _, err := tx.Exec(ctx, `UPDATE tasks SET status_id = $2, position = NULL WHERE status_id::text = $1`, id, fallbackID); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE tasks t SET status_id = ws.id, status = ws.category, position = NULL,
+				completed_at = CASE WHEN ws.category = 'done' THEN coalesce(t.completed_at, now()) ELSE t.completed_at END
+			FROM workflow_statuses ws
+			WHERE t.status_id::text = $1 AND ws.id::text = $2`, id, fallbackID); err != nil {
 			return fmt.Errorf("move tasks out: %w", err)
 		}
 	}

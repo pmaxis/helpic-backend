@@ -183,8 +183,8 @@ func (s *Service) Create(ctx context.Context, userID, role string, p Params) (Ta
 	}
 
 	// Straight into a board column: it must be on this pair's board. The project's
-	// author and the freelancer may use any category; everyone else only one
-	// the owner opened to participants.
+	// author and the freelancer may use any status; everyone else only one
+	// that isn't done.
 	if p.StatusID != "" {
 		st, err := s.repo.Status(ctx, p.StatusID)
 		if err != nil {
@@ -400,9 +400,9 @@ func (s *Service) SetStatus(ctx context.Context, userID, role, id, status string
 }
 
 // MoveTo puts the task into a status (board column) of its pair's workflow.
-// Staying in the same category is always allowed. Entering another follows
-// the category: the freelancer and the project's author may enter any, and
-// everyone else only one opened to participants.
+// Staying in the same bucket is always allowed. Entering another: the
+// freelancer and the project's author may enter any, and everyone else only
+// one that isn't done.
 func (s *Service) MoveTo(ctx context.Context, userID, role, id, statusID string) (Task, error) {
 	t, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
@@ -437,7 +437,7 @@ func (s *Service) MoveTo(ctx context.Context, userID, role, id, statusID string)
 			return Task{}, err
 		}
 	}
-	if !MayEnter(t.Client == nil, st.CategoryID == cur.CategoryID, manager, st.ParticipantsCanMove) {
+	if !MayEnter(t.Client == nil, st.Bucket == cur.Bucket, manager, st.ParticipantsCanMove) {
 		return Task{}, ErrTransition
 	}
 	if err := s.repo.MoveTo(ctx, id, t.StatusID, statusID, st.Bucket); err != nil {

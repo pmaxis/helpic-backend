@@ -65,13 +65,12 @@ type Person struct {
 // PersonalFilter is the CounterpartID value that selects personal tasks.
 const PersonalFilter = "personal"
 
-// Status categories. Every workflow status (a board column) belongs to one;
-// Task.Status holds the category, Task.StatusID the exact status.
+// Status buckets. Task.Status holds the bucket; Task.StatusID the exact
+// status, which is a board column.
 const (
 	StatusNew        = "new"
 	StatusInProgress = "in_progress"
 	StatusDone       = "done"
-	StatusCancelled  = "cancelled"
 )
 
 // Priorities, least urgent first. A task starts with none.
@@ -87,13 +86,12 @@ const (
 var Priorities = []string{PriorityNone, PriorityLow, PriorityMedium, PriorityHigh, PriorityUrgent}
 
 // Statuses lists every task status in workflow order.
-var Statuses = []string{StatusNew, StatusInProgress, StatusDone, StatusCancelled}
+var Statuses = []string{StatusNew, StatusInProgress, StatusDone}
 
 // transitions says which status changes each role may make on a shared task,
 // from each status. The freelancer moves the work freely between new, in
-// progress and done; the client cancels, restores, or sends a done task back
-// for more work. A freelancer may also cancel and restore tasks they created
-// themselves (see creatorTransitions). Personal tasks have no limits.
+// progress and done. The client sends a done task back for more work.
+// Personal tasks have no limits.
 var transitions = map[string]map[string][]string{
 	user.RoleFreelancer: {
 		StatusNew:        {StatusInProgress, StatusDone},
@@ -101,19 +99,8 @@ var transitions = map[string]map[string][]string{
 		StatusDone:       {StatusNew, StatusInProgress},
 	},
 	user.RoleClient: {
-		StatusNew:        {StatusCancelled},
-		StatusInProgress: {StatusCancelled},
-		StatusDone:       {StatusInProgress},
-		StatusCancelled:  {StatusNew},
+		StatusDone: {StatusInProgress},
 	},
-}
-
-// creatorTransitions are extra changes the task's creator may make on top of
-// their role's.
-var creatorTransitions = map[string][]string{
-	StatusNew:        {StatusCancelled},
-	StatusInProgress: {StatusCancelled},
-	StatusCancelled:  {StatusNew},
 }
 
 // NextStatuses returns the statuses the viewer may move the task to. A
@@ -128,23 +115,15 @@ func NextStatuses(t Task, role, viewerID string) []string {
 		}
 		return out
 	}
-	out := slices.Clone(transitions[role][t.Status])
-	if t.CreatedBy == viewerID {
-		for _, s := range creatorTransitions[t.Status] {
-			if !slices.Contains(out, s) {
-				out = append(out, s)
-			}
-		}
-	}
-	return out
+	return slices.Clone(transitions[role][t.Status])
 }
 
-// MayEnter reports whether a move into a category is allowed. A personal task
-// and a move that stays in the same category always are. The freelancer and
-// the project's author may enter any category. Everyone else only enters a
-// category the owner opened to participants.
-func MayEnter(personal, sameCategory, manager, participantsCanMove bool) bool {
-	return personal || sameCategory || manager || participantsCanMove
+// MayEnter reports whether a move into a status is allowed. A personal task
+// and a move that stays in the same bucket always are. The freelancer and
+// the project's author may enter any status. Everyone else only enters a
+// status that isn't done.
+func MayEnter(personal, sameBucket, manager, participantsCanMove bool) bool {
+	return personal || sameBucket || manager || participantsCanMove
 }
 func CanTransition(t Task, role, viewerID, to string) bool {
 	return slices.Contains(NextStatuses(t, role, viewerID), to)

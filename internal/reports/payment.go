@@ -21,8 +21,7 @@ var (
 	ErrNotSent = errors.New("only a sent, unpaid report can be marked paid")
 )
 
-// PaidColumn is the board column (a status of the done category) that a paid
-// report's tasks move to; it is made on the first payment.
+// PaidColumn is the done column a paid report's tasks move to. The first payment creates it.
 const PaidColumn = "Paid"
 
 // taskRecorder adds to a task's history. Implemented by *tasks.Service.
@@ -146,18 +145,9 @@ func createPaidColumn(ctx context.Context, tx pgx.Tx, freelancerID string, clien
 		return "", err
 	}
 	var id string
-	err = tx.QueryRow(ctx, `INSERT INTO workflow_statuses (freelancer_id, client_id, project_id, name, category, category_id, position)
-		SELECT $1, $2, NULLIF($3, '')::uuid, $4, 'done', c.id, $5
-		FROM workflow_categories c
-		WHERE c.freelancer_id = $1 AND c.client_id IS NOT DISTINCT FROM $2
-		  AND c.project_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid
-		  AND c.counts_done
-		ORDER BY c.system_key = 'done' DESC, c.position
-		LIMIT 1
+	err = tx.QueryRow(ctx, `INSERT INTO workflow_statuses (freelancer_id, client_id, project_id, name, category, position)
+		VALUES ($1, $2, NULLIF($3, '')::uuid, $4, 'done', $5)
 		RETURNING id`, freelancerID, clientID, projectID, PaidColumn, after+1).Scan(&id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", fmt.Errorf("no done category")
-	}
 	return id, err
 }
 

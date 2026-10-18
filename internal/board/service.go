@@ -136,30 +136,29 @@ func (s *Service) CreateColumn(ctx context.Context, userID, role string, sc Scop
 	if _, err := s.repo.Columns(ctx, p); err != nil { // make sure the defaults exist first
 		return err
 	}
-	cat, err := s.categoryFor(ctx, p, cp)
-	if err != nil {
-		return err
+	bucket := tasks.StatusInProgress
+	if cp.StatusCategory != "" {
+		bucket, _ = BucketOfStatusCategory(cp.StatusCategory)
 	}
-	return s.repo.Create(ctx, p, cp.Name, cat.ID, cat.Bucket())
+	return s.repo.Create(ctx, p, cp.Name, bucket)
 }
 
-// UpdateColumn renames a column or changes its category; its tasks take the
-// new category.
+// UpdateColumn renames a column. A new category moves its tasks into that bucket.
 func (s *Service) UpdateColumn(ctx context.Context, userID, id string, cp ColumnParams) error {
 	c, err := s.managed(ctx, userID, id)
 	if err != nil {
 		return err
 	}
-	cat, err := s.categoryFor(ctx, c.Pair, cp)
-	if err != nil {
-		return err
+	if cp.StatusCategory == "" || StatusCategoryOf(c.Category) == cp.StatusCategory {
+		return s.repo.Rename(ctx, id, cp.Name)
 	}
-	return s.repo.Update(ctx, id, cp.Name, cat.ID, cat.Bucket())
+	bucket, _ := BucketOfStatusCategory(cp.StatusCategory)
+	return s.repo.Update(ctx, id, cp.Name, bucket)
 }
 
 // DeleteColumn removes a column, unless it is the board's only one. An empty
 // column just goes; a column with tasks moves them to the first other column
-// of its category, and can't be removed (ErrHasTasks) when there is none.
+// of the same category, and can't be removed (ErrHasTasks) when there is none.
 func (s *Service) DeleteColumn(ctx context.Context, userID, id string) error {
 	c, err := s.managed(ctx, userID, id)
 	if err != nil {
@@ -180,7 +179,7 @@ func (s *Service) DeleteColumn(ctx context.Context, userID, id string) error {
 		return s.repo.Delete(ctx, id, "")
 	}
 	for _, x := range cols {
-		if x.ID != c.ID && x.CategoryID == c.CategoryID {
+		if x.ID != c.ID && StatusCategoryOf(x.Category) == StatusCategoryOf(c.Category) {
 			return s.repo.Delete(ctx, id, x.ID)
 		}
 	}
@@ -213,9 +212,31 @@ func (s *Service) managed(ctx context.Context, userID, id string) (Column, error
 	return c, nil
 }
 
+// managesPair reports whether the user may change this workflow. The
+// freelancer may, and so may the author of the project it belongs to. The
+// pair's client gets ErrNotManager; anyone else gets ErrNotFound.
+func (s *Service) managesPair(ctx context.Context, userID string, p Pair) error {
+	if userID == p.FreelancerID {
+		return nil
+	}
+	if p.ProjectID != "" {
+		author, err := s.repo.ProjectAuthor(ctx, p.ProjectID)
+		if err != nil {
+			return err
+		}
+		if author == userID {
+			return nil
+		}
+	}
+	if userID == p.ClientID {
+		return ErrNotManager
+	}
+	return ErrNotFound
+}
+
 // Move puts a task into a column right after afterTaskID ("" = at the top).
-// A column of another category changes the task's status category, which
-// fails with tasks.ErrTransition when the user's role may not make it.
+// A column of another bucket changes the task's status, which fails with
+// tasks.ErrTransition when the user's role may not make it.
 func (s *Service) Move(ctx context.Context, userID, role, taskID, columnID, afterTaskID string) (tasks.Task, error) {
 	t, err := s.tasks.MoveTo(ctx, userID, role, taskID, columnID)
 	if err != nil {

@@ -171,7 +171,7 @@ func (r *Repository) List(ctx context.Context, userID, role string, f Filter) ([
 		AND ($3 = '' OR ` + other + `::text = $3
 			OR ($3 = '` + PersonalFilter + `' AND ` + other + ` IS NULL))
 		AND ($4 = '' OR t.project_id::text = $4)
-		ORDER BY t.status IN ('done', 'cancelled'), t.due_on ASC NULLS LAST, t.created_at DESC`
+		ORDER BY t.status = 'done', t.due_on ASC NULLS LAST, t.created_at DESC`
 	statuses := f.Statuses
 	if statuses == nil {
 		statuses = []string{}
@@ -235,24 +235,22 @@ func (r *Repository) IsProjectAuthor(ctx context.Context, userID, projectID stri
 	return ok, nil
 }
 
-// WorkflowStatus is a board column's category, as a move needs it.
+// WorkflowStatus is a board column, as a move needs it.
 type WorkflowStatus struct {
 	FreelancerID        string
 	ClientID            *string
 	ProjectID           string
 	Bucket              string
-	CategoryID          string
 	ParticipantsCanMove bool
 }
 
-// Status returns a workflow status's pair and category, or ErrStatusNotFound.
+// Status returns a workflow status's pair and bucket, or ErrStatusNotFound.
 func (r *Repository) Status(ctx context.Context, statusID string) (WorkflowStatus, error) {
 	var s WorkflowStatus
-	err := r.db.QueryRow(ctx, `SELECT ws.freelancer_id, ws.client_id, coalesce(ws.project_id::text, ''), ws.category, ws.category_id::text, c.participants_can_move
-		FROM workflow_statuses ws
-		JOIN workflow_categories c ON c.id = ws.category_id
-		WHERE ws.id::text = $1`, statusID).
-		Scan(&s.FreelancerID, &s.ClientID, &s.ProjectID, &s.Bucket, &s.CategoryID, &s.ParticipantsCanMove)
+	err := r.db.QueryRow(ctx, `SELECT freelancer_id, client_id, coalesce(project_id::text, ''), category
+		FROM workflow_statuses WHERE id::text = $1`, statusID).
+		Scan(&s.FreelancerID, &s.ClientID, &s.ProjectID, &s.Bucket)
+	s.ParticipantsCanMove = s.Bucket != StatusDone
 	if errors.Is(err, pgx.ErrNoRows) {
 		return WorkflowStatus{}, ErrStatusNotFound
 	}

@@ -39,7 +39,7 @@ func (r *Repository) AllColumns(ctx context.Context, freelancerID string) ([]Col
 	if _, err := r.db.Exec(ctx, `SELECT ensure_workflow($1::uuid, NULL)`, freelancerID); err != nil {
 		return nil, fmt.Errorf("ensure workflow: %w", err)
 	}
-	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM `+columnFrom+`
+	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM workflow_statuses ws
 		WHERE ws.freelancer_id = $1 ORDER BY ws.position, ws.created_at`, freelancerID)
 	if err != nil {
 		return nil, fmt.Errorf("list all columns: %w", err)
@@ -63,7 +63,7 @@ func (r *Repository) ClientColumns(ctx context.Context, clientID string) ([]Colu
 		FROM freelancer_clients WHERE client_id = $1::uuid`, clientID); err != nil {
 		return nil, fmt.Errorf("ensure workflows: %w", err)
 	}
-	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM `+columnFrom+`
+	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM workflow_statuses ws
 		WHERE ws.client_id = $1::uuid ORDER BY ws.position, ws.created_at`, clientID)
 	if err != nil {
 		return nil, fmt.Errorf("list client columns: %w", err)
