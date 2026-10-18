@@ -38,8 +38,8 @@ func (h *Handler) ClientRoutes(r chi.Router) {
 
 // PublicRoutes mounts the join page endpoints, which need no session.
 func (h *Handler) PublicRoutes(r chi.Router) {
-	r.Get("/team-invites/{token}", h.FindInvite)
-	r.Post("/team-invites/{token}/accept", h.Join)
+	r.Post("/team-invites/lookup", h.FindInvite)
+	r.Post("/team-invites/accept", h.Join)
 }
 
 // Overview handles GET /api/v1/team.
@@ -94,7 +94,7 @@ func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
 // Invite handles POST /api/v1/team/invites.
 //
 //	@Summary		Invite someone to your team
-//	@Description	They join with a new account through /join/{token}.
+//	@Description	Emails the join link to the invited address; only they get it. They join with a new account.
 //	@Tags			team
 //	@Accept			json
 //	@Produce		json
@@ -199,18 +199,23 @@ func (h *Handler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	writeDone(w, h.svc.RemoveMember(r.Context(), userID, chi.URLParam(r, "id")))
 }
 
-// FindInvite handles GET /api/v1/team-invites/{token}.
+// FindInvite handles POST /api/v1/team-invites/lookup.
 //
 //	@Summary		Look up a team invitation
 //	@Description	Public: the join page.
 //	@Tags			invitations
+//	@Accept			json
 //	@Produce		json
-//	@Param			token	path		string					true	"Invitation token"
+//	@Param			body	body		LookupRequest			true	"Request body"
 //	@Success		200		{object}	map[string]LookupDTO	"invite"
 //	@Failure		404		{object}	response.ErrorEnvelope	"Invalid, used or expired"
-//	@Router			/team-invites/{token} [get]
+//	@Router			/team-invites/lookup [post]
 func (h *Handler) FindInvite(w http.ResponseWriter, r *http.Request) {
-	l, err := h.svc.Find(r.Context(), chi.URLParam(r, "token"))
+	var req LookupRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	l, err := h.svc.Find(r.Context(), req.Token)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -225,7 +230,7 @@ func (h *Handler) FindInvite(w http.ResponseWriter, r *http.Request) {
 	}})
 }
 
-// Join handles POST /api/v1/team-invites/{token}/accept: it creates the member's
+// Join handles POST /api/v1/team-invites/accept: it creates the member's
 // account, adds it to the company and starts a session.
 //
 //	@Summary		Join a team
@@ -233,12 +238,11 @@ func (h *Handler) FindInvite(w http.ResponseWriter, r *http.Request) {
 //	@Tags			invitations
 //	@Accept			json
 //	@Produce		json
-//	@Param			token	path		string					true	"Invitation token"
 //	@Param			body	body		JoinRequest				true	"Request body"
 //	@Success		200		{object}	user.Response			"OK"
 //	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
 //	@Failure		404		{object}	response.ErrorEnvelope	"Invalid, used or expired"
-//	@Router			/team-invites/{token}/accept [post]
+//	@Router			/team-invites/accept [post]
 func (h *Handler) Join(w http.ResponseWriter, r *http.Request) {
 	var req JoinRequest
 	if !request.Decode(w, r, &req) {
@@ -249,7 +253,7 @@ func (h *Handler) Join(w http.ResponseWriter, r *http.Request) {
 		response.ValidationError(w, fields)
 		return
 	}
-	session, err := h.svc.Join(r.Context(), chi.URLParam(r, "token"), p, auth.ClientOf(r))
+	session, err := h.svc.Join(r.Context(), req.Token, p, auth.ClientOf(r))
 	switch {
 	case errors.Is(err, auth.ErrEmailExists):
 		writeError(w, ErrInviteInvalid)

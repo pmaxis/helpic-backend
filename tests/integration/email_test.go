@@ -1,7 +1,9 @@
 package integration
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"net/http"
 	"regexp"
@@ -157,21 +159,41 @@ func TestInvitationEmails(t *testing.T) {
 	srv, _ := newAPI(t)
 	freelancer := signUpFreelancer(t, srv, "free@example.com")
 
-	resp := post(t, freelancer, srv.URL+"/api/v1/invitations", map[string]string{"email": "client@example.com", "name": "Acme"})
-	wantStatus(t, resp, http.StatusCreated)
-	token := field(decode(t, resp), "invitation")["token"].(string)
+	token := invite(t, srv, freelancer, "client@example.com")
 	e := lastEmailTo(t, "client@example.com")
-	if e.Subject != "Test User invited you to Helpic" || linkToken(t, e, "/invite/") != token || !strings.Contains(e.Text, "Hi Acme,") {
+	if e.Subject != "Test User invited you to Helpic" || !strings.Contains(e.Text, "Hi Acme,") {
 		t.Fatalf("invitation email = %+v", e)
+	}
+	// Only the link's hash is stored, and the freelancer's list holds no link.
+	wantHashed(t, `SELECT token_hash FROM invitations`, token)
+	resp := get(t, freelancer, srv.URL+"/api/v1/invitations")
+	wantStatus(t, resp, http.StatusOK)
+	if inv := decode(t, resp)["invitations"].([]any)[0].(map[string]any); inv["token"] != nil {
+		t.Fatalf("listed invitation = %v", inv)
 	}
 
 	client := acceptNew(t, srv, token)
-	resp = post(t, client, srv.URL+"/api/v1/team/invites", map[string]string{"email": "member@example.com"})
-	wantStatus(t, resp, http.StatusCreated)
-	teamToken := field(decode(t, resp), "invite")["token"].(string)
-	e = lastEmailTo(t, "member@example.com")
-	if !strings.HasPrefix(e.Subject, "Join ") || linkToken(t, e, "/join/") != teamToken {
+	teamToken := teamInvite(t, srv, client, map[string]string{"email": "member@example.com"})
+	if e := lastEmailTo(t, "member@example.com"); !strings.HasPrefix(e.Subject, "Join ") {
 		t.Fatalf("team invite email = %+v", e)
+	}
+	wantHashed(t, `SELECT token_hash FROM company_invites`, teamToken)
+	resp = get(t, client, srv.URL+"/api/v1/team")
+	wantStatus(t, resp, http.StatusOK)
+	if inv := field(decode(t, resp), "team")["invites"].([]any)[0].(map[string]any); inv["token"] != nil {
+		t.Fatalf("listed team invite = %v", inv)
+	}
+}
+
+// wantHashed checks that the query's one row holds the SHA-256 of the token.
+func wantHashed(t *testing.T, query, token string) {
+	t.Helper()
+	var stored []byte
+	if err := testPool.QueryRow(context.Background(), query).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if sum := sha256.Sum256([]byte(token)); !bytes.Equal(stored, sum[:]) {
+		t.Fatal("the stored token is not the link's hash")
 	}
 }
 

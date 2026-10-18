@@ -74,17 +74,19 @@ type Tokens struct {
 	RefreshExpires time.Time
 }
 
-// newRefreshToken returns a random refresh token and the hash to store.
-func newRefreshToken() (string, []byte, error) {
+// NewToken returns a random secret (a refresh token or a one-time link) and
+// the hash to store in its place.
+func NewToken() (string, []byte, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		return "", nil, fmt.Errorf("generate refresh token: %w", err)
+		return "", nil, fmt.Errorf("generate token: %w", err)
 	}
 	raw := base64.RawURLEncoding.EncodeToString(b)
-	return raw, hashToken(raw), nil
+	return raw, HashToken(raw), nil
 }
 
-func hashToken(raw string) []byte {
+// HashToken is the hash a token from NewToken is stored and looked up by.
+func HashToken(raw string) []byte {
 	sum := sha256.Sum256([]byte(raw))
 	return sum[:]
 }
@@ -94,7 +96,7 @@ func hashToken(raw string) []byte {
 // StartSession signs in an account that is already verified: by password, or
 // one just created from an invitation.
 func (s *Service) StartSession(ctx context.Context, u user.User, c Client) (Tokens, error) {
-	raw, hash, err := newRefreshToken()
+	raw, hash, err := NewToken()
 	if err != nil {
 		return Tokens{}, err
 	}
@@ -118,8 +120,8 @@ func (s *Service) Refresh(ctx context.Context, raw string) (Tokens, error) {
 	if raw == "" {
 		return Tokens{}, ErrSessionInvalid
 	}
-	old := hashToken(raw)
-	next, nextHash, err := newRefreshToken()
+	old := HashToken(raw)
+	next, nextHash, err := NewToken()
 	if err != nil {
 		return Tokens{}, err
 	}
@@ -177,7 +179,7 @@ func (s *Service) Logout(ctx context.Context, raw string) error {
 	if raw == "" {
 		return nil
 	}
-	return s.repo.DeleteByRefresh(ctx, hashToken(raw))
+	return s.repo.DeleteByRefresh(ctx, HashToken(raw))
 }
 
 // Sessions lists the user's signed-in devices, the most recently used first.

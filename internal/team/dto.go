@@ -68,8 +68,16 @@ type RoleRequest struct {
 	Role string `json:"role"`
 }
 
-// JoinRequest is the JSON body for POST /api/v1/team-invites/{token}/accept.
+// LookupRequest is the JSON body for POST /api/v1/team-invites/lookup. The
+// token travels in the body, never in a URL that logs and Referer headers
+// keep.
+type LookupRequest struct {
+	Token string `json:"token"`
+}
+
+// JoinRequest is the JSON body for POST /api/v1/team-invites/accept.
 type JoinRequest struct {
+	Token                string `json:"token"`
 	Name                 string `json:"name"`
 	Password             string `json:"password"`
 	PasswordConfirmation string `json:"password_confirmation"`
@@ -107,13 +115,13 @@ type MemberDTO struct {
 	JoinedAt time.Time `json:"joined_at"`
 }
 
-// InviteDTO is a pending invitation; Token builds the join link.
+// InviteDTO is a pending invitation. The link is not included: only the
+// invited address gets it.
 type InviteDTO struct {
 	ID        string    `json:"id"`
 	Email     string    `json:"email"`
 	Name      string    `json:"name"`
 	Role      string    `json:"role"`
-	Token     string    `json:"token"`
 	Expired   bool      `json:"expired"`
 	ExpiresAt time.Time `json:"expires_at"`
 	CreatedAt time.Time `json:"created_at"`
@@ -130,7 +138,7 @@ type OverviewDTO struct {
 }
 
 func toInviteDTO(i Invite) InviteDTO {
-	return InviteDTO{ID: i.ID, Email: i.Email, Name: i.Name, Role: i.Role, Token: i.Token, Expired: i.Expired(), ExpiresAt: i.ExpiresAt, CreatedAt: i.CreatedAt}
+	return InviteDTO{ID: i.ID, Email: i.Email, Name: i.Name, Role: i.Role, Expired: i.Expired(), ExpiresAt: i.ExpiresAt, CreatedAt: i.CreatedAt}
 }
 
 func toOverviewDTO(o Overview) OverviewDTO {

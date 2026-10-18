@@ -55,7 +55,7 @@ func (s *Service) RequestReset(ctx context.Context, email string) error {
 	if err != nil {
 		return err
 	}
-	raw, hash, err := newRefreshToken()
+	raw, hash, err := NewToken()
 	if err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func (s *Service) RequestReset(ctx context.Context, email string) error {
 // ResetPassword sets a new password with a reset link, signs out every
 // device and says so by email.
 func (s *Service) ResetPassword(ctx context.Context, raw, password string) error {
-	userID, email, locale, err := s.repo.TakeReset(ctx, hashToken(raw))
+	userID, email, locale, err := s.repo.TakeReset(ctx, HashToken(raw))
 	if err != nil {
 		return err
 	}

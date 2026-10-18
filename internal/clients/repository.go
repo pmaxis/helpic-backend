@@ -26,18 +26,18 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
-const invitationColumns = `id, freelancer_id, email, name, token, expires_at, accepted_at, created_at`
+const invitationColumns = `id, freelancer_id, email, name, expires_at, accepted_at, created_at`
 
 func scanInvitation(row pgx.Row) (Invitation, error) {
 	var i Invitation
-	err := row.Scan(&i.ID, &i.FreelancerID, &i.Email, &i.Name, &i.Token, &i.ExpiresAt, &i.AcceptedAt, &i.CreatedAt)
+	err := row.Scan(&i.ID, &i.FreelancerID, &i.Email, &i.Name, &i.ExpiresAt, &i.AcceptedAt, &i.CreatedAt)
 	return i, err
 }
 
-// CreateInvitation stores a new pending invitation. An expired pending
-// invitation for the same email is replaced; a live one yields
-// ErrAlreadyInvited.
-func (r *Repository) CreateInvitation(ctx context.Context, freelancerID, email, name, token string, expiresAt time.Time) (Invitation, error) {
+// CreateInvitation stores a new pending invitation by its link's hash. An
+// expired pending invitation for the same email is replaced; a live one
+// yields ErrAlreadyInvited.
+func (r *Repository) CreateInvitation(ctx context.Context, freelancerID, email, name string, tokenHash []byte, expiresAt time.Time) (Invitation, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return Invitation{}, fmt.Errorf("begin: %w", err)
@@ -50,9 +50,9 @@ func (r *Repository) CreateInvitation(ctx context.Context, freelancerID, email, 
 		return Invitation{}, fmt.Errorf("drop expired invitation: %w", err)
 	}
 
-	inv, err := scanInvitation(tx.QueryRow(ctx, `INSERT INTO invitations (freelancer_id, email, name, token, expires_at)
+	inv, err := scanInvitation(tx.QueryRow(ctx, `INSERT INTO invitations (freelancer_id, email, name, token_hash, expires_at)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING `+invitationColumns, freelancerID, email, name, token, expiresAt))
+		RETURNING `+invitationColumns, freelancerID, email, name, tokenHash, expiresAt))
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode {
 		return Invitation{}, ErrAlreadyInvited
@@ -95,19 +95,19 @@ func (r *Repository) DeleteInvitation(ctx context.Context, freelancerID, id stri
 	return nil
 }
 
-// InvitationByToken loads an invitation together with the freelancer who sent
-// it. Returns ErrNotFound for an unknown token.
-func (r *Repository) InvitationByToken(ctx context.Context, token string) (Invitation, Party, error) {
+// InvitationByToken loads the invitation whose link has this hash, together
+// with the freelancer who sent it. Returns ErrNotFound for an unknown token.
+func (r *Repository) InvitationByToken(ctx context.Context, tokenHash []byte) (Invitation, Party, error) {
 	var (
 		i Invitation
 		f Party
 	)
-	err := r.db.QueryRow(ctx, `SELECT i.id, i.freelancer_id, i.email, i.name, i.token, i.expires_at, i.accepted_at, i.created_at,
+	err := r.db.QueryRow(ctx, `SELECT i.id, i.freelancer_id, i.email, i.name, i.expires_at, i.accepted_at, i.created_at,
 			u.id, u.name, u.email
 		FROM invitations i
 		JOIN users u ON u.id = i.freelancer_id
-		WHERE i.token = $1`, token).
-		Scan(&i.ID, &i.FreelancerID, &i.Email, &i.Name, &i.Token, &i.ExpiresAt, &i.AcceptedAt, &i.CreatedAt,
+		WHERE i.token_hash = $1`, tokenHash).
+		Scan(&i.ID, &i.FreelancerID, &i.Email, &i.Name, &i.ExpiresAt, &i.AcceptedAt, &i.CreatedAt,
 			&f.ID, &f.Name, &f.Email)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Invitation{}, Party{}, ErrNotFound

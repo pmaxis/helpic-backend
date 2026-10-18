@@ -9,8 +9,10 @@ import (
 )
 
 // emailInvite sends the invitation's link to the new member, in the owner's
-// language. The owner can still copy the link, so a failure is only logged.
-func (s *Service) emailInvite(ctx context.Context, ownerID string, inv Invite) {
+// language. The link goes only to the invited address: opening it is the
+// proof the email is theirs. The token rides in the fragment, which browsers
+// send to no server. A failure is only logged; the owner can invite again.
+func (s *Service) emailInvite(ctx context.Context, ownerID string, inv Invite, token string) {
 	owner, err := s.repo.Person(ctx, ownerID)
 	if err != nil {
 		slog.Error("failed to email team invite", "error", err)
@@ -41,7 +43,7 @@ func (s *Service) emailInvite(ctx context.Context, ownerID string, inv Invite) {
 		Subject:    t("Join %s on Helpic", company),
 		Heading:    t("%s invited you to %s", who, company),
 		Paragraphs: []string{why},
-		Button:     &mail.Button{Text: t("Join the team"), URL: s.appURL + "/join/" + inv.Token},
+		Button:     &mail.Button{Text: t("Join the team"), URL: s.appURL + "/join#" + token},
 		Note:       t("The link works once, until %s. If you weren't expecting this, ignore this email.", i18n.Date(locale, inv.ExpiresAt)),
 	}); err != nil {
 		slog.Error("failed to email team invite", "error", err)

@@ -2,9 +2,6 @@ package profile
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -53,12 +50,11 @@ func (s *Service) RequestEmailChange(ctx context.Context, userID, email, current
 		return auth.ErrEmailExists
 	}
 
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return fmt.Errorf("generate email change token: %w", err)
+	raw, hash, err := auth.NewToken()
+	if err != nil {
+		return err
 	}
-	raw := base64.RawURLEncoding.EncodeToString(b)
-	if err := s.repo.CreateEmailChange(ctx, userID, hashToken(raw), email, time.Now().Add(emailChangeTTL)); err != nil {
+	if err := s.repo.CreateEmailChange(ctx, userID, hash, email, time.Now().Add(emailChangeTTL)); err != nil {
 		return err
 	}
 	t := func(text string, args ...any) string { return i18n.T(u.Locale, text, args...) }
@@ -79,7 +75,7 @@ func (s *Service) RequestEmailChange(ctx context.Context, userID, email, current
 // and tells the old address. It needs no signed-in user: the link is the
 // proof.
 func (s *Service) ConfirmEmailChange(ctx context.Context, raw string) (user.User, error) {
-	userID, email, err := s.repo.TakeEmailChange(ctx, hashToken(raw))
+	userID, email, err := s.repo.TakeEmailChange(ctx, auth.HashToken(raw))
 	if err != nil {
 		return user.User{}, err
 	}
@@ -110,11 +106,6 @@ func (s *Service) ConfirmEmailChange(ctx context.Context, raw string) (user.User
 // Cleanup removes confirmation links nobody opened in time.
 func (s *Service) Cleanup(ctx context.Context) error {
 	return s.repo.DeleteExpiredEmailChanges(ctx)
-}
-
-func hashToken(raw string) []byte {
-	sum := sha256.Sum256([]byte(raw))
-	return sum[:]
 }
 
 // --- repository ----------------------------------------------------------------

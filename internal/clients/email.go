@@ -10,9 +10,11 @@ import (
 )
 
 // emailInvitation sends the invitation's link to the client, in the
-// freelancer's language (the client has no account to have one yet). The
-// freelancer can still copy the link, so a failure is only logged.
-func (s *Service) emailInvitation(ctx context.Context, freelancerID string, inv Invitation) {
+// freelancer's language (the client has no account to have one yet). The link
+// goes only to the invited address: opening it is the proof the email is
+// theirs. The token rides in the fragment, which browsers send to no server.
+// A failure is only logged; the freelancer can invite again.
+func (s *Service) emailInvitation(ctx context.Context, freelancerID string, inv Invitation, token string) {
 	from, err := s.repo.PersonName(ctx, freelancerID)
 	if err != nil {
 		slog.Error("failed to email invitation", "error", err)
@@ -33,7 +35,7 @@ func (s *Service) emailInvitation(ctx context.Context, freelancerID string, inv 
 			greeting,
 			t("%s uses Helpic to keep client work in one place. Accept the invitation to give them tasks, follow the progress and get their reports.", from),
 		},
-		Button: &mail.Button{Text: t("Accept the invitation"), URL: s.appURL + "/invite/" + inv.Token},
+		Button: &mail.Button{Text: t("Accept the invitation"), URL: s.appURL + "/invite#" + token},
 		Note:   t("The link works once, until %s. If you weren't expecting this, ignore this email.", i18n.Date(locale, inv.ExpiresAt)),
 	}); err != nil {
 		slog.Error("failed to email invitation", "error", err)

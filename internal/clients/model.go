@@ -36,7 +36,6 @@ type Invitation struct {
 	// Name is the client's name as the freelancer entered it; it pre-fills the
 	// client's sign-up form.
 	Name       string
-	Token      string
 	ExpiresAt  time.Time
 	AcceptedAt *time.Time
 	CreatedAt  time.Time

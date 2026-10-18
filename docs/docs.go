@@ -1351,7 +1351,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Returns the invitation with the token for its link (/invite/{token}).",
+                "description": "Emails the invitation link to the client; only they get it.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1444,45 +1444,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/invites/{token}": {
-            "get": {
-                "description": "Public: the invitation page.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "invitations"
-                ],
-                "summary": "Look up a client invitation",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Invitation token",
-                        "name": "token",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "invitation",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "$ref": "#/definitions/clients.LookupDTO"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Invalid, used or expired",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorEnvelope"
-                        }
-                    }
-                }
-            }
-        },
-        "/invites/{token}/accept": {
+        "/invites/accept": {
             "post": {
                 "description": "Public. Creates the client account (name, password, confirmation) or signs in to the existing one (password), links it with the freelancer and sets the auth cookie.",
                 "consumes": [
@@ -1496,13 +1458,6 @@ const docTemplate = `{
                 ],
                 "summary": "Accept a client invitation",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Invitation token",
-                        "name": "token",
-                        "in": "path",
-                        "required": true
-                    },
                     {
                         "description": "Request body",
                         "name": "body",
@@ -1524,6 +1479,49 @@ const docTemplate = `{
                         "description": "Invalid input",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Invalid, used or expired",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/invites/lookup": {
+            "post": {
+                "description": "Public: the invitation page.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitations"
+                ],
+                "summary": "Look up a client invitation",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/clients.LookupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "invitation",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/clients.LookupDTO"
+                            }
                         }
                     },
                     "404": {
@@ -3789,45 +3787,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/team-invites/{token}": {
-            "get": {
-                "description": "Public: the join page.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "invitations"
-                ],
-                "summary": "Look up a team invitation",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Invitation token",
-                        "name": "token",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "invite",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "$ref": "#/definitions/team.LookupDTO"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Invalid, used or expired",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorEnvelope"
-                        }
-                    }
-                }
-            }
-        },
-        "/team-invites/{token}/accept": {
+        "/team-invites/accept": {
             "post": {
                 "description": "Public. Creates the member's account, adds it to the company and sets the auth cookie.",
                 "consumes": [
@@ -3841,13 +3801,6 @@ const docTemplate = `{
                 ],
                 "summary": "Join a team",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Invitation token",
-                        "name": "token",
-                        "in": "path",
-                        "required": true
-                    },
                     {
                         "description": "Request body",
                         "name": "body",
@@ -3880,9 +3833,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/team-invites/lookup": {
+            "post": {
+                "description": "Public: the join page.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invitations"
+                ],
+                "summary": "Look up a team invitation",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/team.LookupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "invite",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/team.LookupDTO"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Invalid, used or expired",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/team/invites": {
             "post": {
-                "description": "They join with a new account through /join/{token}.",
+                "description": "Emails the join link to the invited address; only they get it. They join with a new account.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4369,6 +4365,9 @@ const docTemplate = `{
                 },
                 "password_confirmation": {
                     "type": "string"
+                },
+                "token": {
+                    "type": "string"
                 }
             }
         },
@@ -4391,9 +4390,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
-                    "type": "string"
-                },
-                "token": {
                     "type": "string"
                 }
             }
@@ -4445,6 +4441,14 @@ const docTemplate = `{
                     "$ref": "#/definitions/clients.PartyDTO"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "clients.LookupRequest": {
+            "type": "object",
+            "properties": {
+                "token": {
                     "type": "string"
                 }
             }
@@ -5302,9 +5306,6 @@ const docTemplate = `{
                 },
                 "role": {
                     "type": "string"
-                },
-                "token": {
-                    "type": "string"
                 }
             }
         },
@@ -5334,6 +5335,9 @@ const docTemplate = `{
                 },
                 "password_confirmation": {
                     "type": "string"
+                },
+                "token": {
+                    "type": "string"
                 }
             }
         },
@@ -5357,6 +5361,14 @@ const docTemplate = `{
                 },
                 "role": {
                     "description": "Role is what they join as: \"member\" or \"contractor\".",
+                    "type": "string"
+                }
+            }
+        },
+        "team.LookupRequest": {
+            "type": "object",
+            "properties": {
+                "token": {
                     "type": "string"
                 }
             }
