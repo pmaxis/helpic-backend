@@ -11,30 +11,38 @@ import (
 const maxColumnName = 60
 
 // ColumnRequest is the JSON body for creating or editing a column. With and
-// ProjectID pick the board on create, like the GET query.
+// ProjectID pick the board on create, like the GET query. CategoryID is one
+// of the board's categories; Category is the older bucket name (new,
+// in_progress, done, cancelled) and still selects that seeded category.
 type ColumnRequest struct {
-	With      string `json:"with"`
-	ProjectID string `json:"project_id"`
-	Name      string `json:"name"`
-	Category  string `json:"category"`
+	With       string `json:"with"`
+	ProjectID  string `json:"project_id"`
+	Name       string `json:"name"`
+	CategoryID string `json:"category_id"`
+	Category   string `json:"category"`
 }
 
 // ColumnParams is the validated column input.
 type ColumnParams struct {
-	Name     string
-	Category string
+	Name       string
+	CategoryID string
+	Category   string
 }
 
 // Validate checks the payload and returns per-field error messages.
 func (r ColumnRequest) Validate() (ColumnParams, map[string]string) {
 	fields := map[string]string{}
-	p := ColumnParams{Name: strings.TrimSpace(r.Name), Category: strings.TrimSpace(r.Category)}
+	p := ColumnParams{
+		Name:       strings.TrimSpace(r.Name),
+		CategoryID: strings.TrimSpace(r.CategoryID),
+		Category:   strings.TrimSpace(r.Category),
+	}
 	if p.Name == "" {
 		fields["name"] = "Name is required"
 	} else if utf8.RuneCountInString(p.Name) > maxColumnName {
 		fields["name"] = "Name is too long"
 	}
-	if !slices.Contains(tasks.Statuses, p.Category) {
+	if p.CategoryID == "" && !slices.Contains(tasks.Statuses, p.Category) {
 		fields["category"] = "Choose a category"
 	}
 	return p, fields
@@ -58,24 +66,54 @@ type MoveRequest struct {
 
 // ColumnDTO is a column, with its tasks on the board endpoint.
 type ColumnDTO struct {
-	ID       string       `json:"id"`
-	Name     string       `json:"name"`
-	Category string       `json:"category"`
-	Tasks    *[]tasks.DTO `json:"tasks,omitempty"`
+	ID                  string       `json:"id"`
+	Name                string       `json:"name"`
+	Category            string       `json:"category"`
+	CategoryID          string       `json:"category_id"`
+	CategoryName        string       `json:"category_name"`
+	ParticipantsCanMove bool         `json:"participants_can_move"`
+	Tasks               *[]tasks.DTO `json:"tasks,omitempty"`
+}
+
+// CategoryDTO is a category the board's manager configured.
+type CategoryDTO struct {
+	ID                  string `json:"id"`
+	Name                string `json:"name"`
+	Effect              string `json:"effect"`
+	ParticipantsCanMove bool   `json:"participants_can_move"`
+	AllowsDelete        bool   `json:"allows_delete"`
 }
 
 // BoardDTO is a board as the viewer sees it.
 type BoardDTO struct {
-	// CanManage is true for the freelancer, who manages the columns.
-	CanManage bool        `json:"can_manage"`
-	Columns   []ColumnDTO `json:"columns"`
+	// CanManage is true for the freelancer, and for the author of the project
+	// the board was opened for.
+	CanManage  bool          `json:"can_manage"`
+	Columns    []ColumnDTO   `json:"columns"`
+	Categories []CategoryDTO `json:"categories,omitempty"`
 	// Merged is true for the all board: its columns are lanes merging the
 	// pairs' columns of one name, moved to with MoveRequest.Lane.
 	Merged bool `json:"merged"`
 }
 
 func columnDTO(c Column) ColumnDTO {
-	return ColumnDTO{ID: c.ID, Name: c.Name, Category: c.Category}
+	return ColumnDTO{
+		ID: c.ID, Name: c.Name, Category: c.Category,
+		CategoryID: c.CategoryID, CategoryName: c.CategoryName,
+		ParticipantsCanMove: c.ParticipantsCanMove,
+	}
+}
+
+// CategoryDTOs maps a board's categories.
+func CategoryDTOs(cats []Category) []CategoryDTO {
+	out := make([]CategoryDTO, 0, len(cats))
+	for _, c := range cats {
+		out = append(out, CategoryDTO{
+			ID: c.ID, Name: c.Name, Effect: c.Effect(),
+			ParticipantsCanMove: c.ParticipantsCanMove, AllowsDelete: c.AllowsDelete,
+		})
+	}
+	return out
 }
 
 // LanesDTO maps a board with its tasks for the viewer.

@@ -27,9 +27,10 @@ func NewService(repo *Repository, tasks taskSource) *Service {
 	return &Service{repo: repo, tasks: tasks}
 }
 
-// Scope says which board to open: a project's (its pair's board, showing the
-// project's tasks), or the one with a counterpart — a client's ID or
-// "personal" for a freelancer, a freelancer's ID for a client.
+// Scope says which board to open: a project's own workflow, or the one with a
+// counterpart — a client's ID or "personal" for a freelancer, a freelancer's
+// ID for a client. The counterpart board is the pair's workflow, and, once a
+// project of that pair has its own columns, a merge of those workflows.
 type Scope struct {
 	With      string
 	ProjectID string
@@ -80,9 +81,10 @@ func counterpart(p Pair, role string) string {
 	return p.ClientID
 }
 
-// CanManage reports whether the user manages the pair's columns.
+// CanManage reports whether the user manages the pair's columns: its
+// freelancer, or the author of the project the board was opened for.
 func CanManage(p Pair, userID string) bool {
-	return p.FreelancerID == userID
+	return p.FreelancerID == userID || (p.AuthorID != "" && p.AuthorID == userID)
 }
 
 // Columns returns a board's columns without tasks.
@@ -95,22 +97,34 @@ func (s *Service) Columns(ctx context.Context, userID, role string, sc Scope) (P
 	return p, cols, err
 }
 
-// Board returns a board's columns with their tasks; a project scope shows only
-// that project's tasks.
-func (s *Service) Board(ctx context.Context, userID, role string, sc Scope) (Pair, []Lane, error) {
+// Board returns a board's columns with their tasks. A project scope is that
+// project's workflow. A pair scope is the pair's own workflow, unless one of
+// its projects has columns of its own: then the columns are merged by name,
+// the way the all board merges pairs, and merged is true.
+func (s *Service) Board(ctx context.Context, userID, role string, sc Scope) (Pair, []Lane, bool, error) {
 	p, cols, err := s.Columns(ctx, userID, role, sc)
 	if err != nil {
-		return Pair{}, nil, err
+		return Pair{}, nil, false, err
 	}
 	list, err := s.tasks.List(ctx, userID, role, tasks.Filter{CounterpartID: counterpart(p, role), ProjectID: sc.ProjectID})
 	if err != nil {
-		return Pair{}, nil, err
+		return Pair{}, nil, false, err
 	}
 	list = filterProjects(list, sc.Projects)
-	return p, Arrange(cols, list), nil
+	if p.ProjectID == "" {
+		extra, err := s.repo.ProjectColumns(ctx, p)
+		if err != nil {
+			return Pair{}, nil, false, err
+		}
+		if len(extra) > 0 {
+			return p, placeOnMerged(append(cols, extra...), list), true, nil
+		}
+	}
+	return p, Arrange(cols, list), false, nil
 }
 
-// CreateColumn adds a column at the end of a board; only its freelancer may.
+// CreateColumn adds a column at the end of a board. The freelancer may, and
+// so may the author when the board is a project's.
 func (s *Service) CreateColumn(ctx context.Context, userID, role string, sc Scope, cp ColumnParams) error {
 	p, err := s.Pair(ctx, userID, role, sc)
 	if err != nil {
@@ -122,16 +136,25 @@ func (s *Service) CreateColumn(ctx context.Context, userID, role string, sc Scop
 	if _, err := s.repo.Columns(ctx, p); err != nil { // make sure the defaults exist first
 		return err
 	}
-	return s.repo.Create(ctx, p, cp.Name, cp.Category)
+	cat, err := s.categoryFor(ctx, p, cp)
+	if err != nil {
+		return err
+	}
+	return s.repo.Create(ctx, p, cp.Name, cat.ID, cat.Bucket())
 }
 
 // UpdateColumn renames a column or changes its category; its tasks take the
 // new category.
 func (s *Service) UpdateColumn(ctx context.Context, userID, id string, cp ColumnParams) error {
-	if _, err := s.managed(ctx, userID, id); err != nil {
+	c, err := s.managed(ctx, userID, id)
+	if err != nil {
 		return err
 	}
-	return s.repo.Update(ctx, id, cp.Name, cp.Category)
+	cat, err := s.categoryFor(ctx, c.Pair, cp)
+	if err != nil {
+		return err
+	}
+	return s.repo.Update(ctx, id, cp.Name, cat.ID, cat.Bucket())
 }
 
 // DeleteColumn removes a column, unless it is the board's only one. An empty
@@ -157,35 +180,37 @@ func (s *Service) DeleteColumn(ctx context.Context, userID, id string) error {
 		return s.repo.Delete(ctx, id, "")
 	}
 	for _, x := range cols {
-		if x.ID != c.ID && x.Category == c.Category {
+		if x.ID != c.ID && x.CategoryID == c.CategoryID {
 			return s.repo.Delete(ctx, id, x.ID)
 		}
 	}
 	return ErrHasTasks
 }
 
-// Reorder sets the order of a board's columns; only the freelancer may.
-func (s *Service) Reorder(ctx context.Context, userID, role string, ids []string) error {
-	if role != user.RoleFreelancer {
-		return ErrNotManager
+// Reorder sets the order of a board's columns. The freelancer may, and so may
+// the author of a project on that board.
+func (s *Service) Reorder(ctx context.Context, userID string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
 	}
-	return s.repo.Reorder(ctx, userID, ids)
+	c, err := s.managed(ctx, userID, ids[0])
+	if err != nil {
+		return err
+	}
+	return s.repo.Reorder(ctx, c.Pair, ids)
 }
 
-// managed loads a column the user manages. The client of the pair gets
-// ErrNotManager, anyone else ErrNotFound.
+// managed loads a column the user manages. The pair's client who authored no
+// project on the board gets ErrNotManager; anyone else gets ErrNotFound.
 func (s *Service) managed(ctx context.Context, userID, id string) (Column, error) {
 	c, err := s.repo.Column(ctx, id)
 	if err != nil {
 		return Column{}, err
 	}
-	switch userID {
-	case c.Pair.FreelancerID:
-		return c, nil
-	case c.Pair.ClientID:
-		return Column{}, ErrNotManager
+	if err := s.managesPair(ctx, userID, c.Pair); err != nil {
+		return Column{}, err
 	}
-	return Column{}, ErrNotFound
+	return c, nil
 }
 
 // Move puts a task into a column right after afterTaskID ("" = at the top).
@@ -202,6 +227,9 @@ func (s *Service) Move(ctx context.Context, userID, role, taskID, columnID, afte
 	p := Pair{FreelancerID: t.Freelancer.ID}
 	if t.Client != nil {
 		p.ClientID = t.Client.ID
+	}
+	if t.Project != nil {
+		p.ProjectID = t.Project.ID
 	}
 	list, err := s.tasks.List(ctx, userID, role, tasks.Filter{CounterpartID: counterpart(p, role)})
 	if err != nil {

@@ -133,6 +133,9 @@ func (r *Repository) CreatePersonal(ctx context.Context, freelancerID string, p 
 	if err := addParticipants(ctx, tx, id, freelancerID, freelancerID); err != nil {
 		return "", err
 	}
+	if _, err := tx.Exec(ctx, `SELECT ensure_project_workflow($1)`, id); err != nil {
+		return "", fmt.Errorf("ensure workflow: %w", err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("commit project: %w", err)
 	}
@@ -163,6 +166,9 @@ func (r *Repository) Create(ctx context.Context, freelancerID, clientID, created
 	}
 	if err := addParticipants(ctx, tx, id, createdBy, createdBy); err != nil {
 		return "", err
+	}
+	if _, err := tx.Exec(ctx, `SELECT ensure_project_workflow($1)`, id); err != nil {
+		return "", fmt.Errorf("ensure workflow: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("commit project: %w", err)
@@ -285,10 +291,52 @@ func (r *Repository) Update(ctx context.Context, id string, p Params) error {
 	return nil
 }
 
-// Delete removes the project; its tasks stay, without a project.
+// Delete removes the project. Its tasks stay, on the pair's workflow, since the
+// project's columns go with it.
 func (r *Repository) Delete(ctx context.Context, id string) error {
-	if _, err := r.db.Exec(ctx, `DELETE FROM projects WHERE id = $1`, id); err != nil {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var freelancerID string
+	var clientID *string
+	err = tx.QueryRow(ctx, `SELECT freelancer_id, client_id FROM projects WHERE id = $1`, id).Scan(&freelancerID, &clientID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get project: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `SELECT ensure_workflow($1, $2)`, freelancerID, clientID); err != nil {
+		return fmt.Errorf("ensure workflow: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE tasks t
+		SET status_id = picked.id, status = picked.category
+		FROM (
+			SELECT t2.id AS task_id, ws.id, ws.category
+			FROM tasks t2
+			JOIN workflow_statuses cur ON cur.id = t2.status_id
+			JOIN LATERAL (
+				SELECT w2.id, w2.category
+				FROM workflow_statuses w2
+				WHERE w2.freelancer_id = t2.freelancer_id
+				  AND w2.client_id IS NOT DISTINCT FROM t2.client_id
+				  AND w2.project_id IS NULL
+				ORDER BY (w2.category = cur.category) DESC, (lower(w2.name) = lower(cur.name)) DESC, w2.position
+				LIMIT 1
+			) ws ON true
+			WHERE t2.project_id = $1
+		) picked
+		WHERE t.id = picked.task_id`, id); err != nil {
+		return fmt.Errorf("move tasks off the project: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM projects WHERE id = $1`, id); err != nil {
 		return fmt.Errorf("delete project: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit project delete: %w", err)
 	}
 	return nil
 }

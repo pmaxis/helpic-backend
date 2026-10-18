@@ -201,7 +201,9 @@ func (r *Repository) Get(ctx context.Context, userID, id string) (Task, error) {
 }
 
 // ProjectPair returns the freelancer and client (nil for a personal project)
-// of a project the user takes part in, or ErrProjectNotFound.
+// of a project the user may put a task in, or ErrProjectNotFound. A company
+// person may file a task into the company's project before it is visible to
+// them; seeing the project is sees_project.
 func (r *Repository) ProjectPair(ctx context.Context, userID, projectID string) (string, *string, error) {
 	var (
 		freelancerID string
@@ -219,34 +221,80 @@ func (r *Repository) ProjectPair(ctx context.Context, userID, projectID string) 
 	return freelancerID, clientID, nil
 }
 
+// IsProjectAuthor reports whether the user created the project.
+func (r *Repository) IsProjectAuthor(ctx context.Context, userID, projectID string) (bool, error) {
+	if projectID == "" {
+		return false, nil
+	}
+	var ok bool
+	err := r.db.QueryRow(ctx, `SELECT EXISTS (
+		SELECT 1 FROM projects WHERE id::text = $1 AND created_by = $2::uuid)`, projectID, userID).Scan(&ok)
+	if err != nil {
+		return false, fmt.Errorf("project author: %w", err)
+	}
+	return ok, nil
+}
+
+// WorkflowStatus is a board column's category, as a move needs it.
+type WorkflowStatus struct {
+	FreelancerID        string
+	ClientID            *string
+	ProjectID           string
+	Bucket              string
+	CategoryID          string
+	ParticipantsCanMove bool
+}
+
 // Status returns a workflow status's pair and category, or ErrStatusNotFound.
-func (r *Repository) Status(ctx context.Context, statusID string) (freelancerID string, clientID *string, category string, err error) {
-	err = r.db.QueryRow(ctx, `SELECT freelancer_id, client_id, category FROM workflow_statuses WHERE id::text = $1`, statusID).
-		Scan(&freelancerID, &clientID, &category)
+func (r *Repository) Status(ctx context.Context, statusID string) (WorkflowStatus, error) {
+	var s WorkflowStatus
+	err := r.db.QueryRow(ctx, `SELECT ws.freelancer_id, ws.client_id, coalesce(ws.project_id::text, ''), ws.category, ws.category_id::text, c.participants_can_move
+		FROM workflow_statuses ws
+		JOIN workflow_categories c ON c.id = ws.category_id
+		WHERE ws.id::text = $1`, statusID).
+		Scan(&s.FreelancerID, &s.ClientID, &s.ProjectID, &s.Bucket, &s.CategoryID, &s.ParticipantsCanMove)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil, "", ErrStatusNotFound
+		return WorkflowStatus{}, ErrStatusNotFound
 	}
 	if err != nil {
-		return "", nil, "", fmt.Errorf("get status: %w", err)
+		return WorkflowStatus{}, fmt.Errorf("get status: %w", err)
 	}
-	return freelancerID, clientID, category, nil
+	return s, nil
 }
 
 // pickStatus selects the new task's status: the given one ($s) or, when $s is
-// empty, the pair's first "new" column — or its first column at all when the
-// board has no "new" one. $f and $c are the pair, as uuid expressions.
+// empty, the workflow's first "new" column — or its first column at all when
+// the board has no "new" one. $f, $c and $p are the workflow, as uuid expressions.
 const pickStatus = `SELECT id, category FROM workflow_statuses
 	WHERE freelancer_id = $f AND client_id IS NOT DISTINCT FROM $c
+	  AND project_id IS NOT DISTINCT FROM $p
 	  AND ($s = '' OR id::text = $s)
 	ORDER BY category = 'new' DESC, position LIMIT 1`
 
+// ensureTaskWorkflow creates the defaults of the workflow a new task lands
+// on: the project's, or the pair's when the task is outside any project.
+func (r *Repository) ensureTaskWorkflow(ctx context.Context, freelancerID, clientID, projectID string) error {
+	var err error
+	if projectID != "" {
+		_, err = r.db.Exec(ctx, `SELECT ensure_project_workflow($1::uuid)`, projectID)
+	} else if clientID == "" {
+		_, err = r.db.Exec(ctx, `SELECT ensure_workflow($1::uuid, NULL)`, freelancerID)
+	} else {
+		_, err = r.db.Exec(ctx, `SELECT ensure_workflow($1::uuid, $2::uuid)`, freelancerID, clientID)
+	}
+	if err != nil {
+		return fmt.Errorf("ensure workflow: %w", err)
+	}
+	return nil
+}
+
 // CreatePersonal inserts a freelancer's personal task, which has no client.
 func (r *Repository) CreatePersonal(ctx context.Context, freelancerID, projectID, statusID string, p Params) (string, error) {
-	if _, err := r.db.Exec(ctx, `SELECT ensure_workflow($1, NULL)`, freelancerID); err != nil {
-		return "", fmt.Errorf("ensure workflow: %w", err)
+	if err := r.ensureTaskWorkflow(ctx, freelancerID, "", projectID); err != nil {
+		return "", err
 	}
 	var id string
-	err := r.db.QueryRow(ctx, `WITH st AS (`+bind(pickStatus, "$1::uuid", "NULL::uuid", "$6")+`)
+	err := r.db.QueryRow(ctx, `WITH st AS (`+bind(pickStatus, "$1::uuid", "NULL::uuid", "NULLIF($2, '')::uuid", "$6")+`)
 		INSERT INTO tasks (freelancer_id, created_by, project_id, title, description, due_on, price_cents, priority, status, status_id, completed_at)
 		SELECT $1::uuid, $1::uuid, NULLIF($2, '')::uuid, $3, $4, $5, $7, $8, st.category, st.id,
 			CASE WHEN st.category = 'done' THEN now() END
@@ -274,12 +322,12 @@ func (r *Repository) Create(ctx context.Context, freelancerID, clientID, created
 	if !linked {
 		return "", ErrNotLinked
 	}
-	if _, err := r.db.Exec(ctx, `SELECT ensure_workflow($1::uuid, $2::uuid)`, freelancerID, clientID); err != nil {
-		return "", fmt.Errorf("ensure workflow: %w", err)
+	if err := r.ensureTaskWorkflow(ctx, freelancerID, clientID, projectID); err != nil {
+		return "", err
 	}
 
 	var id string
-	err = r.db.QueryRow(ctx, `WITH st AS (`+bind(pickStatus, "$1::uuid", "$2::uuid", "$8")+`)
+	err = r.db.QueryRow(ctx, `WITH st AS (`+bind(pickStatus, "$1::uuid", "$2::uuid", "NULLIF($4, '')::uuid", "$8")+`)
 		INSERT INTO tasks (freelancer_id, client_id, created_by, project_id, title, description, due_on, price_cents, priority, status, status_id, completed_at)
 		SELECT $1::uuid, $2::uuid, $3, NULLIF($4, '')::uuid, $5, $6, $7, $9, $10, st.category, st.id,
 			CASE WHEN st.category = 'done' THEN now() END
@@ -294,18 +342,53 @@ func (r *Repository) Create(ctx context.Context, freelancerID, clientID, created
 	return id, nil
 }
 
-// bind fills pickStatus's $f, $c and $s placeholders with query parameters.
-func bind(q, f, c, s string) string {
-	return strings.NewReplacer("$f", f, "$c", c, "$s", s).Replace(q)
+// bind fills pickStatus's $f, $c, $p and $s placeholders with query parameters.
+func bind(q, f, c, p, s string) string {
+	return strings.NewReplacer("$f", f, "$c", c, "$p", p, "$s", s).Replace(q)
 }
 
-// Update rewrites the task's content and project ("" = no project).
+// Update rewrites the task's content and project ("" = no project). Moving it
+// to another project puts it in that project's column of the same category.
 func (r *Repository) Update(ctx context.Context, id, projectID string, p Params) error {
-	_, err := r.db.Exec(ctx, `UPDATE tasks
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var freelancerID string
+	var clientID *string
+	err = tx.QueryRow(ctx, `UPDATE tasks
 		SET title = $2, description = $3, due_on = $4, project_id = NULLIF($5, '')::uuid
-		WHERE id = $1`, id, p.Title, p.Description, p.DueOn, projectID)
+		WHERE id = $1
+		RETURNING freelancer_id, client_id`, id, p.Title, p.Description, p.DueOn, projectID).Scan(&freelancerID, &clientID)
 	if err != nil {
 		return fmt.Errorf("update task: %w", err)
+	}
+	if projectID != "" {
+		if _, err := tx.Exec(ctx, `SELECT ensure_project_workflow($1::uuid)`, projectID); err != nil {
+			return fmt.Errorf("ensure workflow: %w", err)
+		}
+	} else if _, err := tx.Exec(ctx, `SELECT ensure_workflow($1, $2)`, freelancerID, clientID); err != nil {
+		return fmt.Errorf("ensure workflow: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE tasks t SET status_id = picked.id, status = picked.category
+		FROM (
+			SELECT ws.id, ws.category
+			FROM tasks t2
+			JOIN workflow_statuses cur ON cur.id = t2.status_id
+			JOIN workflow_statuses ws ON ws.freelancer_id = t2.freelancer_id
+			  AND ws.client_id IS NOT DISTINCT FROM t2.client_id
+			  AND ws.project_id IS NOT DISTINCT FROM t2.project_id
+			WHERE t2.id = $1
+			ORDER BY (ws.category = cur.category) DESC, (lower(ws.name) = lower(cur.name)) DESC, ws.position
+			LIMIT 1
+		) picked
+		WHERE t.id = $1 AND t.status_id <> picked.id`, id); err != nil {
+		return fmt.Errorf("retarget status: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit task: %w", err)
 	}
 	return nil
 }
@@ -369,7 +452,9 @@ func (r *Repository) SetStatus(ctx context.Context, id, from, to string) error {
 	var statusID *string
 	err := r.db.QueryRow(ctx, `SELECT ws.id FROM tasks t
 		JOIN workflow_statuses ws ON ws.freelancer_id = t.freelancer_id
-		  AND ws.client_id IS NOT DISTINCT FROM t.client_id AND ws.category = $2
+		  AND ws.client_id IS NOT DISTINCT FROM t.client_id
+		  AND ws.project_id IS NOT DISTINCT FROM t.project_id
+		  AND ws.category = $2
 		WHERE t.id = $1
 		ORDER BY ws.position LIMIT 1`, id, to).Scan(&statusID)
 	if errors.Is(err, pgx.ErrNoRows) {

@@ -30,8 +30,7 @@ var (
 	ErrProjectMismatch = errors.New("project belongs to someone else")
 	// ErrStatusNotFound is returned for an unknown workflow status.
 	ErrStatusNotFound = errors.New("status not found")
-	// ErrStatusMismatch is returned for a status of another freelancer–client
-	// pair's workflow.
+	// ErrStatusMismatch is returned for a status of another workflow.
 	ErrStatusMismatch = errors.New("status belongs to another board")
 	// ErrTransition is returned for a status change the viewer may not make.
 	ErrTransition = errors.New("status change not allowed")
@@ -140,7 +139,13 @@ func NextStatuses(t Task, role, viewerID string) []string {
 	return out
 }
 
-// CanTransition reports whether the viewer may move the task to the status.
+// MayEnter reports whether a move into a category is allowed. A personal task
+// and a move that stays in the same category always are. The freelancer and
+// the project's author may enter any category. Everyone else only enters a
+// category the owner opened to participants.
+func MayEnter(personal, sameCategory, manager, participantsCanMove bool) bool {
+	return personal || sameCategory || manager || participantsCanMove
+}
 func CanTransition(t Task, role, viewerID, to string) bool {
 	return slices.Contains(NextStatuses(t, role, viewerID), to)
 }

@@ -182,21 +182,25 @@ func (s *Service) Create(ctx context.Context, userID, role string, p Params) (Ta
 		freelancerID, clientID = pf, deref(pc)
 	}
 
-	// Straight into a board column: it must be on this pair's board, and its
-	// category one the creator could move a new task to.
+	// Straight into a board column: it must be on this pair's board. The project's
+	// author and the freelancer may use any category; everyone else only one
+	// the owner opened to participants.
 	if p.StatusID != "" {
-		sf, sc, category, err := s.repo.Status(ctx, p.StatusID)
+		st, err := s.repo.Status(ctx, p.StatusID)
 		if err != nil {
 			return Task{}, err
 		}
-		if sf != freelancerID || deref(sc) != clientID {
+		if st.FreelancerID != freelancerID || deref(st.ClientID) != clientID || st.ProjectID != projectID {
 			return Task{}, ErrStatusMismatch
 		}
-		draft := Task{Status: StatusNew, CreatedBy: userID}
-		if clientID != "" {
-			draft.Client = &Party{ID: clientID}
+		manager := role == user.RoleFreelancer
+		if !manager && projectID != "" {
+			manager, err = s.repo.IsProjectAuthor(ctx, userID, projectID)
+			if err != nil {
+				return Task{}, err
+			}
 		}
-		if category != StatusNew && !CanTransition(draft, role, userID, category) {
+		if !MayEnter(clientID == "", false, manager, st.ParticipantsCanMove) {
 			return Task{}, ErrTransition
 		}
 	}
@@ -396,14 +400,15 @@ func (s *Service) SetStatus(ctx context.Context, userID, role, id, status string
 }
 
 // MoveTo puts the task into a status (board column) of its pair's workflow.
-// Changing category follows the role rules; moving between columns of the
-// same category is always allowed.
+// Staying in the same category is always allowed. Entering another follows
+// the category: the freelancer and the project's author may enter any, and
+// everyone else only one opened to participants.
 func (s *Service) MoveTo(ctx context.Context, userID, role, id, statusID string) (Task, error) {
 	t, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
 		return Task{}, err
 	}
-	sf, sc, category, err := s.repo.Status(ctx, statusID)
+	st, err := s.repo.Status(ctx, statusID)
 	if err != nil {
 		return Task{}, err
 	}
@@ -411,16 +416,31 @@ func (s *Service) MoveTo(ctx context.Context, userID, role, id, statusID string)
 	if t.Client != nil {
 		taskClient = t.Client.ID
 	}
-	if sf != t.Freelancer.ID || deref(sc) != taskClient {
+	taskProject := ""
+	if t.Project != nil {
+		taskProject = t.Project.ID
+	}
+	if st.FreelancerID != t.Freelancer.ID || deref(st.ClientID) != taskClient || st.ProjectID != taskProject {
 		return Task{}, ErrStatusMismatch
 	}
 	if statusID == t.StatusID {
 		return t, nil
 	}
-	if category != t.Status && !CanTransition(t, role, userID, category) {
+	cur, err := s.repo.Status(ctx, t.StatusID)
+	if err != nil {
+		return Task{}, err
+	}
+	manager := userID == t.Freelancer.ID
+	if !manager && t.Project != nil {
+		manager, err = s.repo.IsProjectAuthor(ctx, userID, t.Project.ID)
+		if err != nil {
+			return Task{}, err
+		}
+	}
+	if !MayEnter(t.Client == nil, st.CategoryID == cur.CategoryID, manager, st.ParticipantsCanMove) {
 		return Task{}, ErrTransition
 	}
-	if err := s.repo.MoveTo(ctx, id, t.StatusID, statusID, category); err != nil {
+	if err := s.repo.MoveTo(ctx, id, t.StatusID, statusID, st.Bucket); err != nil {
 		return Task{}, err
 	}
 	before := t

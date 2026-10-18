@@ -20,23 +20,46 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
-const columnFields = `id, freelancer_id, coalesce(client_id::text, ''), name, category, position`
+const columnFields = `ws.id, ws.freelancer_id, coalesce(ws.client_id::text, ''), coalesce(ws.project_id::text, ''),
+	ws.name, ws.category, ws.position, ws.category_id::text, c.name, c.participants_can_move`
+
+// workflowOf is the freelancer, client and project a workflow belongs to.
+const workflowOf = `freelancer_id = $1::uuid AND client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid
+	AND project_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid`
+
+const columnFrom = `workflow_statuses ws JOIN workflow_categories c ON c.id = ws.category_id`
 
 func scanColumn(row pgx.Row) (Column, error) {
 	var c Column
-	err := row.Scan(&c.ID, &c.Pair.FreelancerID, &c.Pair.ClientID, &c.Name, &c.Category, &c.Position)
+	err := row.Scan(&c.ID, &c.Pair.FreelancerID, &c.Pair.ClientID, &c.Pair.ProjectID, &c.Name, &c.Category, &c.Position,
+		&c.CategoryID, &c.CategoryName, &c.ParticipantsCanMove)
 	return c, err
 }
 
-// Columns returns a pair's columns in order, creating the defaults the first
-// time.
-func (r *Repository) Columns(ctx context.Context, p Pair) ([]Column, error) {
-	if _, err := r.db.Exec(ctx, `SELECT ensure_workflow($1::uuid, NULLIF($2, '')::uuid)`, p.FreelancerID, p.ClientID); err != nil {
-		return nil, fmt.Errorf("ensure workflow: %w", err)
+// ensure makes sure a workflow's default categories and columns exist.
+func (r *Repository) ensure(ctx context.Context, p Pair) error {
+	var err error
+	if p.ProjectID != "" {
+		_, err = r.db.Exec(ctx, `SELECT ensure_project_workflow($1::uuid)`, p.ProjectID)
+	} else {
+		_, err = r.db.Exec(ctx, `SELECT ensure_workflow($1::uuid, NULLIF($2, '')::uuid)`, p.FreelancerID, p.ClientID)
 	}
-	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM workflow_statuses
-		WHERE freelancer_id::text = $1 AND client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid
-		ORDER BY position, created_at`, p.FreelancerID, p.ClientID)
+	if err != nil {
+		return fmt.Errorf("ensure workflow: %w", err)
+	}
+	return nil
+}
+
+// Columns returns a workflow's columns in order, creating the defaults the
+// first time. An empty ProjectID is the pair's workflow.
+func (r *Repository) Columns(ctx context.Context, p Pair) ([]Column, error) {
+	if err := r.ensure(ctx, p); err != nil {
+		return nil, err
+	}
+	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM `+columnFrom+`
+		WHERE ws.freelancer_id::text = $1 AND ws.client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid
+		  AND ws.project_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid
+		ORDER BY ws.position, ws.created_at`, p.FreelancerID, p.ClientID, p.ProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("list columns: %w", err)
 	}
@@ -49,7 +72,7 @@ func (r *Repository) Columns(ctx context.Context, p Pair) ([]Column, error) {
 
 // Column returns one column, or ErrNotFound.
 func (r *Repository) Column(ctx context.Context, id string) (Column, error) {
-	c, err := scanColumn(r.db.QueryRow(ctx, `SELECT `+columnFields+` FROM workflow_statuses WHERE id::text = $1`, id))
+	c, err := scanColumn(r.db.QueryRow(ctx, `SELECT `+columnFields+` FROM `+columnFrom+` WHERE ws.id::text = $1`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Column{}, ErrNotFound
 	}
@@ -59,13 +82,30 @@ func (r *Repository) Column(ctx context.Context, id string) (Column, error) {
 	return c, nil
 }
 
-// Create appends a column to the end of a pair's board.
-func (r *Repository) Create(ctx context.Context, p Pair, name, category string) error {
-	_, err := r.db.Exec(ctx, `INSERT INTO workflow_statuses (freelancer_id, client_id, name, category, position)
-		SELECT $1::uuid, NULLIF($2, '')::uuid, $3, $4, coalesce(max(position) + 1, 0)
+// ProjectColumns lists the columns of every project on a pair. The pair's own
+// workflow (tasks outside a project) is not included.
+func (r *Repository) ProjectColumns(ctx context.Context, p Pair) ([]Column, error) {
+	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM `+columnFrom+`
+		WHERE ws.freelancer_id::text = $1 AND ws.client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid
+		  AND ws.project_id IS NOT NULL
+		ORDER BY ws.position, ws.created_at`, p.FreelancerID, p.ClientID)
+	if err != nil {
+		return nil, fmt.Errorf("list project columns: %w", err)
+	}
+	cols, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Column, error) { return scanColumn(row) })
+	if err != nil {
+		return nil, fmt.Errorf("scan project columns: %w", err)
+	}
+	return cols, nil
+}
+
+// Create appends a column to the end of a workflow.
+func (r *Repository) Create(ctx context.Context, p Pair, name, categoryID, bucket string) error {
+	_, err := r.db.Exec(ctx, `INSERT INTO workflow_statuses (freelancer_id, client_id, project_id, name, category, category_id, position)
+		SELECT $1::uuid, NULLIF($2, '')::uuid, NULLIF($3, '')::uuid, $4, $5, $6::uuid, coalesce(max(position) + 1, 0)
 		FROM workflow_statuses
-		WHERE freelancer_id = $1::uuid AND client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid`,
-		p.FreelancerID, p.ClientID, name, category)
+		WHERE `+workflowOf,
+		p.FreelancerID, p.ClientID, p.ProjectID, name, bucket, categoryID)
 	if err != nil {
 		return fmt.Errorf("create column: %w", err)
 	}
@@ -74,13 +114,13 @@ func (r *Repository) Create(ctx context.Context, p Pair, name, category string) 
 
 // Update renames a column and sets its category; the tasks in it take the new
 // category.
-func (r *Repository) Update(ctx context.Context, id, name, category string) error {
+func (r *Repository) Update(ctx context.Context, id, name, categoryID, category string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if _, err := tx.Exec(ctx, `UPDATE workflow_statuses SET name = $2, category = $3 WHERE id::text = $1`, id, name, category); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE workflow_statuses SET name = $2, category = $3, category_id = $4::uuid WHERE id::text = $1`, id, name, category, categoryID); err != nil {
 		return fmt.Errorf("update column: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE tasks SET status = $2,
@@ -119,15 +159,31 @@ func (r *Repository) Delete(ctx context.Context, id, fallbackID string) error {
 	return tx.Commit(ctx)
 }
 
-// Reorder sets the positions of a freelancer's columns to their order in ids.
-func (r *Repository) Reorder(ctx context.Context, freelancerID string, ids []string) error {
+// Reorder sets the positions of a pair's columns to their order in ids.
+func (r *Repository) Reorder(ctx context.Context, p Pair, ids []string) error {
 	_, err := r.db.Exec(ctx, `UPDATE workflow_statuses w SET position = o.ord - 1
 		FROM unnest($2::text[]) WITH ORDINALITY AS o(id, ord)
-		WHERE w.id::text = o.id AND w.freelancer_id = $1`, freelancerID, ids)
+		WHERE w.id::text = o.id AND w.freelancer_id = $1::uuid
+		  AND w.client_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid
+		  AND w.project_id IS NOT DISTINCT FROM NULLIF($4, '')::uuid`,
+		p.FreelancerID, ids, p.ClientID, p.ProjectID)
 	if err != nil {
 		return fmt.Errorf("reorder columns: %w", err)
 	}
 	return nil
+}
+
+// ProjectAuthor returns the user who created a project, or "" when it is gone.
+func (r *Repository) ProjectAuthor(ctx context.Context, projectID string) (string, error) {
+	var id string
+	err := r.db.QueryRow(ctx, `SELECT created_by::text FROM projects WHERE id::text = $1`, projectID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("project author: %w", err)
+	}
+	return id, nil
 }
 
 // PlaceAll stores the order of the tasks in a column.
@@ -156,9 +212,9 @@ func (r *Repository) Linked(ctx context.Context, freelancerID, clientID string) 
 // ProjectPair returns the pair of a project the user takes part in, or ErrNoBoard.
 func (r *Repository) ProjectPair(ctx context.Context, userID, projectID string) (Pair, error) {
 	var p Pair
-	err := r.db.QueryRow(ctx, `SELECT freelancer_id, coalesce(client_id::text, '') FROM projects
-		WHERE id::text = $1 AND (freelancer_id = $2 OR client_id = acting_client($2))`, projectID, userID).
-		Scan(&p.FreelancerID, &p.ClientID)
+	err := r.db.QueryRow(ctx, `SELECT freelancer_id, coalesce(client_id::text, ''), id::text, created_by FROM projects
+		WHERE id::text = $1 AND sees_project($2::uuid, id)`, projectID, userID).
+		Scan(&p.FreelancerID, &p.ClientID, &p.ProjectID, &p.AuthorID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Pair{}, ErrNoBoard
 	}
