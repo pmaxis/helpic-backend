@@ -149,7 +149,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	boardHandler := board.NewHandler(board.NewService(board.NewRepository(pool), tasksSvc))
 
 	// --- router --------------------------------------------------------------
-	authMiddleware := middleware.Auth(tokens, cfg.CookieName)
+	authMiddleware := middleware.Auth(tokens, authSvc, cfg.CookieName)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP(cfg.TrustedProxies))

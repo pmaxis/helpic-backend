@@ -23,10 +23,20 @@ type TokenVerifier interface {
 	Verify(raw string) (token.Claims, error)
 }
 
+// SessionChecker looks up the live session a token names. Implemented by
+// *auth.Service.
+type SessionChecker interface {
+	// SessionRole returns the role of the session's user, or ok=false when
+	// the user has no such live session.
+	SessionRole(ctx context.Context, userID, sessionID string) (role string, ok bool, err error)
+}
+
 // Auth returns middleware that reads the JWT from the HttpOnly cookie,
-// validates its signature and expiration, and stores the user ID, role and
-// session in the request context. Missing, malformed or expired tokens get a 401.
-func Auth(verifier TokenVerifier, cookieName string) func(http.Handler) http.Handler {
+// validates its signature and expiration, checks that its session is still
+// live, and stores the user ID, the user's current role and the session in
+// the request context. Missing, malformed or expired tokens, and tokens whose
+// session has ended (signed out, password changed), get a 401.
+func Auth(verifier TokenVerifier, sessions SessionChecker, cookieName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie(cookieName)
@@ -39,8 +49,17 @@ func Auth(verifier TokenVerifier, cookieName string) func(http.Handler) http.Han
 				response.Error(w, http.StatusUnauthorized, response.CodeUnauthorized, "Authentication required")
 				return
 			}
+			role, ok, err := sessions.SessionRole(r.Context(), c.UserID, c.SessionID)
+			if err != nil {
+				response.Internal(w, err)
+				return
+			}
+			if !ok {
+				response.Error(w, http.StatusUnauthorized, response.CodeUnauthorized, "Authentication required")
+				return
+			}
 			ctx := context.WithValue(r.Context(), userIDKey, c.UserID)
-			ctx = context.WithValue(ctx, roleKey, c.Role)
+			ctx = context.WithValue(ctx, roleKey, role)
 			ctx = context.WithValue(ctx, sessionIDKey, c.SessionID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
