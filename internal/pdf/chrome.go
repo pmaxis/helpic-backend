@@ -1,4 +1,6 @@
-package reports
+// Package pdf prints HTML to PDF. Chrome does the printing inside the
+// separate pdf service (cmd/pdf); the API talks to it through Client.
+package pdf
 
 import (
 	"bytes"
@@ -11,29 +13,29 @@ import (
 	"time"
 )
 
-// ErrPDFUnavailable means no Chrome/Chromium binary was found on this server.
-var ErrPDFUnavailable = errors.New("pdf export unavailable: chrome not found")
+// ErrUnavailable means there is nothing to print PDFs with: no Chrome binary,
+// or no pdf service configured.
+var ErrUnavailable = errors.New("pdf export unavailable")
 
 const (
-	pdfTimeout     = 30 * time.Second
+	renderTimeout  = 30 * time.Second
 	maxConcurrency = 2
 )
 
-// PDFRenderer prints HTML to PDF with headless Chrome/Chromium.
-type PDFRenderer struct {
-	chrome string
-	sem    chan struct{}
+// Chrome prints HTML to PDF with headless Chrome/Chromium.
+type Chrome struct {
+	bin string
+	sem chan struct{}
 }
 
-// NewPDFRenderer uses chromePath when set, otherwise looks for a Chrome or
-// Chromium binary in the usual places. A renderer without a binary returns
-// ErrPDFUnavailable from Render.
-func NewPDFRenderer(chromePath string) *PDFRenderer {
-	return &PDFRenderer{chrome: findChrome(chromePath), sem: make(chan struct{}, maxConcurrency)}
+// NewChrome uses path when set, otherwise looks for a Chrome or Chromium
+// binary in the usual places. Without a binary Render returns ErrUnavailable.
+func NewChrome(path string) *Chrome {
+	return &Chrome{bin: findChrome(path), sem: make(chan struct{}, maxConcurrency)}
 }
 
 // Available reports whether a Chrome binary was found.
-func (r *PDFRenderer) Available() bool { return r.chrome != "" }
+func (c *Chrome) Available() bool { return c.bin != "" }
 
 func findChrome(explicit string) string {
 	if explicit != "" {
@@ -58,21 +60,20 @@ func findChrome(explicit string) string {
 	return ""
 }
 
-// Render prints an HTML document (rendered in ModePDF) to PDF bytes.
+// Render prints an HTML document to PDF bytes.
 //
 // Each run gets a throwaway profile and temp dir, and all network access is
-// routed to a dead proxy. The document itself is our own escaped template
-// output and carries a CSP that forbids scripts and every external load.
-// (Chrome's scriptEnabled=false blink setting can't be used: it breaks
-// --print-to-pdf in the new headless mode.)
-func (r *PDFRenderer) Render(ctx context.Context, html []byte) ([]byte, error) {
-	if r.chrome == "" {
-		return nil, ErrPDFUnavailable
+// routed to a dead proxy. The document carries a CSP that forbids scripts
+// and every external load. (Chrome's scriptEnabled=false blink setting can't
+// be used: it breaks --print-to-pdf in the new headless mode.)
+func (c *Chrome) Render(ctx context.Context, html []byte) ([]byte, error) {
+	if c.bin == "" {
+		return nil, ErrUnavailable
 	}
 
 	select {
-	case r.sem <- struct{}{}:
-		defer func() { <-r.sem }()
+	case c.sem <- struct{}{}:
+		defer func() { <-c.sem }()
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -89,10 +90,10 @@ func (r *PDFRenderer) Render(ctx context.Context, html []byte) ([]byte, error) {
 		return nil, fmt.Errorf("pdf write html: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, pdfTimeout)
+	ctx, cancel := context.WithTimeout(ctx, renderTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, r.chrome,
+	cmd := exec.CommandContext(ctx, c.bin,
 		"--headless=new",
 		"--no-sandbox",
 		"--disable-gpu",
@@ -130,8 +131,10 @@ func (r *PDFRenderer) Render(ctx context.Context, html []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pdf read output: %w", err)
 	}
-	if !bytes.HasPrefix(pdf, []byte("%PDF")) {
+	if !isPDF(pdf) {
 		return nil, errors.New("pdf render: output is not a PDF")
 	}
 	return pdf, nil
 }
+
+func isPDF(b []byte) bool { return bytes.HasPrefix(b, []byte("%PDF")) }

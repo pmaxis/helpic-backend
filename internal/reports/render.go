@@ -27,7 +27,7 @@ const (
 	// ModePreview renders an on-screen A4 sheet and may load web fonts.
 	ModePreview RenderMode = iota
 	// ModePDF renders bare pages for Chromium's print-to-PDF: no external
-	// resources at all (fonts come from the system).
+	// resources at all (fonts come from the pdf service's system).
 	ModePDF
 )
 

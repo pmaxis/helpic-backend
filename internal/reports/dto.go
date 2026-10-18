@@ -199,7 +199,7 @@ type DTO struct {
 }
 
 // ListResponse is the reports the viewer may see, and whether the server can
-// print PDFs (it needs Chromium).
+// print PDFs (it needs the pdf service).
 type ListResponse struct {
 	Reports      []DTO `json:"reports"`
 	PDFAvailable bool  `json:"pdf_available"`

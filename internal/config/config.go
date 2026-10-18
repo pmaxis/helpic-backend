@@ -37,9 +37,9 @@ type Config struct {
 	RefreshCookieName string
 	RefreshCookiePath string
 
-	// ChromePath points at the Chrome/Chromium that prints report PDFs; empty
-	// means auto-detect.
-	ChromePath string
+	// PDFURL is the pdf service (cmd/pdf) that prints report PDFs; empty
+	// turns PDF export off.
+	PDFURL string
 
 	// SwaggerEnabled serves the API docs at /api/docs; off in production
 	// unless SWAGGER_ENABLED says otherwise.
@@ -120,7 +120,7 @@ func Load() (Config, error) {
 
 	cfg.CookieSecure = getEnvBool("COOKIE_SECURE", false)
 	cfg.CookieSameSite = parseSameSite(getEnv("COOKIE_SAME_SITE", "lax"))
-	cfg.ChromePath = os.Getenv("CHROME_PATH")
+	cfg.PDFURL = os.Getenv("PDF_URL")
 	cfg.SwaggerEnabled = getEnvBool("SWAGGER_ENABLED", !cfg.IsProduction())
 	cfg.UploadsDir = getEnv("UPLOADS_DIR", "uploads")
 	maxMB, err := strconv.Atoi(getEnv("MAX_UPLOAD_MB", "25"))

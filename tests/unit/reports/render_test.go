@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pmaxis/helpic/internal/i18n"
+	"github.com/pmaxis/helpic/internal/pdf"
 	"github.com/pmaxis/helpic/internal/reports"
 )
 
@@ -160,7 +161,7 @@ func TestPDF(t *testing.T) {
 	if os.Getenv("HELPIC_PDF_TEST") == "" {
 		t.Skip("set HELPIC_PDF_TEST=1 to print a real PDF")
 	}
-	r := reports.NewPDFRenderer(os.Getenv("CHROME_PATH"))
+	r := pdf.NewChrome(os.Getenv("CHROME_PATH"))
 	if !r.Available() {
 		t.Skip("no Chrome found")
 	}
@@ -168,11 +169,11 @@ func TestPDF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pdf, err := r.Render(context.Background(), html)
+	file, err := r.Render(context.Background(), html)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.HasPrefix(pdf, []byte("%PDF")) {
+	if !bytes.HasPrefix(file, []byte("%PDF")) {
 		t.Fatal("not a PDF")
 	}
 }
