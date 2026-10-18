@@ -26,6 +26,18 @@ services:
     ports:
       - "${MAILPIT_PORT:-8025}:8025"
 
+  # Browse the database at http://localhost:8088 (server is filled in; the
+  # user and password are POSTGRES_USER and POSTGRES_PASSWORD).
+  adminer:
+    image: adminer:5
+    restart: unless-stopped
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    ports:
+      - "${ADMINER_PORT:-8088}:8080"
+    depends_on:
+      - postgres
+
   backend:
     build:
       context: .
