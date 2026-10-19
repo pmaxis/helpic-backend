@@ -1,5 +1,5 @@
-// Package middleware holds shared HTTP middleware: authentication, CORS and
-// panic recovery. It is application infrastructure, not a feature.
+// Package middleware holds shared HTTP middleware: authentication, request
+// logging, CORS and panic recovery. It is application infrastructure, not a feature.
 package middleware
 
 import (
@@ -61,6 +61,7 @@ func Auth(verifier TokenVerifier, sessions SessionChecker, cookieName string) fu
 			ctx := context.WithValue(r.Context(), userIDKey, c.UserID)
 			ctx = context.WithValue(ctx, roleKey, role)
 			ctx = context.WithValue(ctx, sessionIDKey, c.SessionID)
+			noteActor(ctx, c.UserID, role)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
