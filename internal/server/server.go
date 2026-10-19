@@ -182,6 +182,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
 			r.With(byIP(lim.signIn), byIP(lim.signUp)).Post("/register", authHandler.Register)
+			r.With(byIP(lim.signIn)).Post("/signups/confirm", authHandler.ConfirmSignup)
 			r.With(byIP(lim.signIn)).Post("/login", authHandler.Login)
 			r.With(byIP(lim.refresh)).Post("/refresh", authHandler.Refresh)
 			r.With(byIP(lim.signIn)).Post("/password/forgot", authHandler.Forgot)

@@ -36,7 +36,7 @@ func wantLimited(t *testing.T, resp *http.Response) {
 func TestRateLimit_WrongPasswordsPerEmail(t *testing.T) {
 	srv := newLimitedAPI(t)
 	c := newClient()
-	wantStatus(t, register(t, c, srv.URL, "guessed@example.com", "supersecret"), http.StatusCreated)
+	confirmed(t, c, srv.URL, "guessed@example.com", "supersecret")
 
 	// A right password doesn't count.
 	for range 3 {
@@ -86,7 +86,7 @@ func TestRateLimit_SignUpsPerAddress(t *testing.T) {
 	c := newClient()
 	for i := range 5 {
 		resp := register(t, c, srv.URL, "new"+string(rune('a'+i))+"@example.com", "supersecret")
-		wantStatus(t, resp, http.StatusCreated)
+		wantStatus(t, resp, http.StatusAccepted)
 		resp.Body.Close()
 	}
 	wantLimited(t, register(t, c, srv.URL, "one-too-many@example.com", "supersecret"))
@@ -118,7 +118,7 @@ func TestRealIP_FromTrustedProxy(t *testing.T) {
 		cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32"), netip.MustParsePrefix("::1/128")}
 	})
 	c := newClient()
-	wantStatus(t, register(t, c, srv.URL, "proxied@example.com", "supersecret"), http.StatusCreated)
+	confirmed(t, c, srv.URL, "proxied@example.com", "supersecret")
 
 	body, _ := json.Marshal(map[string]string{"email": "proxied@example.com", "password": "supersecret"})
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/auth/login", bytes.NewReader(body))

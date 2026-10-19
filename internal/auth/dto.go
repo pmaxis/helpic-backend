@@ -138,6 +138,11 @@ func (r ForgotRequest) Validate() (string, map[string]string) {
 	return email, nil
 }
 
+// SignupConfirmRequest is the JSON body for POST /api/v1/auth/signups/confirm.
+type SignupConfirmRequest struct {
+	Token string `json:"token"`
+}
+
 // ResetRequest is the JSON body for POST /api/v1/auth/password/reset.
 type ResetRequest struct {
 	Token                string `json:"token"`

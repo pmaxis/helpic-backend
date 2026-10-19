@@ -59,12 +59,13 @@ func (h *Handler) LimitFailedLogins(l ratelimit.Gate) {
 
 // Register handles POST /api/v1/auth/register.
 //
-//	@Summary	Sign up as a freelancer
-//	@Tags		auth
+//	@Summary		Sign up as a freelancer
+//	@Description	Emails a confirmation link. The account is created when that link is opened, not before.
+//	@Tags			auth
 //	@Accept		json
 //	@Produce	json
 //	@Param		body	body		RegisterRequest			true	"Request body"
-//	@Success	201		{object}	user.Response			"The new account"
+//	@Success	202		{object}	map[string]string		"Confirmation emailed; no account yet"
 //	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
 //	@Failure	409		{object}	response.ErrorEnvelope	"The email is taken"
 //	@Failure	429		{object}	response.ErrorEnvelope	"Too many sign-ups from this address"
@@ -81,7 +82,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u, err := h.svc.Register(r.Context(), params, user.RoleFreelancer)
+	err := h.svc.RequestSignup(r.Context(), params)
 	if errors.Is(err, ErrEmailExists) {
 		response.Error(w, http.StatusConflict, response.CodeEmailExists, "An account with this email already exists")
 		return
@@ -91,6 +92,47 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	response.JSON(w, http.StatusAccepted, map[string]string{"email": params.Email})
+}
+
+// ConfirmSignup handles POST /api/v1/auth/signups/confirm.
+//
+//	@Summary		Confirm a sign-up email
+//	@Description	Creates the freelancer account and signs this browser in. The link is the proof the inbox is theirs.
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		SignupConfirmRequest	true	"Request body"
+//	@Success		201		{object}	user.Response			"The new account, signed in"
+//	@Failure		400		{object}	response.ErrorEnvelope	"The link is invalid, replaced, used or expired (field token)"
+//	@Failure		409		{object}	response.ErrorEnvelope	"The email was taken before the link was opened"
+//	@Failure		429		{object}	response.ErrorEnvelope	"Too many attempts from this address"
+//	@Router			/auth/signups/confirm [post]
+func (h *Handler) ConfirmSignup(w http.ResponseWriter, r *http.Request) {
+	var req SignupConfirmRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Token == "" {
+		response.ValidationError(w, map[string]string{"token": "This link has expired or was already used. Ask for a new one."})
+		return
+	}
+
+	u, tokens, err := h.svc.ConfirmSignup(r.Context(), req.Token, ClientOf(r))
+	if errors.Is(err, ErrSignupInvalid) {
+		response.ValidationError(w, map[string]string{"token": "This link has expired or was already used. Ask for a new one."})
+		return
+	}
+	if errors.Is(err, ErrEmailExists) {
+		response.Error(w, http.StatusConflict, response.CodeEmailExists, "An account with this email already exists")
+		return
+	}
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+
+	h.cookie.Set(w, tokens)
 	response.JSON(w, http.StatusCreated, user.NewResponse(u))
 }
 

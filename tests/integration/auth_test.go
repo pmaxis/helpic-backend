@@ -14,6 +14,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -196,24 +197,47 @@ func register(t *testing.T, c *http.Client, base, email, password string) *http.
 	})
 }
 
+// confirmSignup opens the link the sign-up email carried and creates the account.
+func confirmSignup(t *testing.T, c *http.Client, base, email string) *http.Response {
+	t.Helper()
+	token := linkToken(t, lastEmailTo(t, strings.ToLower(email)), "/confirm-signup#")
+	return post(t, c, base+"/api/v1/auth/signups/confirm", map[string]string{"token": token})
+}
+
+// confirmed registers and opens the confirmation link, so the account exists.
+func confirmed(t *testing.T, c *http.Client, base, email, password string) {
+	t.Helper()
+	resp := register(t, c, base, email, password)
+	wantStatus(t, resp, http.StatusAccepted)
+	resp.Body.Close()
+	resp = confirmSignup(t, c, base, email)
+	wantStatus(t, resp, http.StatusCreated)
+	resp.Body.Close()
+}
+
 // --- registration --------------------------------------------------------
 
 func TestRegister_Success(t *testing.T) {
 	srv, c := newAPI(t)
 
 	resp := register(t, c, srv.URL, "User@Example.com", "supersecret")
-	wantStatus(t, resp, http.StatusCreated)
+	wantStatus(t, resp, http.StatusAccepted)
+	if got := decode(t, resp)["email"]; got != "user@example.com" {
+		t.Fatalf("email = %v, want normalized user@example.com", got)
+	}
 
-	body := decode(t, resp)
-	u, _ := body["user"].(map[string]any)
-	if u == nil {
-		t.Fatal("response has no user object")
-	}
-	if u["email"] != "user@example.com" {
-		t.Fatalf("email = %v, want normalized user@example.com", u["email"])
-	}
-	if u["id"] == "" || u["id"] == nil {
-		t.Fatal("missing user id")
+	// The inbox has not confirmed it, so there is no account to sign in to.
+	resp = post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
+		"email": "user@example.com", "password": "supersecret",
+	})
+	wantStatus(t, resp, http.StatusUnauthorized)
+	resp.Body.Close()
+
+	resp = confirmSignup(t, c, srv.URL, "user@example.com")
+	wantStatus(t, resp, http.StatusCreated)
+	u, _ := decode(t, resp)["user"].(map[string]any)
+	if u == nil || u["email"] != "user@example.com" || u["id"] == "" || u["id"] == nil {
+		t.Fatalf("confirmed account = %v", u)
 	}
 	if u["role"] != "freelancer" {
 		t.Fatalf("role = %v, want freelancer: public sign-up always creates a freelancer", u["role"])
@@ -224,6 +248,26 @@ func TestRegister_Success(t *testing.T) {
 	if _, exists := u["password_hash"]; exists {
 		t.Fatal("response leaked password_hash")
 	}
+}
+
+func TestRegister_NewRequestReplacesTheLink(t *testing.T) {
+	srv, c := newAPI(t)
+	resp := register(t, c, srv.URL, "again@example.com", "supersecret")
+	wantStatus(t, resp, http.StatusAccepted)
+	resp.Body.Close()
+	first := linkToken(t, lastEmailTo(t, "again@example.com"), "/confirm-signup#")
+
+	resp = register(t, c, srv.URL, "again@example.com", "supersecret")
+	wantStatus(t, resp, http.StatusAccepted)
+	resp.Body.Close()
+
+	resp = post(t, c, srv.URL+"/api/v1/auth/signups/confirm", map[string]string{"token": first})
+	wantStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+
+	resp = confirmSignup(t, c, srv.URL, "again@example.com")
+	wantStatus(t, resp, http.StatusCreated)
+	resp.Body.Close()
 }
 
 func TestRegister_InvalidEmail(t *testing.T) {
@@ -260,8 +304,7 @@ func TestRegister_PasswordMismatch(t *testing.T) {
 func TestRegister_DuplicateEmail(t *testing.T) {
 	srv, c := newAPI(t)
 
-	first := register(t, c, srv.URL, "dupe@example.com", "supersecret")
-	wantStatus(t, first, http.StatusCreated)
+	confirmed(t, c, srv.URL, "dupe@example.com", "supersecret")
 
 	second := register(t, c, srv.URL, "Dupe@example.com", "supersecret")
 	wantStatus(t, second, http.StatusConflict)
@@ -274,7 +317,7 @@ func TestRegister_DuplicateEmail(t *testing.T) {
 
 func TestLogin_Success(t *testing.T) {
 	srv, c := newAPI(t)
-	register(t, c, srv.URL, "login@example.com", "supersecret").Body.Close()
+	confirmed(t, c, srv.URL, "login@example.com", "supersecret")
 
 	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
 		"email":    "login@example.com",
@@ -306,7 +349,7 @@ func TestLogin_Success(t *testing.T) {
 
 func TestLogin_WrongPassword(t *testing.T) {
 	srv, c := newAPI(t)
-	register(t, c, srv.URL, "wrongpw@example.com", "supersecret").Body.Close()
+	confirmed(t, c, srv.URL, "wrongpw@example.com", "supersecret")
 
 	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
 		"email":    "wrongpw@example.com",
@@ -334,7 +377,7 @@ func TestLogin_NonExistingEmail(t *testing.T) {
 
 func TestMe_ValidSession(t *testing.T) {
 	srv, c := newAPI(t)
-	register(t, c, srv.URL, "me@example.com", "supersecret").Body.Close()
+	confirmed(t, c, srv.URL, "me@example.com", "supersecret")
 	post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
 		"email":    "me@example.com",
 		"password": "supersecret",
@@ -375,7 +418,7 @@ func TestMe_InvalidJWT(t *testing.T) {
 
 func TestMe_ExpiredJWT(t *testing.T) {
 	srv, c := newAPI(t)
-	register(t, c, srv.URL, "expired@example.com", "supersecret").Body.Close()
+	confirmed(t, c, srv.URL, "expired@example.com", "supersecret")
 
 	var userID string
 	if err := testPool.QueryRow(context.Background(),
@@ -402,7 +445,7 @@ func TestMe_ExpiredJWT(t *testing.T) {
 
 func TestLogout_ClearsCookie(t *testing.T) {
 	srv, c := newAPI(t)
-	register(t, c, srv.URL, "logout@example.com", "supersecret").Body.Close()
+	confirmed(t, c, srv.URL, "logout@example.com", "supersecret")
 	post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
 		"email":    "logout@example.com",
 		"password": "supersecret",

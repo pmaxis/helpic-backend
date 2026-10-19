@@ -67,6 +67,12 @@ func TestI18n_AccountLanguage(t *testing.T) {
 	resp := inUkrainian(t, uk, http.MethodPost, srv.URL+"/api/v1/auth/register", map[string]string{
 		"email": "olena@example.com", "name": "Олена", "password": "supersecret", "password_confirmation": "supersecret",
 	})
+	wantStatus(t, resp, http.StatusAccepted)
+	resp.Body.Close()
+	if e := lastEmailTo(t, "olena@example.com"); e.Subject != "Підтвердьте пошту для Helpic" || !strings.Contains(e.Text, "Підтвердити пошту") {
+		t.Fatalf("Ukrainian sign-up email = %+v", e)
+	}
+	resp = confirmSignup(t, uk, srv.URL, "olena@example.com")
 	wantStatus(t, resp, http.StatusCreated)
 	if got := field(decode(t, resp), "user")["locale"]; got != "uk" {
 		t.Fatalf("locale after a Ukrainian sign-up = %v", got)

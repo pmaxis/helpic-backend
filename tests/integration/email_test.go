@@ -149,9 +149,10 @@ func TestPasswordReset_LimitedPerEmail(t *testing.T) {
 	for range 5 {
 		forgot(t, srv.URL, "spammed@example.com")
 	}
-	// The answer never changes, but only three emails go out.
-	if n := len(emailsTo(t, "spammed@example.com")); n != 3 {
-		t.Fatalf("emails = %d, want 3", n)
+	// The answer never changes, but only three reset emails go out. The fourth
+	// message is the sign-up confirmation.
+	if n := len(emailsTo(t, "spammed@example.com")); n != 4 {
+		t.Fatalf("emails = %d, want 4", n)
 	}
 }
 

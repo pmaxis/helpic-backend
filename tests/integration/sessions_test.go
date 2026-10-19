@@ -65,7 +65,7 @@ func signInAgain(t *testing.T, srv *httptest.Server, email string) *http.Client 
 
 func TestLogin_SetsRefreshCookie(t *testing.T) {
 	srv, c := newAPI(t)
-	register(t, c, srv.URL, "refresh@example.com", "supersecret").Body.Close()
+	confirmed(t, c, srv.URL, "refresh@example.com", "supersecret")
 	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{"email": "refresh@example.com", "password": "supersecret"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
