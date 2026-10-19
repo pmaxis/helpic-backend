@@ -36,11 +36,11 @@ func wantLimited(t *testing.T, resp *http.Response) {
 func TestRateLimit_WrongPasswordsPerEmail(t *testing.T) {
 	srv := newLimitedAPI(t)
 	c := newClient()
-	confirmed(t, c, srv.URL, "guessed@example.com", "supersecret")
+	confirmed(t, c, srv.URL, "guessed@example.com", "supersecret1")
 
 	// A right password doesn't count.
 	for range 3 {
-		resp := login(t, srv, c, "guessed@example.com", "supersecret")
+		resp := login(t, srv, c, "guessed@example.com", "supersecret1")
 		wantStatus(t, resp, http.StatusOK)
 		resp.Body.Close()
 	}
@@ -52,7 +52,7 @@ func TestRateLimit_WrongPasswordsPerEmail(t *testing.T) {
 		resp.Body.Close()
 	}
 	// Then even the right one waits.
-	wantLimited(t, login(t, srv, c, "guessed@example.com", "supersecret"))
+	wantLimited(t, login(t, srv, c, "guessed@example.com", "supersecret1"))
 	// Other emails are fine.
 	resp := login(t, srv, c, "someone-else@example.com", "whatever1")
 	wantStatus(t, resp, http.StatusUnauthorized)
@@ -85,11 +85,11 @@ func TestRateLimit_SignUpsPerAddress(t *testing.T) {
 	srv := newLimitedAPI(t)
 	c := newClient()
 	for i := range 5 {
-		resp := register(t, c, srv.URL, "new"+string(rune('a'+i))+"@example.com", "supersecret")
+		resp := register(t, c, srv.URL, "new"+string(rune('a'+i))+"@example.com", "supersecret1")
 		wantStatus(t, resp, http.StatusAccepted)
 		resp.Body.Close()
 	}
-	wantLimited(t, register(t, c, srv.URL, "one-too-many@example.com", "supersecret"))
+	wantLimited(t, register(t, c, srv.URL, "one-too-many@example.com", "supersecret1"))
 }
 
 func TestRateLimit_PasswordChecksPerUser(t *testing.T) {
@@ -97,7 +97,7 @@ func TestRateLimit_PasswordChecksPerUser(t *testing.T) {
 	c := signUpFreelancer(t, srv, "checker@example.com")
 	for i := range 5 {
 		resp := do(t, c, http.MethodPut, srv.URL+"/api/v1/me/password", map[string]string{
-			"current_password": "not-it-at-all", "password": "evenmoresecret", "password_confirmation": "evenmoresecret",
+			"current_password": "not-it-at-all", "password": "evenmoresecret1", "password_confirmation": "evenmoresecret1",
 		})
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Fatalf("check %d = %d, want 400", i+1, resp.StatusCode)
@@ -105,7 +105,7 @@ func TestRateLimit_PasswordChecksPerUser(t *testing.T) {
 		resp.Body.Close()
 	}
 	wantLimited(t, do(t, c, http.MethodPut, srv.URL+"/api/v1/me/email", map[string]string{
-		"email": "new@example.com", "current_password": "supersecret",
+		"email": "new@example.com", "current_password": "supersecret1",
 	}))
 	// Other settings aren't limited.
 	resp := do(t, c, http.MethodPut, srv.URL+"/api/v1/me", map[string]string{"first_name": "Still", "last_name": "Here"})
@@ -118,9 +118,9 @@ func TestRealIP_FromTrustedProxy(t *testing.T) {
 		cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32"), netip.MustParsePrefix("::1/128")}
 	})
 	c := newClient()
-	confirmed(t, c, srv.URL, "proxied@example.com", "supersecret")
+	confirmed(t, c, srv.URL, "proxied@example.com", "supersecret1")
 
-	body, _ := json.Marshal(map[string]string{"email": "proxied@example.com", "password": "supersecret"})
+	body, _ := json.Marshal(map[string]string{"email": "proxied@example.com", "password": "supersecret1"})
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Forwarded-For", "198.51.100.23")

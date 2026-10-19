@@ -57,7 +57,7 @@ func sessionsOf(t *testing.T, srv *httptest.Server, c *http.Client) []map[string
 func signInAgain(t *testing.T, srv *httptest.Server, email string) *http.Client {
 	t.Helper()
 	c := newClient()
-	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{"email": email, "password": "supersecret"})
+	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{"email": email, "password": "supersecret1"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 	return c
@@ -65,8 +65,8 @@ func signInAgain(t *testing.T, srv *httptest.Server, email string) *http.Client 
 
 func TestLogin_SetsRefreshCookie(t *testing.T) {
 	srv, c := newAPI(t)
-	confirmed(t, c, srv.URL, "refresh@example.com", "supersecret")
-	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{"email": "refresh@example.com", "password": "supersecret"})
+	confirmed(t, c, srv.URL, "refresh@example.com", "supersecret1")
+	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{"email": "refresh@example.com", "password": "supersecret1"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 
@@ -300,7 +300,7 @@ func TestChangePassword_SignsOutOtherDevices(t *testing.T) {
 	there := signInAgain(t, srv, "newpass@example.com")
 
 	resp := do(t, here, http.MethodPut, srv.URL+"/api/v1/me/password", map[string]string{
-		"current_password": "supersecret", "password": "evenmoresecret", "password_confirmation": "evenmoresecret",
+		"current_password": "supersecret1", "password": "evenmoresecret1", "password_confirmation": "evenmoresecret1",
 	})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()

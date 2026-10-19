@@ -45,6 +45,11 @@ func TestI18n_ErrorsSpeakTheRequestLanguage(t *testing.T) {
 	if e["message"] != "Деякі поля заповнено неправильно" || fields["email"] != "Вкажіть коректну адресу пошти" || fields["password"] != "Пароль має містити щонайменше 8 символів" {
 		t.Fatalf("Ukrainian validation error = %v", e)
 	}
+	resp = inUkrainian(t, c, http.MethodPost, srv.URL+"/api/v1/auth/register", map[string]string{"email": "olena@example.com", "name": "Олена", "password": "longenough", "password_confirmation": "longenough"})
+	wantStatus(t, resp, http.StatusBadRequest)
+	if got := decode(t, resp)["error"].(map[string]any)["fields"].(map[string]any)["password"]; got != "Пароль має містити літеру й цифру" {
+		t.Fatalf("password = %v", got)
+	}
 
 	// Without the header, English.
 	resp = post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{"email": "a@example.com", "password": "whatever1"})
@@ -65,7 +70,7 @@ func TestI18n_AccountLanguage(t *testing.T) {
 	// Sign-up keeps the language the interface was in.
 	uk := newClient()
 	resp := inUkrainian(t, uk, http.MethodPost, srv.URL+"/api/v1/auth/register", map[string]string{
-		"email": "olena@example.com", "name": "Олена", "password": "supersecret", "password_confirmation": "supersecret",
+		"email": "olena@example.com", "name": "Олена", "password": "supersecret1", "password_confirmation": "supersecret1",
 	})
 	wantStatus(t, resp, http.StatusAccepted)
 	resp.Body.Close()

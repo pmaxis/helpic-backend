@@ -26,7 +26,8 @@ type LoginParams struct {
 	Password string
 }
 
-// MinPasswordLength is enforced by both the API and the frontend.
+// MinPasswordLength is enforced by both the API and the frontend. A new
+// password also needs a letter and a number (see passwordIssue).
 const MinPasswordLength = 8
 
 // MaxNameLength caps a display name.

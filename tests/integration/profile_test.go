@@ -42,8 +42,8 @@ func TestProfile_ChangeEmail(t *testing.T) {
 
 	for _, bad := range []struct{ email, password, field string }{
 		{"new@example.com", "wrong-pass", "current_password"},
-		{"taken@example.com", "supersecret", "email"},
-		{"OLD@example.com", "supersecret", "email"},
+		{"taken@example.com", "supersecret1", "email"},
+		{"OLD@example.com", "supersecret1", "email"},
 	} {
 		resp := change(bad.email, bad.password)
 		wantStatus(t, resp, http.StatusBadRequest)
@@ -53,7 +53,7 @@ func TestProfile_ChangeEmail(t *testing.T) {
 	}
 
 	// Asking sends a link to the new address; the email doesn't change yet.
-	resp := change("New@Example.com", "supersecret")
+	resp := change("New@Example.com", "supersecret1")
 	wantStatus(t, resp, http.StatusAccepted)
 	if got := decode(t, resp)["pending_email"]; got != "new@example.com" {
 		t.Fatalf("pending_email = %v", got)
@@ -61,7 +61,7 @@ func TestProfile_ChangeEmail(t *testing.T) {
 	if got := field(decode(t, get(t, c, srv.URL+"/api/v1/me")), "user")["email"]; got != "old@example.com" {
 		t.Fatalf("email changed before confirming: %v", got)
 	}
-	token := linkToken(t, lastEmailTo(t, "new@example.com"), "/confirm-email#")
+	token := linkToken(t, lastEmailTo(t, "new@example.com"), "/confirm-email/")
 
 	resp = confirm("not-a-token")
 	wantStatus(t, resp, http.StatusBadRequest)
@@ -77,7 +77,7 @@ func TestProfile_ChangeEmail(t *testing.T) {
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 
-	resp = post(t, newClient(), srv.URL+"/api/v1/auth/login", map[string]string{"email": "new@example.com", "password": "supersecret"})
+	resp = post(t, newClient(), srv.URL+"/api/v1/auth/login", map[string]string{"email": "new@example.com", "password": "supersecret1"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 	if notice := lastEmailTo(t, "old@example.com"); !strings.Contains(notice.Text, "now signs in with new@example.com") {
@@ -85,11 +85,11 @@ func TestProfile_ChangeEmail(t *testing.T) {
 	}
 
 	// A newer request replaces the older link.
-	resp = change("first@example.com", "supersecret")
+	resp = change("first@example.com", "supersecret1")
 	wantStatus(t, resp, http.StatusAccepted)
 	resp.Body.Close()
-	first := linkToken(t, lastEmailTo(t, "first@example.com"), "/confirm-email#")
-	resp = change("second@example.com", "supersecret")
+	first := linkToken(t, lastEmailTo(t, "first@example.com"), "/confirm-email/")
+	resp = change("second@example.com", "supersecret1")
 	wantStatus(t, resp, http.StatusAccepted)
 	resp.Body.Close()
 	resp = confirm(first)
@@ -102,21 +102,21 @@ func TestProfile_ChangePassword(t *testing.T) {
 	c := signUpFreelancer(t, srv, "pw@example.com")
 
 	resp := do(t, c, http.MethodPut, srv.URL+"/api/v1/me/password", map[string]string{
-		"current_password": "wrong-pass", "password": "brand-new-pw", "password_confirmation": "brand-new-pw",
+		"current_password": "wrong-pass", "password": "brand-new-pw1", "password_confirmation": "brand-new-pw1",
 	})
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 
 	resp = do(t, c, http.MethodPut, srv.URL+"/api/v1/me/password", map[string]string{
-		"current_password": "supersecret", "password": "brand-new-pw", "password_confirmation": "brand-new-pw",
+		"current_password": "supersecret1", "password": "brand-new-pw1", "password_confirmation": "brand-new-pw1",
 	})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 
-	old := post(t, newClient(), srv.URL+"/api/v1/auth/login", map[string]string{"email": "pw@example.com", "password": "supersecret"})
+	old := post(t, newClient(), srv.URL+"/api/v1/auth/login", map[string]string{"email": "pw@example.com", "password": "supersecret1"})
 	wantStatus(t, old, http.StatusUnauthorized)
 	old.Body.Close()
-	fresh := post(t, newClient(), srv.URL+"/api/v1/auth/login", map[string]string{"email": "pw@example.com", "password": "brand-new-pw"})
+	fresh := post(t, newClient(), srv.URL+"/api/v1/auth/login", map[string]string{"email": "pw@example.com", "password": "brand-new-pw1"})
 	wantStatus(t, fresh, http.StatusOK)
 	fresh.Body.Close()
 	if notice := lastEmailTo(t, "pw@example.com"); notice.Subject != "Your Helpic password was changed" {

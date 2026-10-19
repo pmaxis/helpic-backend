@@ -60,7 +60,7 @@ func (s *Service) RequestSignup(ctx context.Context, p RegisterParams) error {
 		Paragraphs: []string{
 			t("Confirm %s to create your Helpic account.", p.Email),
 		},
-		Button: &mail.Button{Text: t("Confirm email"), URL: s.appURL + "/confirm-signup#" + raw},
+		Button: &mail.Button{Text: t("Confirm email"), URL: s.appURL + "/confirm-signup/" + raw},
 		Note:   t("The link works for 24 hours. If you didn't ask to sign up, ignore this email: no account is created."),
 	}); err != nil {
 		if delErr := s.repo.DeletePendingSignup(ctx, p.Email, hash); delErr != nil {

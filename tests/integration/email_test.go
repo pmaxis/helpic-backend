@@ -88,27 +88,27 @@ func TestPasswordReset(t *testing.T) {
 	resp.Body.Close()
 
 	forgot(t, srv.URL, "Forgetful@Example.com")
-	token := linkToken(t, lastEmailTo(t, "forgetful@example.com"), "/reset-password#")
+	token := linkToken(t, lastEmailTo(t, "forgetful@example.com"), "/reset-password/")
 
 	resp = reset(t, srv.URL, token, "short")
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
-	resp = reset(t, srv.URL, "not-a-token", "brand-new-pw")
+	resp = reset(t, srv.URL, "not-a-token", "brand-new-pw1")
 	wantStatus(t, resp, http.StatusBadRequest)
 	if fields := decode(t, resp)["error"].(map[string]any)["fields"].(map[string]any); fields["token"] == nil {
 		t.Fatalf("fields = %v, want token", fields)
 	}
 
-	resp = reset(t, srv.URL, token, "brand-new-pw")
+	resp = reset(t, srv.URL, token, "brand-new-pw1")
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
 
 	// The new password works, the old one doesn't, every device is out and
 	// the owner hears about it.
-	resp = post(t, newClient(), srv.URL+"/api/v1/auth/login", map[string]string{"email": "forgetful@example.com", "password": "supersecret"})
+	resp = post(t, newClient(), srv.URL+"/api/v1/auth/login", map[string]string{"email": "forgetful@example.com", "password": "supersecret1"})
 	wantStatus(t, resp, http.StatusUnauthorized)
 	resp.Body.Close()
-	resp = post(t, newClient(), srv.URL+"/api/v1/auth/login", map[string]string{"email": "forgetful@example.com", "password": "brand-new-pw"})
+	resp = post(t, newClient(), srv.URL+"/api/v1/auth/login", map[string]string{"email": "forgetful@example.com", "password": "brand-new-pw1"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 	resp = post(t, laptop, srv.URL+"/api/v1/auth/refresh", nil)
@@ -126,7 +126,7 @@ func TestPasswordReset(t *testing.T) {
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 	forgot(t, srv.URL, "forgetful@example.com")
-	older := linkToken(t, lastEmailTo(t, "forgetful@example.com"), "/reset-password#")
+	older := linkToken(t, lastEmailTo(t, "forgetful@example.com"), "/reset-password/")
 	forgot(t, srv.URL, "forgetful@example.com")
 	resp = reset(t, srv.URL, older, "another-pw-1")
 	wantStatus(t, resp, http.StatusBadRequest)
@@ -134,7 +134,7 @@ func TestPasswordReset(t *testing.T) {
 
 	// An expired link doesn't work.
 	forgot(t, srv.URL, "forgetful@example.com")
-	expired := linkToken(t, lastEmailTo(t, "forgetful@example.com"), "/reset-password#")
+	expired := linkToken(t, lastEmailTo(t, "forgetful@example.com"), "/reset-password/")
 	if _, err := testPool.Exec(context.Background(), `UPDATE password_resets SET expires_at = now() - interval '1 second'`); err != nil {
 		t.Fatal(err)
 	}

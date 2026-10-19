@@ -4,6 +4,7 @@ import (
 	"net/mail"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -66,10 +67,8 @@ func ValidateName(name string) string {
 // ValidateNewPassword checks a new password and its confirmation, adding
 // messages for the "password" and "password_confirmation" fields.
 func ValidateNewPassword(fields map[string]string, password, confirmation string) {
-	if password == "" {
-		fields["password"] = "Password is required"
-	} else if len(password) < MinPasswordLength {
-		fields["password"] = "Password must be at least 8 characters"
+	if msg := passwordIssue(password); msg != "" {
+		fields["password"] = msg
 	}
 
 	if confirmation == "" {
@@ -155,6 +154,37 @@ func (r ResetRequest) Validate() map[string]string {
 	fields := map[string]string{}
 	ValidateNewPassword(fields, r.Password, r.PasswordConfirmation)
 	return fields
+}
+
+// passwordIssue reports why a new password is refused, or "" when it is
+// long enough and contains a letter and a number. Letters and numbers of
+// any alphabet count.
+func passwordIssue(password string) string {
+	switch {
+	case password == "":
+		return "Password is required"
+	case utf8.RuneCountInString(password) < MinPasswordLength:
+		return "Password must be at least 8 characters"
+	case !hasLetterAndNumber(password):
+		return "Password must include a letter and a number"
+	}
+	return ""
+}
+
+func hasLetterAndNumber(password string) bool {
+	var letter, number bool
+	for _, r := range password {
+		switch {
+		case unicode.IsLetter(r):
+			letter = true
+		case unicode.IsNumber(r):
+			number = true
+		}
+		if letter && number {
+			return true
+		}
+	}
+	return false
 }
 
 func validEmail(email string) bool {
