@@ -9,8 +9,7 @@ import (
 
 // emailInvite sends the invitation's link to the new member, in the owner's
 // language. The link goes only to the invited address: opening it is the
-// proof the email is theirs. The token rides in the fragment, which browsers
-// send to no server.
+// proof the email is theirs. The token is the last part of the link.
 func (s *Service) emailInvite(ctx context.Context, ownerID string, inv Invite, token string) error {
 	owner, err := s.repo.Person(ctx, ownerID)
 	if err != nil {
@@ -40,7 +39,7 @@ func (s *Service) emailInvite(ctx context.Context, ownerID string, inv Invite, t
 		Subject:    t("Join %s on Helpic", company),
 		Heading:    t("%s invited you to %s", who, company),
 		Paragraphs: []string{why},
-		Button:     &mail.Button{Text: t("Join the team"), URL: s.appURL + "/join#" + token},
+		Button:     &mail.Button{Text: t("Join the team"), URL: s.appURL + "/join/" + token},
 		Note:       t("The link works once, until %s. If you weren't expecting this, ignore this email.", i18n.Date(locale, inv.ExpiresAt)),
 	}); err != nil {
 		return err

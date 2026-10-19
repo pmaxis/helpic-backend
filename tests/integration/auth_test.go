@@ -200,7 +200,7 @@ func register(t *testing.T, c *http.Client, base, email, password string) *http.
 // confirmSignup opens the link the sign-up email carried and creates the account.
 func confirmSignup(t *testing.T, c *http.Client, base, email string) *http.Response {
 	t.Helper()
-	token := linkToken(t, lastEmailTo(t, strings.ToLower(email)), "/confirm-signup#")
+	token := linkToken(t, lastEmailTo(t, strings.ToLower(email)), "/confirm-signup/")
 	return post(t, c, base+"/api/v1/auth/signups/confirm", map[string]string{"token": token})
 }
 
@@ -220,7 +220,7 @@ func confirmed(t *testing.T, c *http.Client, base, email, password string) {
 func TestRegister_Success(t *testing.T) {
 	srv, c := newAPI(t)
 
-	resp := register(t, c, srv.URL, "User@Example.com", "supersecret")
+	resp := register(t, c, srv.URL, "User@Example.com", "supersecret1")
 	wantStatus(t, resp, http.StatusAccepted)
 	if got := decode(t, resp)["email"]; got != "user@example.com" {
 		t.Fatalf("email = %v, want normalized user@example.com", got)
@@ -228,7 +228,7 @@ func TestRegister_Success(t *testing.T) {
 
 	// The inbox has not confirmed it, so there is no account to sign in to.
 	resp = post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
-		"email": "user@example.com", "password": "supersecret",
+		"email": "user@example.com", "password": "supersecret1",
 	})
 	wantStatus(t, resp, http.StatusUnauthorized)
 	resp.Body.Close()
@@ -252,12 +252,12 @@ func TestRegister_Success(t *testing.T) {
 
 func TestRegister_NewRequestReplacesTheLink(t *testing.T) {
 	srv, c := newAPI(t)
-	resp := register(t, c, srv.URL, "again@example.com", "supersecret")
+	resp := register(t, c, srv.URL, "again@example.com", "supersecret1")
 	wantStatus(t, resp, http.StatusAccepted)
 	resp.Body.Close()
-	first := linkToken(t, lastEmailTo(t, "again@example.com"), "/confirm-signup#")
+	first := linkToken(t, lastEmailTo(t, "again@example.com"), "/confirm-signup/")
 
-	resp = register(t, c, srv.URL, "again@example.com", "supersecret")
+	resp = register(t, c, srv.URL, "again@example.com", "supersecret1")
 	wantStatus(t, resp, http.StatusAccepted)
 	resp.Body.Close()
 
@@ -272,7 +272,7 @@ func TestRegister_NewRequestReplacesTheLink(t *testing.T) {
 
 func TestRegister_InvalidEmail(t *testing.T) {
 	srv, c := newAPI(t)
-	resp := register(t, c, srv.URL, "not-an-email", "supersecret")
+	resp := register(t, c, srv.URL, "not-an-email", "supersecret1")
 	wantStatus(t, resp, http.StatusBadRequest)
 	if got := errorCode(decode(t, resp)); got != "VALIDATION_ERROR" {
 		t.Fatalf("code = %q, want VALIDATION_ERROR", got)
@@ -281,10 +281,12 @@ func TestRegister_InvalidEmail(t *testing.T) {
 
 func TestRegister_WeakPassword(t *testing.T) {
 	srv, c := newAPI(t)
-	resp := register(t, c, srv.URL, "weak@example.com", "short")
-	wantStatus(t, resp, http.StatusBadRequest)
-	if got := errorCode(decode(t, resp)); got != "VALIDATION_ERROR" {
-		t.Fatalf("code = %q, want VALIDATION_ERROR", got)
+	for _, password := range []string{"short", "longenough", "12345678"} {
+		resp := register(t, c, srv.URL, "weak@example.com", password)
+		wantStatus(t, resp, http.StatusBadRequest)
+		if got := errorCode(decode(t, resp)); got != "VALIDATION_ERROR" {
+			t.Fatalf("%q: code = %q, want VALIDATION_ERROR", password, got)
+		}
 	}
 }
 
@@ -292,7 +294,7 @@ func TestRegister_PasswordMismatch(t *testing.T) {
 	srv, c := newAPI(t)
 	resp := post(t, c, srv.URL+"/api/v1/auth/register", map[string]string{
 		"email":                 "mismatch@example.com",
-		"password":              "supersecret",
+		"password":              "supersecret1",
 		"password_confirmation": "different-secret",
 	})
 	wantStatus(t, resp, http.StatusBadRequest)
@@ -304,9 +306,9 @@ func TestRegister_PasswordMismatch(t *testing.T) {
 func TestRegister_DuplicateEmail(t *testing.T) {
 	srv, c := newAPI(t)
 
-	confirmed(t, c, srv.URL, "dupe@example.com", "supersecret")
+	confirmed(t, c, srv.URL, "dupe@example.com", "supersecret1")
 
-	second := register(t, c, srv.URL, "Dupe@example.com", "supersecret")
+	second := register(t, c, srv.URL, "Dupe@example.com", "supersecret1")
 	wantStatus(t, second, http.StatusConflict)
 	if got := errorCode(decode(t, second)); got != "EMAIL_ALREADY_EXISTS" {
 		t.Fatalf("code = %q, want EMAIL_ALREADY_EXISTS", got)
@@ -317,11 +319,11 @@ func TestRegister_DuplicateEmail(t *testing.T) {
 
 func TestLogin_Success(t *testing.T) {
 	srv, c := newAPI(t)
-	confirmed(t, c, srv.URL, "login@example.com", "supersecret")
+	confirmed(t, c, srv.URL, "login@example.com", "supersecret1")
 
 	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
 		"email":    "login@example.com",
-		"password": "supersecret",
+		"password": "supersecret1",
 	})
 	wantStatus(t, resp, http.StatusOK)
 
@@ -349,7 +351,7 @@ func TestLogin_Success(t *testing.T) {
 
 func TestLogin_WrongPassword(t *testing.T) {
 	srv, c := newAPI(t)
-	confirmed(t, c, srv.URL, "wrongpw@example.com", "supersecret")
+	confirmed(t, c, srv.URL, "wrongpw@example.com", "supersecret1")
 
 	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
 		"email":    "wrongpw@example.com",
@@ -365,7 +367,7 @@ func TestLogin_NonExistingEmail(t *testing.T) {
 	srv, c := newAPI(t)
 	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
 		"email":    "ghost@example.com",
-		"password": "supersecret",
+		"password": "supersecret1",
 	})
 	wantStatus(t, resp, http.StatusUnauthorized)
 	if got := errorCode(decode(t, resp)); got != "INVALID_CREDENTIALS" {
@@ -377,10 +379,10 @@ func TestLogin_NonExistingEmail(t *testing.T) {
 
 func TestMe_ValidSession(t *testing.T) {
 	srv, c := newAPI(t)
-	confirmed(t, c, srv.URL, "me@example.com", "supersecret")
+	confirmed(t, c, srv.URL, "me@example.com", "supersecret1")
 	post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
 		"email":    "me@example.com",
-		"password": "supersecret",
+		"password": "supersecret1",
 	}).Body.Close()
 
 	resp := get(t, c, srv.URL+"/api/v1/me")
@@ -418,7 +420,7 @@ func TestMe_InvalidJWT(t *testing.T) {
 
 func TestMe_ExpiredJWT(t *testing.T) {
 	srv, c := newAPI(t)
-	confirmed(t, c, srv.URL, "expired@example.com", "supersecret")
+	confirmed(t, c, srv.URL, "expired@example.com", "supersecret1")
 
 	var userID string
 	if err := testPool.QueryRow(context.Background(),
@@ -445,10 +447,10 @@ func TestMe_ExpiredJWT(t *testing.T) {
 
 func TestLogout_ClearsCookie(t *testing.T) {
 	srv, c := newAPI(t)
-	confirmed(t, c, srv.URL, "logout@example.com", "supersecret")
+	confirmed(t, c, srv.URL, "logout@example.com", "supersecret1")
 	post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{
 		"email":    "logout@example.com",
-		"password": "supersecret",
+		"password": "supersecret1",
 	}).Body.Close()
 
 	// Session works before logout.

@@ -22,7 +22,7 @@ func joinTeamAs(t *testing.T, srv *httptest.Server, owner *http.Client, email, r
 
 	member := newClient()
 	resp := post(t, member, srv.URL+"/api/v1/team-invites/accept", map[string]string{
-		"token": token, "name": "Max Member", "password": "membersecret", "password_confirmation": "membersecret",
+		"token": token, "name": "Max Member", "password": "membersecret1", "password_confirmation": "membersecret1",
 	})
 	wantStatus(t, resp, http.StatusOK)
 	if u := field(decode(t, resp), "user"); u["role"] != "client" || u["member_of"] == nil {
@@ -40,7 +40,7 @@ func teamInvite(t *testing.T, srv *httptest.Server, owner *http.Client, body map
 	if _, leaked := field(decode(t, resp), "invite")["token"]; leaked {
 		t.Fatal("the invite's token reached the owner")
 	}
-	return linkToken(t, lastEmailTo(t, body["email"]), "/join#")
+	return linkToken(t, lastEmailTo(t, body["email"]), "/join/")
 }
 
 // lookupTeamInvite opens the join page for the token.

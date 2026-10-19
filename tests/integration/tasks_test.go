@@ -42,7 +42,7 @@ func field(body map[string]any, key string) map[string]any {
 func signUpFreelancer(t *testing.T, srv *httptest.Server, email string) *http.Client {
 	t.Helper()
 	c := newClient()
-	confirmed(t, c, srv.URL, email, "supersecret")
+	confirmed(t, c, srv.URL, email, "supersecret1")
 	return c
 }
 
@@ -55,7 +55,7 @@ func invite(t *testing.T, srv *httptest.Server, freelancer *http.Client, email s
 	if _, leaked := field(decode(t, resp), "invitation")["token"]; leaked {
 		t.Fatal("the invitation's token reached the freelancer")
 	}
-	return linkToken(t, lastEmailTo(t, strings.ToLower(email)), "/invite#")
+	return linkToken(t, lastEmailTo(t, strings.ToLower(email)), "/invite/")
 }
 
 // lookupInvite opens the invitation page for the token.
@@ -80,7 +80,7 @@ func acceptNew(t *testing.T, srv *httptest.Server, token string) *http.Client {
 	t.Helper()
 	c := newClient()
 	resp := acceptInvite(t, srv, c, token, map[string]string{
-		"name": "Acme Inc", "password": "clientsecret", "password_confirmation": "clientsecret",
+		"name": "Acme Inc", "password": "clientsecret1", "password_confirmation": "clientsecret1",
 	})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
@@ -154,7 +154,7 @@ func TestInvitation_ExistingClientSignsInToAccept(t *testing.T) {
 	wantStatus(t, wrong, http.StatusBadRequest)
 	wrong.Body.Close()
 
-	resp = acceptInvite(t, srv, c, token, map[string]string{"password": "clientsecret"})
+	resp = acceptInvite(t, srv, c, token, map[string]string{"password": "clientsecret1"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 
