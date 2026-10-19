@@ -291,7 +291,7 @@ func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 // Delete handles DELETE /api/v1/reports/{id}.
 //
 //	@Summary		Delete a report
-//	@Description	Its freelancer, sent or not; a sent one is gone for the client too.
+//	@Description	Its freelancer, and only while it is a draft. A sent report stays with the client.
 //	@Tags			reports
 //	@Param			id	path	string	true	"Report ID"
 //	@Success		204	"No content"
@@ -323,6 +323,8 @@ func writeReport(w http.ResponseWriter, status int, rep Report, viewerID string,
 		response.Error(w, http.StatusConflict, response.CodeConflict, "Only a sent report that isn't paid yet can be marked as paid")
 	case errors.Is(err, ErrSent):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "This report was already sent and can't be changed")
+	case errors.Is(err, ErrKept):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "A sent report stays with your client. Only a draft can be deleted.")
 	case err != nil:
 		response.Internal(w, err)
 	default:

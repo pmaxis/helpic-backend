@@ -110,7 +110,7 @@ func newAPI(t *testing.T) (*httptest.Server, *http.Client) {
 func newAPIWith(t *testing.T, adjust func(*config.Config)) (*httptest.Server, *http.Client, *server.App) {
 	t.Helper()
 	if _, err := testPool.Exec(context.Background(),
-		"TRUNCATE users, emails RESTART IDENTITY CASCADE"); err != nil {
+		"TRUNCATE users, emails, rate_limit_buckets RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	cfg := testCfg

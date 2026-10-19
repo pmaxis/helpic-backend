@@ -61,7 +61,7 @@ func TestProfile_ChangeEmail(t *testing.T) {
 	if got := field(decode(t, get(t, c, srv.URL+"/api/v1/me")), "user")["email"]; got != "old@example.com" {
 		t.Fatalf("email changed before confirming: %v", got)
 	}
-	token := linkToken(t, lastEmailTo(t, "new@example.com"), "/confirm-email/")
+	token := linkToken(t, lastEmailTo(t, "new@example.com"), "/confirm-email#")
 
 	resp = confirm("not-a-token")
 	wantStatus(t, resp, http.StatusBadRequest)
@@ -88,7 +88,7 @@ func TestProfile_ChangeEmail(t *testing.T) {
 	resp = change("first@example.com", "supersecret")
 	wantStatus(t, resp, http.StatusAccepted)
 	resp.Body.Close()
-	first := linkToken(t, lastEmailTo(t, "first@example.com"), "/confirm-email/")
+	first := linkToken(t, lastEmailTo(t, "first@example.com"), "/confirm-email#")
 	resp = change("second@example.com", "supersecret")
 	wantStatus(t, resp, http.StatusAccepted)
 	resp.Body.Close()

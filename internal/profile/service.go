@@ -13,8 +13,13 @@ import (
 	"github.com/pmaxis/helpic/internal/user"
 )
 
-// ErrWrongPassword is returned when the current password doesn't match.
-var ErrWrongPassword = errors.New("current password is wrong")
+var (
+	// ErrWrongPassword is returned when the current password doesn't match.
+	ErrWrongPassword = errors.New("current password is wrong")
+	// ErrCurrencyLocked is returned when changing currency would relabel
+	// prices that already exist. Amounts are not converted.
+	ErrCurrencyLocked = errors.New("prices already exist in the current currency")
+)
 
 // sessions signs the user's other devices out. Implemented by *auth.Service.
 type sessions interface {
@@ -70,8 +75,24 @@ func (s *Service) SetLocale(ctx context.Context, userID, locale string) (user.Us
 	return s.repo.SetLocale(ctx, userID, locale)
 }
 
-// SetCurrency changes the currency a freelancer bills in.
+// SetCurrency changes the currency a freelancer bills in. It refuses while any
+// of their tasks still has a price: the number would keep its digits and only
+// the currency name would change.
 func (s *Service) SetCurrency(ctx context.Context, userID, currency string) (user.User, error) {
+	u, err := s.repo.Get(ctx, userID)
+	if err != nil {
+		return user.User{}, err
+	}
+	if u.Currency == currency {
+		return u, nil
+	}
+	priced, err := s.repo.HasPricedTasks(ctx, userID)
+	if err != nil {
+		return user.User{}, err
+	}
+	if priced {
+		return user.User{}, ErrCurrencyLocked
+	}
 	return s.repo.SetCurrency(ctx, userID, currency)
 }
 

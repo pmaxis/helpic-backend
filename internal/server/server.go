@@ -87,7 +87,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	authHandler := auth.NewHandler(authSvc, cookie)
 
 	// --- rate limits: slow down password guessing and sign-up spam -----------
-	lim := newLimits(cfg.RateLimit)
+	lim := newLimits(pool, cfg.RateLimit)
 	if lim.loginFailures != nil {
 		authHandler.LimitFailedLogins(lim.loginFailures)
 		authHandler.LimitResetRequests(lim.resetRequests)
@@ -140,7 +140,11 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	commentsHandler := comments.NewHandler(comments.NewService(comments.NewRepository(pool), tasksSvc))
 
 	// --- reports of work done, sent to clients ------------------------------
-	reportsHandler := reports.NewHandler(reports.NewService(reports.NewRepository(pool), notifier, tasksSvc))
+	zone := "UTC"
+	if cfg.Location != nil {
+		zone = cfg.Location.String()
+	}
+	reportsHandler := reports.NewHandler(reports.NewService(reports.NewRepository(pool), notifier, tasksSvc, zone))
 
 	// --- reminders before and after due dates ---------------------------------
 	remindersSvc := reminders.NewService(reminders.NewRepository(pool), notifier, cfg.Location, cfg.ReminderHour)
@@ -157,7 +161,11 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	r.Use(middleware.Recovery(!cfg.IsProduction()))
 	r.Use(middleware.CORS(cfg.CORSOrigin))
 
-	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		if err := pool.Ping(r.Context()); err != nil {
+			response.Error(w, http.StatusServiceUnavailable, response.CodeInternal, "The database is not reachable")
+			return
+		}
 		response.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 

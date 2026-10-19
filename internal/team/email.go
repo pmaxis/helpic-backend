@@ -2,7 +2,6 @@ package team
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/mail"
@@ -11,12 +10,11 @@ import (
 // emailInvite sends the invitation's link to the new member, in the owner's
 // language. The link goes only to the invited address: opening it is the
 // proof the email is theirs. The token rides in the fragment, which browsers
-// send to no server. A failure is only logged; the owner can invite again.
-func (s *Service) emailInvite(ctx context.Context, ownerID string, inv Invite, token string) {
+// send to no server.
+func (s *Service) emailInvite(ctx context.Context, ownerID string, inv Invite, token string) error {
 	owner, err := s.repo.Person(ctx, ownerID)
 	if err != nil {
-		slog.Error("failed to email team invite", "error", err)
-		return
+		return err
 	}
 	who := owner.Name
 	if who == "" {
@@ -24,8 +22,7 @@ func (s *Service) emailInvite(ctx context.Context, ownerID string, inv Invite, t
 	}
 	_, company, _, err := s.repo.Company(ctx, ownerID)
 	if err != nil {
-		slog.Error("failed to email team invite", "error", err)
-		return
+		return err
 	}
 	locale := i18n.FromContext(ctx)
 	t := func(text string, args ...any) string { return i18n.T(locale, text, args...) }
@@ -46,6 +43,7 @@ func (s *Service) emailInvite(ctx context.Context, ownerID string, inv Invite, t
 		Button:     &mail.Button{Text: t("Join the team"), URL: s.appURL + "/join#" + token},
 		Note:       t("The link works once, until %s. If you weren't expecting this, ignore this email.", i18n.Date(locale, inv.ExpiresAt)),
 	}); err != nil {
-		slog.Error("failed to email team invite", "error", err)
+		return err
 	}
+	return nil
 }

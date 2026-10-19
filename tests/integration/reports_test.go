@@ -83,19 +83,27 @@ func TestReports_MakeEditSend(t *testing.T) {
 	wantStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 
-	// The freelancer may still delete a sent report; the client loses it too.
+	// The task left in the sent report is not billed again. The one removed
+	// from the draft is free and comes back.
+	resp = post(t, freelancer, srv.URL+"/api/v1/reports", map[string]string{"client_id": clientID, "from": today, "to": today})
+	wantStatus(t, resp, http.StatusCreated)
+	if again := field(decode(t, resp), "report"); again["item_count"] != float64(1) {
+		t.Fatalf("second report = %v", again)
+	}
+
+	// A sent report stays, for the client as well.
 	resp = do(t, client, http.MethodDelete, srv.URL+"/api/v1/reports/"+id, nil)
 	wantStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 	resp = get(t, freelancer, srv.URL+"/api/v1/reports/"+id)
 	wantStatus(t, resp, http.StatusOK)
-	if got := field(decode(t, resp), "report"); got["can_delete"] != true || got["can_edit"] != false {
+	if got := field(decode(t, resp), "report"); got["can_delete"] != false || got["can_edit"] != false {
 		t.Fatalf("sent report for its freelancer = %v", got)
 	}
 	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/v1/reports/"+id, nil)
-	wantStatus(t, resp, http.StatusNoContent)
+	wantStatus(t, resp, http.StatusConflict)
 	resp.Body.Close()
-	wantStatus(t, get(t, client, srv.URL+"/api/v1/reports/"+id), http.StatusNotFound)
+	wantStatus(t, get(t, client, srv.URL+"/api/v1/reports/"+id), http.StatusOK)
 }
 
 func TestReports_Validation(t *testing.T) {
@@ -170,8 +178,19 @@ func TestReports_SeveralProjects(t *testing.T) {
 	}
 	today := time.Now().Format("2006-01-02")
 
+	// No project filter covers every finished task. Deleting the draft frees them.
+	resp := post(t, freelancer, srv.URL+"/api/v1/reports", map[string]any{"client_id": clientID, "from": today, "to": today})
+	wantStatus(t, resp, http.StatusCreated)
+	all := field(decode(t, resp), "report")
+	if items, _ := all["items"].([]any); len(items) != 3 || len(all["projects"].([]any)) != 0 {
+		t.Fatalf("all-projects report = %v", all)
+	}
+	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/v1/reports/"+all["id"].(string), nil)
+	wantStatus(t, resp, http.StatusNoContent)
+	resp.Body.Close()
+
 	// Two of the three projects: their tasks only, both named.
-	resp := post(t, freelancer, srv.URL+"/api/v1/reports", map[string]any{
+	resp = post(t, freelancer, srv.URL+"/api/v1/reports", map[string]any{
 		"client_id": clientID, "from": today, "to": today, "project_ids": []any{website["id"], branding["id"], website["id"]},
 	})
 	wantStatus(t, resp, http.StatusCreated)
@@ -191,10 +210,12 @@ func TestReports_SeveralProjects(t *testing.T) {
 	if got := field(decode(t, resp), "report"); !strings.HasPrefix(got["title"].(string), "Other") {
 		t.Fatalf("one-project report = %v", got)
 	}
+	// Those three tasks are already on a report, so another one does not bill them again.
 	resp = post(t, freelancer, srv.URL+"/api/v1/reports", map[string]any{"client_id": clientID, "from": today, "to": today})
 	wantStatus(t, resp, http.StatusCreated)
-	if got := field(decode(t, resp), "report"); len(got["items"].([]any)) != 3 || len(got["projects"].([]any)) != 0 {
-		t.Fatalf("all-projects report = %v", got)
+	again := field(decode(t, resp), "report")
+	if items, _ := again["items"].([]any); len(items) != 0 || len(again["projects"].([]any)) != 0 {
+		t.Fatalf("tasks already reported = %v", again)
 	}
 
 	// A project of another pair is refused.

@@ -2,6 +2,7 @@ package team
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -111,7 +112,12 @@ func (s *Service) Invite(ctx context.Context, userID string, p InviteParams) (In
 	if err != nil {
 		return Invite{}, err
 	}
-	s.emailInvite(ctx, userID, inv, token)
+	if err := s.emailInvite(ctx, userID, inv, token); err != nil {
+		if delErr := s.repo.DeleteInvite(ctx, companyID, inv.ID); delErr != nil {
+			slog.Error("failed to roll back team invite", "error", delErr)
+		}
+		return Invite{}, err
+	}
 	return inv, nil
 }
 

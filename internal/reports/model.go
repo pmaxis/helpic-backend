@@ -35,6 +35,8 @@ var (
 	ErrProjectMismatch = errors.New("project is not with this client")
 	// ErrSent is returned when changing a report that was already sent.
 	ErrSent = errors.New("report was already sent")
+	// ErrKept is returned when deleting a report the client has already been sent.
+	ErrKept = errors.New("a sent report is kept")
 	// ErrNoClient is returned when sending a personal report.
 	ErrNoClient = errors.New("a personal report has no one to send it to")
 )

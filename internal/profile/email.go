@@ -66,7 +66,7 @@ func (s *Service) RequestEmailChange(ctx context.Context, userID, email, current
 		Paragraphs: []string{
 			t("You asked to sign in to Helpic with %s instead of %s. Confirm it's yours, and it becomes your sign-in email.", email, u.Email),
 		},
-		Button: &mail.Button{Text: t("Confirm email"), URL: s.appURL + "/confirm-email/" + raw},
+		Button: &mail.Button{Text: t("Confirm email"), URL: s.appURL + "/confirm-email#" + raw},
 		Note:   t("The link works for 24 hours. If you didn't ask for this, ignore this email: nothing changes."),
 	})
 }
