@@ -26,8 +26,17 @@ var (
 	// ErrProjectNotFound is returned for a project the user doesn't take part in.
 	ErrProjectNotFound = errors.New("project not found")
 	// ErrProjectMismatch is returned when a task is moved to a project of
-	// another freelancer–client pair.
+	// another client.
 	ErrProjectMismatch = errors.New("project belongs to someone else")
+	// ErrFreelancerNotOnProject is returned when a task would be assigned to a
+	// freelancer who is not a participant of the project.
+	ErrFreelancerNotOnProject = errors.New("freelancer is not on the project")
+	// ErrNoProjectFreelancer is returned when a project task has no freelancer
+	// participant to assign.
+	ErrNoProjectFreelancer = errors.New("project has no freelancer")
+	// ErrChooseFreelancer is returned when a project has several freelancer
+	// participants and the task names none of them.
+	ErrChooseFreelancer = errors.New("choose a freelancer")
 	// ErrStatusNotFound is returned for an unknown workflow status.
 	ErrStatusNotFound = errors.New("status not found")
 	// ErrStatusMismatch is returned for a status of another workflow.

@@ -26,7 +26,7 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 const selectTask = `SELECT t.id, t.created_by, t.title, t.description, t.status, t.status_id, ws.name, t.position,
-		t.due_on, t.price_cents, f.currency, t.priority,
+		t.due_on, t.price_cents, coalesce(f.currency, 'USD'), t.priority,
 		coalesce((SELECT json_agg(json_build_object('id', l.id, 'name', l.name, 'color', l.color) ORDER BY lower(l.name))
 			FROM task_labels tl JOIN labels l ON l.id = tl.label_id WHERE tl.task_id = t.id), '[]'),
 		t.created_at, t.updated_at,
@@ -40,28 +40,39 @@ const selectTask = `SELECT t.id, t.created_by, t.title, t.description, t.status,
 			WHERE tp.task_id = t.id), '[]')
 	FROM tasks t
 	JOIN workflow_statuses ws ON ws.id = t.status_id
-	JOIN users f ON f.id = t.freelancer_id
+	LEFT JOIN users f ON f.id = t.freelancer_id
 	LEFT JOIN users c ON c.id = t.client_id
 	LEFT JOIN projects pr ON pr.id = t.project_id
 	LEFT JOIN users cr ON cr.id = t.created_by`
 
 func scanTask(row pgx.Row) (Task, error) {
 	var (
-		t                          Task
-		clientID, clientName, mail *string
-		projectID, projectName     *string
-		labels                     []byte
-		participants               []byte
+		t                                             Task
+		freelancerID, freelancerName, freelancerEmail *string
+		clientID, clientName, mail                    *string
+		projectID, projectName                        *string
+		labels                                        []byte
+		participants                                  []byte
 	)
 	err := row.Scan(&t.ID, &t.CreatedBy, &t.Title, &t.Description, &t.Status, &t.StatusID, &t.StatusName, &t.Position,
 		&t.DueOn, &t.PriceCents, &t.Currency, &t.Priority, &labels, &t.CreatedAt, &t.UpdatedAt,
-		&t.Freelancer.ID, &t.Freelancer.Name, &t.Freelancer.Email,
+		&freelancerID, &freelancerName, &freelancerEmail,
 		&clientID, &clientName, &mail, &projectID, &projectName,
 		&t.Creator.Name, &t.Creator.Email, &participants)
 	if err != nil {
 		return t, err
 	}
 	t.Creator.ID = t.CreatedBy
+	if freelancerID != nil {
+		name, email := "", ""
+		if freelancerName != nil {
+			name = *freelancerName
+		}
+		if freelancerEmail != nil {
+			email = *freelancerEmail
+		}
+		t.Freelancer = Party{ID: *freelancerID, Name: name, Email: email}
+	}
 	if err := json.Unmarshal(participants, &t.Participants); err != nil {
 		return t, fmt.Errorf("decode participants: %w", err)
 	}
@@ -106,17 +117,40 @@ func (r *Repository) IsContractor(ctx context.Context, userID string) (bool, err
 	return ok, nil
 }
 
-// ClientPeople lists the task's client side: the client first, then their
-// company's people by name, saying who is on the task already.
+// ClientPeople lists who can be on the task: freelancers who can take it, the
+// client, then the client's company, and who is on it already.
 func (r *Repository) ClientPeople(ctx context.Context, taskID string) ([]Person, error) {
-	rows, err := r.db.Query(ctx, `SELECT u.id, u.name, u.email, coalesce(m.role, 'owner'),
+	rows, err := r.db.Query(ctx, `SELECT u.id, u.name, u.email, j.role,
 			EXISTS (SELECT 1 FROM task_participants tp WHERE tp.task_id = t.id AND tp.user_id = u.id)
+				OR u.id IS NOT DISTINCT FROM t.freelancer_id
 		FROM tasks t
-		JOIN users u ON u.id = t.client_id
-			OR u.id IN (SELECT cm.user_id FROM company_members cm JOIN companies c ON c.id = cm.company_id WHERE c.owner_id = t.client_id)
-		LEFT JOIN company_members m ON m.user_id = u.id
+		JOIN (
+			SELECT t2.freelancer_id AS id, 'freelancer' AS role
+			FROM tasks t2 WHERE t2.id = $1 AND t2.freelancer_id IS NOT NULL
+			UNION
+			SELECT pp.user_id, 'freelancer'
+			FROM tasks t2
+			JOIN project_participants pp ON pp.project_id = t2.project_id
+			JOIN users fu ON fu.id = pp.user_id AND fu.role = 'freelancer'
+			WHERE t2.id = $1
+			UNION
+			SELECT fc.freelancer_id, 'freelancer'
+			FROM tasks t2
+			JOIN freelancer_clients fc ON fc.client_id = t2.client_id
+			WHERE t2.id = $1 AND t2.project_id IS NULL
+			UNION
+			SELECT t2.client_id, 'owner'
+			FROM tasks t2 WHERE t2.id = $1 AND t2.client_id IS NOT NULL
+			UNION
+			SELECT cm.user_id, cm.role
+			FROM tasks t2
+			JOIN companies c ON c.owner_id = t2.client_id
+			JOIN company_members cm ON cm.company_id = c.id
+			WHERE t2.id = $1
+		) j ON true
+		JOIN users u ON u.id = j.id
 		WHERE t.id = $1
-		ORDER BY u.id = t.client_id DESC, lower(u.name), u.email`, taskID)
+		ORDER BY j.role = 'freelancer' DESC, j.role = 'owner' DESC, lower(u.name), u.email`, taskID)
 	if err != nil {
 		return nil, fmt.Errorf("list client people: %w", err)
 	}
@@ -151,6 +185,62 @@ func (r *Repository) ClientSideParticipants(ctx context.Context, taskID, clientI
 func (r *Repository) AddParticipant(ctx context.Context, taskID, userID string) error {
 	if _, err := r.db.Exec(ctx, `SELECT note_participant($1, $2, now())`, taskID, userID); err != nil {
 		return fmt.Errorf("add participant: %w", err)
+	}
+	return nil
+}
+
+// AssignFreelancer sets who the task is for. An empty freelancerID takes the
+// assignee off; a personal task is never passed here. The previous assignee
+// leaves the participants unless they created the task.
+func (r *Repository) AssignFreelancer(ctx context.Context, taskID, freelancerID string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var old, createdBy, clientID, projectID string
+	err = tx.QueryRow(ctx, `SELECT coalesce(freelancer_id::text, ''), created_by::text,
+			coalesce(client_id::text, ''), coalesce(project_id::text, '')
+		FROM tasks WHERE id = $1`, taskID).Scan(&old, &createdBy, &clientID, &projectID)
+	if err != nil {
+		return fmt.Errorf("read task assignee: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE tasks SET freelancer_id = NULLIF($2, '')::uuid WHERE id = $1`, taskID, freelancerID); err != nil {
+		return fmt.Errorf("assign freelancer: %w", err)
+	}
+	if freelancerID != "" {
+		if _, err := tx.Exec(ctx, `SELECT note_participant($1, $2::uuid, now())`, taskID, freelancerID); err != nil {
+			return fmt.Errorf("note freelancer: %w", err)
+		}
+		if projectID == "" {
+			if _, err := tx.Exec(ctx, `SELECT ensure_workflow($1, NULLIF($2, '')::uuid)`, freelancerID, clientID); err != nil {
+				return fmt.Errorf("ensure workflow: %w", err)
+			}
+			if _, err := tx.Exec(ctx, `UPDATE tasks t SET status_id = picked.id, status = picked.category
+				FROM (
+					SELECT ws.id, ws.category
+					FROM tasks t2
+					JOIN workflow_statuses cur ON cur.id = t2.status_id
+					JOIN workflow_statuses ws ON ws.project_id IS NULL
+						AND ws.freelancer_id = t2.freelancer_id
+						AND ws.client_id IS NOT DISTINCT FROM t2.client_id
+					WHERE t2.id = $1
+					ORDER BY (ws.category = cur.category) DESC, (lower(ws.name) = lower(cur.name)) DESC, ws.position
+					LIMIT 1
+				) picked
+				WHERE t.id = $1 AND t.status_id IS DISTINCT FROM picked.id`, taskID); err != nil {
+				return fmt.Errorf("retarget status: %w", err)
+			}
+		}
+	}
+	if old != "" && old != freelancerID && old != createdBy {
+		if _, err := tx.Exec(ctx, `DELETE FROM task_participants WHERE task_id = $1 AND user_id::text = $2`, taskID, old); err != nil {
+			return fmt.Errorf("remove previous freelancer: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit assignee: %w", err)
 	}
 	return nil
 }
@@ -200,25 +290,63 @@ func (r *Repository) Get(ctx context.Context, userID, id string) (Task, error) {
 	return t, nil
 }
 
-// ProjectPair returns the freelancer and client (nil for a personal project)
-// of a project the user may put a task in, or ErrProjectNotFound. A company
-// person may file a task into the company's project before it is visible to
-// them; seeing the project is sees_project.
-func (r *Repository) ProjectPair(ctx context.Context, userID, projectID string) (string, *string, error) {
-	var (
-		freelancerID string
-		clientID     *string
-	)
-	err := r.db.QueryRow(ctx, `SELECT freelancer_id, client_id FROM projects
-		WHERE id::text = $1 AND (freelancer_id = $2 OR client_id = acting_client($2))`, projectID, userID).
-		Scan(&freelancerID, &clientID)
+// ProjectClient returns the client (nil for a personal project) of a project
+// the user may put a task in, or ErrProjectNotFound. A participant may, and so
+// may someone who acts for the project's client before they are invited.
+func (r *Repository) ProjectClient(ctx context.Context, userID, projectID string) (*string, error) {
+	var clientID *string
+	err := r.db.QueryRow(ctx, `SELECT client_id FROM projects
+		WHERE id::text = $1 AND (sees_project($2::uuid, id) OR client_id = acting_client($2::uuid))`,
+		projectID, userID).Scan(&clientID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil, ErrProjectNotFound
+		return nil, ErrProjectNotFound
 	}
 	if err != nil {
-		return "", nil, fmt.Errorf("get project pair: %w", err)
+		return nil, fmt.Errorf("get project: %w", err)
 	}
-	return freelancerID, clientID, nil
+	return clientID, nil
+}
+
+// FreelancerParticipants lists the freelancers on a project, earliest first.
+func (r *Repository) FreelancerParticipants(ctx context.Context, projectID string) ([]string, error) {
+	rows, err := r.db.Query(ctx, `SELECT pp.user_id::text
+		FROM project_participants pp
+		JOIN users u ON u.id = pp.user_id AND u.role = 'freelancer'
+		WHERE pp.project_id = $1::uuid
+		ORDER BY pp.created_at, pp.user_id`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list project freelancers: %w", err)
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, fmt.Errorf("scan project freelancers: %w", err)
+	}
+	return ids, nil
+}
+
+// Linked reports whether the freelancer works with the client.
+func (r *Repository) Linked(ctx context.Context, freelancerID, clientID string) (bool, error) {
+	var ok bool
+	err := r.db.QueryRow(ctx, `SELECT EXISTS (
+		SELECT 1 FROM freelancer_clients WHERE freelancer_id::text = $1 AND client_id::text = $2)`,
+		freelancerID, clientID).Scan(&ok)
+	if err != nil {
+		return false, fmt.Errorf("check link: %w", err)
+	}
+	return ok, nil
+}
+
+// IsFreelancerParticipant reports whether the user is a freelancer on the project.
+func (r *Repository) IsFreelancerParticipant(ctx context.Context, projectID, userID string) (bool, error) {
+	var ok bool
+	err := r.db.QueryRow(ctx, `SELECT EXISTS (
+		SELECT 1 FROM project_participants pp
+		JOIN users u ON u.id = pp.user_id AND u.role = 'freelancer'
+		WHERE pp.project_id = $1::uuid AND pp.user_id::text = $2)`, projectID, userID).Scan(&ok)
+	if err != nil {
+		return false, fmt.Errorf("check project freelancer: %w", err)
+	}
+	return ok, nil
 }
 
 // IsProjectAuthor reports whether the user created the project.
@@ -263,11 +391,23 @@ func (r *Repository) Status(ctx context.Context, statusID string) (WorkflowStatu
 // pickStatus selects the new task's status: the given one ($s) or, when $s is
 // empty, the workflow's first "new" column — or its first column at all when
 // the board has no "new" one. $f, $c and $p are the workflow, as uuid expressions.
+// A task in a project uses that project's columns, whichever freelancer it is
+// for. A task outside a project uses its pair's columns.
 const pickStatus = `SELECT id, category FROM workflow_statuses
-	WHERE freelancer_id = $f AND client_id IS NOT DISTINCT FROM $c
-	  AND project_id IS NOT DISTINCT FROM $p
+	WHERE (
+	    ($p IS NOT NULL AND project_id = $p)
+	    OR ($p IS NULL AND project_id IS NULL AND freelancer_id = $f AND client_id IS NOT DISTINCT FROM $c)
+	  )
 	  AND ($s = '' OR id::text = $s)
 	ORDER BY category = 'new' DESC, position LIMIT 1`
+
+// taskWorkflow matches a task's column: the project's, or the pair's when the
+// task is outside any project. t is the tasks alias.
+const taskWorkflow = `(
+	(t.project_id IS NOT NULL AND ws.project_id = t.project_id)
+	OR (t.project_id IS NULL AND ws.project_id IS NULL
+		AND ws.freelancer_id = t.freelancer_id AND ws.client_id IS NOT DISTINCT FROM t.client_id)
+)`
 
 // ensureTaskWorkflow creates the defaults of the workflow a new task lands
 // on: the project's, or the pair's when the task is outside any project.
@@ -375,9 +515,11 @@ func (r *Repository) Update(ctx context.Context, id, projectID string, p Params)
 			SELECT ws.id, ws.category
 			FROM tasks t2
 			JOIN workflow_statuses cur ON cur.id = t2.status_id
-			JOIN workflow_statuses ws ON ws.freelancer_id = t2.freelancer_id
-			  AND ws.client_id IS NOT DISTINCT FROM t2.client_id
-			  AND ws.project_id IS NOT DISTINCT FROM t2.project_id
+			JOIN workflow_statuses ws ON (
+				(t2.project_id IS NOT NULL AND ws.project_id = t2.project_id)
+				OR (t2.project_id IS NULL AND ws.project_id IS NULL
+					AND ws.freelancer_id = t2.freelancer_id AND ws.client_id IS NOT DISTINCT FROM t2.client_id)
+			)
 			WHERE t2.id = $1
 			ORDER BY (ws.category = cur.category) DESC, (lower(ws.name) = lower(cur.name)) DESC, ws.position
 			LIMIT 1
@@ -449,10 +591,7 @@ func (r *Repository) SetLabels(ctx context.Context, id string, labelIDs []string
 func (r *Repository) SetStatus(ctx context.Context, id, from, to string) error {
 	var statusID *string
 	err := r.db.QueryRow(ctx, `SELECT ws.id FROM tasks t
-		JOIN workflow_statuses ws ON ws.freelancer_id = t.freelancer_id
-		  AND ws.client_id IS NOT DISTINCT FROM t.client_id
-		  AND ws.project_id IS NOT DISTINCT FROM t.project_id
-		  AND ws.category = $2
+		JOIN workflow_statuses ws ON `+taskWorkflow+` AND ws.category = $2
 		WHERE t.id = $1
 		ORDER BY ws.position LIMIT 1`, id, to).Scan(&statusID)
 	if errors.Is(err, pgx.ErrNoRows) {

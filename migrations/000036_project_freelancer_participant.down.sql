@@ -1,0 +1,2 @@
+-- The added participants stay: an invited freelancer cannot be told apart
+-- from one added by this migration.

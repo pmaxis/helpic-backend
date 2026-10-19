@@ -44,8 +44,11 @@ func (s *Service) Tell(ctx context.Context, actorID string, t Task, kind, detail
 	if t.Client == nil {
 		return
 	}
-	recipients := []string{t.Freelancer.ID}
-	if actorID == t.Freelancer.ID {
+	recipients := []string{}
+	if t.Freelancer.ID != "" && actorID != t.Freelancer.ID {
+		recipients = append(recipients, t.Freelancer.ID)
+	}
+	if actorID == t.Freelancer.ID || t.Freelancer.ID == "" {
 		recipients = []string{t.Client.ID}
 		people, err := s.repo.ClientSideParticipants(ctx, t.ID, t.Client.ID)
 		if err != nil {
@@ -106,7 +109,7 @@ func (s *Service) AddParticipant(ctx context.Context, userID, id, personID strin
 		return Task{}, err
 	}
 	i := slices.IndexFunc(people, func(p Person) bool { return p.ID == personID })
-	if i < 0 {
+	if i < 0 || people[i].Role == "freelancer" {
 		return Task{}, ErrNotClientSide
 	}
 	if people[i].OnTask {
@@ -117,6 +120,58 @@ func (s *Service) AddParticipant(ctx context.Context, userID, id, personID strin
 	}
 	if personID != userID {
 		n := notifications.Notification{UserID: personID, ActorID: userID, Kind: notifications.KindParticipantAdded, TaskID: t.ID, Subject: t.Title}
+		if t.Project != nil {
+			n.ProjectID = t.Project.ID
+		}
+		s.notify.Notify(ctx, n)
+	}
+	return s.repo.Get(ctx, userID, id)
+}
+
+// AssignFreelancer makes a freelancer the task's assignee, or clears the
+// assignee when freelancerID is empty. The creator stays a participant either
+// way. A personal task keeps its freelancer.
+func (s *Service) AssignFreelancer(ctx context.Context, userID, id, freelancerID string) (Task, error) {
+	t, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return Task{}, err
+	}
+	if t.Client == nil {
+		return Task{}, ErrKeepParticipant
+	}
+	if ok, err := s.canChangePeople(ctx, t, userID); err != nil || !ok {
+		if err == nil {
+			err = ErrPeopleNotAllowed
+		}
+		return Task{}, err
+	}
+	if freelancerID == t.Freelancer.ID {
+		return t, nil
+	}
+	if freelancerID != "" {
+		if t.Project != nil {
+			on, err := s.repo.IsFreelancerParticipant(ctx, t.Project.ID, freelancerID)
+			if err != nil {
+				return Task{}, err
+			}
+			if !on {
+				return Task{}, ErrFreelancerNotOnProject
+			}
+		} else {
+			linked, err := s.repo.Linked(ctx, freelancerID, t.Client.ID)
+			if err != nil {
+				return Task{}, err
+			}
+			if !linked {
+				return Task{}, ErrNotLinked
+			}
+		}
+	}
+	if err := s.repo.AssignFreelancer(ctx, t.ID, freelancerID); err != nil {
+		return Task{}, err
+	}
+	if freelancerID != "" && freelancerID != userID {
+		n := notifications.Notification{UserID: freelancerID, ActorID: userID, Kind: notifications.KindParticipantAdded, TaskID: t.ID, Subject: t.Title}
 		if t.Project != nil {
 			n.ProjectID = t.Project.ID
 		}
@@ -160,7 +215,7 @@ func (s *Service) Get(ctx context.Context, userID, id string) (Task, error) {
 // Create adds a task between the user and someone they work with: a client
 // names the freelancer (p.FreelancerID), a freelancer names the client
 // (p.ClientID) or leaves it empty for a personal task. A task in a project
-// takes the project's freelancer and client instead.
+// takes that project's client, and a freelancer who is on the project.
 func (s *Service) Create(ctx context.Context, userID, role string, p Params) (Task, error) {
 	freelancerID, clientID := p.FreelancerID, userID
 	if role == user.RoleFreelancer {
@@ -175,14 +230,39 @@ func (s *Service) Create(ctx context.Context, userID, role string, p Params) (Ta
 	}
 	projectID := deref(p.ProjectID)
 	if projectID != "" {
-		pf, pc, err := s.repo.ProjectPair(ctx, userID, projectID)
+		pc, err := s.repo.ProjectClient(ctx, userID, projectID)
 		if err != nil {
 			return Task{}, err
 		}
-		freelancerID, clientID = pf, deref(pc)
+		clientID = deref(pc)
+		if role == user.RoleFreelancer {
+			freelancerID = userID
+		} else if p.FreelancerID != "" {
+			freelancerID = p.FreelancerID
+		} else {
+			ids, err := s.repo.FreelancerParticipants(ctx, projectID)
+			if err != nil {
+				return Task{}, err
+			}
+			switch len(ids) {
+			case 0:
+				return Task{}, ErrNoProjectFreelancer
+			case 1:
+				freelancerID = ids[0]
+			default:
+				return Task{}, ErrChooseFreelancer
+			}
+		}
+		on, err := s.repo.IsFreelancerParticipant(ctx, projectID, freelancerID)
+		if err != nil {
+			return Task{}, err
+		}
+		if !on {
+			return Task{}, ErrFreelancerNotOnProject
+		}
 	}
 
-	// Straight into a board column: it must be on this pair's board. The project's
+	// Straight into a board column: it must be on this task's board. The project's
 	// author and the freelancer may use any status; everyone else only one
 	// that isn't done.
 	if p.StatusID != "" {
@@ -190,7 +270,7 @@ func (s *Service) Create(ctx context.Context, userID, role string, p Params) (Ta
 		if err != nil {
 			return Task{}, err
 		}
-		if st.FreelancerID != freelancerID || deref(st.ClientID) != clientID || st.ProjectID != projectID {
+		if !statusOnTask(st, freelancerID, clientID, projectID) {
 			return Task{}, ErrStatusMismatch
 		}
 		manager := role == user.RoleFreelancer
@@ -244,7 +324,7 @@ func (s *Service) Update(ctx context.Context, userID, id string, p Params) (Task
 	if p.ProjectID != nil && *p.ProjectID != projectID {
 		projectID = *p.ProjectID
 		if projectID != "" {
-			pf, pc, err := s.repo.ProjectPair(ctx, userID, projectID)
+			pc, err := s.repo.ProjectClient(ctx, userID, projectID)
 			if err != nil {
 				return Task{}, err
 			}
@@ -252,8 +332,15 @@ func (s *Service) Update(ctx context.Context, userID, id string, p Params) (Task
 			if t.Client != nil {
 				taskClient = t.Client.ID
 			}
-			if pf != t.Freelancer.ID || deref(pc) != taskClient {
+			if deref(pc) != taskClient {
 				return Task{}, ErrProjectMismatch
+			}
+			on, err := s.repo.IsFreelancerParticipant(ctx, projectID, t.Freelancer.ID)
+			if err != nil {
+				return Task{}, err
+			}
+			if !on {
+				return Task{}, ErrFreelancerNotOnProject
 			}
 		}
 	}
@@ -420,7 +507,7 @@ func (s *Service) MoveTo(ctx context.Context, userID, role, id, statusID string)
 	if t.Project != nil {
 		taskProject = t.Project.ID
 	}
-	if st.FreelancerID != t.Freelancer.ID || deref(st.ClientID) != taskClient || st.ProjectID != taskProject {
+	if !statusOnTask(st, t.Freelancer.ID, taskClient, taskProject) {
 		return Task{}, ErrStatusMismatch
 	}
 	if statusID == t.StatusID {
@@ -463,6 +550,15 @@ func (s *Service) recordStatus(ctx context.Context, actorID string, before, afte
 
 func samePrice(a, b *int64) bool {
 	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
+}
+
+// statusOnTask reports whether a column is on the task's board: the project's
+// columns when it is in one, the pair's columns otherwise.
+func statusOnTask(st WorkflowStatus, freelancerID, clientID, projectID string) bool {
+	if projectID != "" {
+		return st.ProjectID == projectID
+	}
+	return st.FreelancerID == freelancerID && deref(st.ClientID) == clientID && st.ProjectID == ""
 }
 
 func deref(s *string) string {

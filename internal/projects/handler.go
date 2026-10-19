@@ -197,7 +197,7 @@ func (h *Handler) People(w http.ResponseWriter, r *http.Request) {
 // Invite handles POST /api/v1/projects/{id}/participants.
 //
 //	@Summary		Invite someone to a project
-//	@Description	The author only. A freelancer, an employee or a contractor; they're notified and can see the project.
+//	@Description	The author only. One person (user_id) or several (user_ids). They're notified and can see the project.
 //	@Tags			projects
 //	@Accept			json
 //	@Produce		json
@@ -218,7 +218,7 @@ func (h *Handler) Invite(w http.ResponseWriter, r *http.Request) {
 	if !request.Decode(w, r, &req) {
 		return
 	}
-	participants, candidates, err := h.svc.Invite(r.Context(), userID, chi.URLParam(r, "id"), req.UserID)
+	participants, candidates, err := h.svc.Invite(r.Context(), userID, chi.URLParam(r, "id"), req.IDs())
 	writePeople(w, http.StatusOK, participants, candidates, err)
 }
 
@@ -251,7 +251,10 @@ func writePeople(w http.ResponseWriter, status int, participants, candidates []P
 	case errors.Is(err, ErrNotOwner):
 		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the project's author can change its participants")
 	case errors.Is(err, ErrNotInvitable):
-		response.ValidationError(w, map[string]string{"user_id": "This person can't be invited to the project"})
+		response.ValidationError(w, map[string]string{
+			"user_id":  "This person can't be invited to the project",
+			"user_ids": "This person can't be invited to the project",
+		})
 	case errors.Is(err, ErrKeepAuthor):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "The project's author stays")
 	case err != nil:

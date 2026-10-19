@@ -3,6 +3,7 @@ package tasks
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -35,6 +36,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Put("/{id}/labels", h.SetLabels)
 		r.Get("/{id}/history", h.History)
 		r.Get("/{id}/people", h.People)
+		r.Put("/{id}/freelancer", h.AssignFreelancer)
 		r.Post("/{id}/participants", h.AddParticipant)
 		r.Delete("/{id}/participants/{userID}", h.RemoveParticipant)
 	})
@@ -286,6 +288,36 @@ func (h *Handler) SetLabels(w http.ResponseWriter, r *http.Request) {
 	writeTask(w, http.StatusOK, t, role, userID, err)
 }
 
+// AssignFreelancer handles PUT /api/v1/tasks/{id}/freelancer.
+//
+//	@Summary		Change a task's freelancer
+//	@Description	An empty freelancer_id takes the assignee off. The task's author stays a participant.
+//	@Tags			tasks
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Task ID"
+//	@Param			body	body		object					true	"freelancer_id"
+//	@Success		200		{object}	map[string]DTO			"task"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Not a freelancer on the project"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/tasks/{id}/freelancer [put]
+func (h *Handler) AssignFreelancer(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		FreelancerID string `json:"freelancer_id"`
+	}
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	t, err := h.svc.AssignFreelancer(r.Context(), userID, chi.URLParam(r, "id"), strings.TrimSpace(req.FreelancerID))
+	writeTask(w, http.StatusOK, t, role, userID, err)
+}
+
 // People handles GET /api/v1/tasks/{id}/people: who on the client's side can
 // be on the task.
 //
@@ -443,6 +475,14 @@ func writeTask(w http.ResponseWriter, status int, t Task, role, viewerID string,
 		response.ValidationError(w, map[string]string{"project_id": "Project not found"})
 	case errors.Is(err, ErrProjectMismatch):
 		response.ValidationError(w, map[string]string{"project_id": "This project is with someone else"})
+	case errors.Is(err, ErrNotLinked):
+		response.ValidationError(w, map[string]string{"freelancer_id": "You don't work with this freelancer"})
+	case errors.Is(err, ErrFreelancerNotOnProject):
+		response.ValidationError(w, map[string]string{"freelancer_id": "This freelancer isn't on the project"})
+	case errors.Is(err, ErrNoProjectFreelancer):
+		response.ValidationError(w, map[string]string{"project_id": "Add a freelancer to the project first"})
+	case errors.Is(err, ErrChooseFreelancer):
+		response.ValidationError(w, map[string]string{"freelancer_id": "Choose a freelancer"})
 	case errors.Is(err, ErrNotFound):
 		response.Error(w, http.StatusNotFound, response.CodeNotFound, "Task not found")
 	case errors.Is(err, ErrEditNotAllowed):

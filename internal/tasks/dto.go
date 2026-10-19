@@ -215,8 +215,9 @@ type ProjectDTO struct {
 // DTO is a task as one of its sides sees it. NextStatuses, CanEdit and
 // CanDelete describe what that viewer may do.
 type DTO struct {
-	ID         string   `json:"id"`
-	Freelancer PartyDTO `json:"freelancer"`
+	ID string `json:"id"`
+	// Freelancer is null while the task has no assignee.
+	Freelancer *PartyDTO `json:"freelancer"`
 	// Client is null for a personal task.
 	Client *PartyDTO `json:"client"`
 	// Project is null for a task outside any project.
@@ -258,7 +259,6 @@ type DTO struct {
 func ToDTO(t Task, role, viewerID string) DTO {
 	d := DTO{
 		ID:           t.ID,
-		Freelancer:   PartyDTO(t.Freelancer),
 		CreatedBy:    t.CreatedBy,
 		Creator:      PartyDTO(t.Creator),
 		StatusID:     t.StatusID,
@@ -278,6 +278,10 @@ func ToDTO(t Task, role, viewerID string) DTO {
 		CanSeePrice:  CanSeePrice(t, viewerID),
 		CreatedAt:    t.CreatedAt,
 		UpdatedAt:    t.UpdatedAt,
+	}
+	if t.Freelancer.ID != "" {
+		f := PartyDTO(t.Freelancer)
+		d.Freelancer = &f
 	}
 	if t.Client != nil {
 		c := PartyDTO(*t.Client)

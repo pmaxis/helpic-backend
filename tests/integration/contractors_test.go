@@ -93,22 +93,22 @@ func TestContractors(t *testing.T) {
 	resp = get(t, owner, srv.URL+"/api/v1/projects/"+otherID+"/people")
 	wantStatus(t, resp, http.StatusOK)
 	people := decode(t, resp)
-	var authorOn, freelancerOff, memberOff bool
+	var authorOn, freelancerOn, memberOff bool
 	for _, x := range people["participants"].([]any) {
-		if x.(map[string]any)["role"] == "owner" {
+		role := x.(map[string]any)["role"]
+		if role == "owner" {
 			authorOn = true
+		}
+		if role == "freelancer" {
+			freelancerOn = true
 		}
 	}
 	for _, x := range people["candidates"].([]any) {
-		role := x.(map[string]any)["role"]
-		if role == "freelancer" {
-			freelancerOff = true
-		}
-		if x.(map[string]any)["id"] == myID(t, srv, member) && role == "member" {
+		if x.(map[string]any)["id"] == myID(t, srv, member) && x.(map[string]any)["role"] == "member" {
 			memberOff = true
 		}
 	}
-	if !authorOn || !freelancerOff || !memberOff {
+	if !authorOn || !freelancerOn || !memberOff {
 		t.Fatalf("project people = %v", people)
 	}
 
@@ -134,7 +134,7 @@ func TestContractors(t *testing.T) {
 	// Added to the owner's task, they're told and see it.
 	resp = get(t, owner, ownerTaskURL+"/people")
 	wantStatus(t, resp, http.StatusOK)
-	if people, _ := decode(t, resp)["people"].([]any); len(people) != 3 || people[0].(map[string]any)["role"] != "owner" {
+	if people, _ := decode(t, resp)["people"].([]any); len(people) != 4 || people[0].(map[string]any)["role"] != "freelancer" {
 		t.Fatalf("people = %v", people)
 	}
 	resp = post(t, owner, ownerTaskURL+"/participants", map[string]string{"user_id": contractorID})
