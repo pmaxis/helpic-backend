@@ -32,7 +32,15 @@ func selectProject(viewer string) string {
 			AND sees_task(` + viewer + `, t.id, t.freelancer_id, t.client_id)),
 		(SELECT count(*) FROM tasks t WHERE t.project_id = p.id
 			AND sees_task(` + viewer + `, t.id, t.freelancer_id, t.client_id)),
-		coalesce((SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email)
+		coalesce((SELECT json_agg(json_build_object(
+				'id', u.id, 'name', u.name, 'email', u.email,
+				'role', CASE
+					WHEN u.role = 'freelancer' THEN 'freelancer'
+					WHEN u.id = p.client_id THEN 'owner'
+					ELSE coalesce((SELECT m.role FROM company_members m
+						JOIN companies co ON co.id = m.company_id
+						WHERE m.user_id = u.id AND co.owner_id = p.client_id), 'member')
+				END)
 				ORDER BY u.id = p.created_by DESC, lower(u.name), u.email)
 			FROM project_participants pp JOIN users u ON u.id = pp.user_id
 			WHERE pp.project_id = p.id), '[]')
@@ -142,29 +150,36 @@ func (r *Repository) CreatePersonal(ctx context.Context, freelancerID string, p 
 	return id, nil
 }
 
-// Create inserts a project between a linked freelancer and client; when they
-// aren't linked it returns ErrNotLinked. Only the author is a participant.
-// They invite the freelancer, the client, an employee or a contractor.
-func (r *Repository) Create(ctx context.Context, freelancerID, clientID, createdBy string, p Params) (string, error) {
+// Create inserts a project between a client and the freelancers they chose.
+// freelancerIDs[0] is stored on the project; every one of them, and the
+// author, start as participants. Anyone who isn't linked yields ErrNotLinked.
+func (r *Repository) Create(ctx context.Context, freelancerIDs []string, clientID, createdBy string, p Params) (string, error) {
+	if len(freelancerIDs) == 0 {
+		return "", ErrNotLinked
+	}
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return "", fmt.Errorf("begin: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	var id string
-	err = tx.QueryRow(ctx, `INSERT INTO projects (freelancer_id, client_id, created_by, name, description)
-		SELECT fc.freelancer_id, fc.client_id, $3, $4, $5
-		FROM freelancer_clients fc
-		WHERE fc.freelancer_id::text = $1 AND fc.client_id::text = $2
-		RETURNING id`, freelancerID, clientID, createdBy, p.Name, p.Description).Scan(&id)
-	if errors.Is(err, pgx.ErrNoRows) {
+	var linked int
+	if err = tx.QueryRow(ctx, `SELECT count(*) FROM freelancer_clients
+		WHERE client_id::text = $1 AND freelancer_id::text = ANY($2::text[])`, clientID, freelancerIDs).Scan(&linked); err != nil {
+		return "", fmt.Errorf("check links: %w", err)
+	}
+	if linked != len(freelancerIDs) {
 		return "", ErrNotLinked
 	}
+
+	var id string
+	err = tx.QueryRow(ctx, `INSERT INTO projects (freelancer_id, client_id, created_by, name, description)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id`, freelancerIDs[0], clientID, createdBy, p.Name, p.Description).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("create project: %w", err)
 	}
-	if err := addParticipants(ctx, tx, id, createdBy, createdBy); err != nil {
+	if err := addParticipants(ctx, tx, id, createdBy, append([]string{createdBy}, freelancerIDs...)...); err != nil {
 		return "", err
 	}
 	if _, err := tx.Exec(ctx, `SELECT ensure_project_workflow($1)`, id); err != nil {
@@ -176,13 +191,18 @@ func (r *Repository) Create(ctx context.Context, freelancerID, clientID, created
 	return id, nil
 }
 
-// whoCanJoin is the project's freelancer, its client, and the client's
-// employees and contractors — the people the author may invite.
+// whoCanJoin is every freelancer the client works with, the client, and the
+// client's employees and contractors. A personal project has only its freelancer.
 const whoCanJoin = `
-	SELECT p.freelancer_id AS id, 'freelancer' AS role FROM projects p WHERE p.id = $1::uuid
-	UNION ALL
+	SELECT fc.freelancer_id AS id, 'freelancer' AS role
+	FROM projects p
+	JOIN freelancer_clients fc ON fc.client_id = p.client_id
+	WHERE p.id = $1::uuid
+	UNION
+	SELECT p.freelancer_id, 'freelancer' FROM projects p WHERE p.id = $1::uuid AND p.client_id IS NULL
+	UNION
 	SELECT p.client_id, 'owner' FROM projects p WHERE p.id = $1::uuid AND p.client_id IS NOT NULL
-	UNION ALL
+	UNION
 	SELECT m.user_id, m.role
 	FROM projects p
 	JOIN companies c ON c.owner_id = p.client_id
@@ -300,16 +320,15 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	var freelancerID string
-	var clientID *string
-	err = tx.QueryRow(ctx, `SELECT freelancer_id, client_id FROM projects WHERE id = $1`, id).Scan(&freelancerID, &clientID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
+	var exists bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM projects WHERE id = $1)`, id).Scan(&exists); err != nil {
 		return fmt.Errorf("get project: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `SELECT ensure_workflow($1, $2)`, freelancerID, clientID); err != nil {
+	if !exists {
+		return nil
+	}
+	if _, err := tx.Exec(ctx, `SELECT ensure_workflow(freelancer_id, client_id)
+		FROM (SELECT DISTINCT freelancer_id, client_id FROM tasks WHERE project_id = $1) pairs`, id); err != nil {
 		return fmt.Errorf("ensure workflow: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE tasks t

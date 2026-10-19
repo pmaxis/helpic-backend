@@ -106,7 +106,13 @@ func (s *Service) Board(ctx context.Context, userID, role string, sc Scope) (Pai
 	if err != nil {
 		return Pair{}, nil, false, err
 	}
-	list, err := s.tasks.List(ctx, userID, role, tasks.Filter{CounterpartID: counterpart(p, role), ProjectID: sc.ProjectID})
+	// On a project the client sees every freelancer's tasks. A freelancer's list
+	// is already limited to their own.
+	filter := tasks.Filter{ProjectID: sc.ProjectID, CounterpartID: counterpart(p, role)}
+	if sc.ProjectID != "" && role == user.RoleClient {
+		filter.CounterpartID = ""
+	}
+	list, err := s.tasks.List(ctx, userID, role, filter)
 	if err != nil {
 		return Pair{}, nil, false, err
 	}

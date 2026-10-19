@@ -1,0 +1,1 @@
+ALTER TABLE tasks ALTER COLUMN freelancer_id SET NOT NULL;

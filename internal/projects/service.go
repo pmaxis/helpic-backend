@@ -57,17 +57,29 @@ func (s *Service) Create(ctx context.Context, userID, role string, p Params) (Pr
 		// A company member starts projects for the company: its owner is the client.
 		var clientID string
 		if clientID, err = s.repo.ActingClient(ctx, userID); err == nil {
-			id, err = s.repo.Create(ctx, p.FreelancerID, clientID, userID, p)
+			id, err = s.repo.Create(ctx, p.FreelancerIDs, clientID, userID, p)
 		}
 	case p.ClientID == "":
 		id, err = s.repo.CreatePersonal(ctx, userID, p)
 	default:
-		id, err = s.repo.Create(ctx, userID, p.ClientID, userID, p)
+		id, err = s.repo.Create(ctx, []string{userID}, p.ClientID, userID, p)
 	}
 	if err != nil {
 		return Project{}, err
 	}
-	return s.repo.Get(ctx, userID, id)
+	created, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return Project{}, err
+	}
+	// Choosing freelancers at creation puts them on the project, the same as an invitation.
+	for _, person := range created.Participants {
+		if person.Role == "freelancer" && person.ID != userID {
+			s.notify.Notify(ctx, notifications.Notification{
+				UserID: person.ID, ActorID: userID, Kind: notifications.KindProjectInvited, ProjectID: created.ID, Subject: created.Name,
+			})
+		}
+	}
+	return created, nil
 }
 
 // Update renames or re-describes a project; only its creator may.
@@ -106,22 +118,32 @@ func (s *Service) People(ctx context.Context, userID, id string) (participants, 
 	return participants, candidates, err
 }
 
-// Invite adds someone the author chose. They're told, and the project is
-// theirs to see from now on. The role doesn't matter: a freelancer, an
+// Invite adds the people the author chose. Each one is told, and the project
+// is theirs to see from now on. The role doesn't matter: a freelancer, an
 // employee and a contractor are invited the same way.
-func (s *Service) Invite(ctx context.Context, userID, id, personID string) ([]Person, []Person, error) {
+func (s *Service) Invite(ctx context.Context, userID, id string, personIDs []string) ([]Person, []Person, error) {
 	p, err := s.owned(ctx, userID, id)
 	if err != nil {
 		return nil, nil, err
 	}
-	added, err := s.repo.Invite(ctx, id, personID, userID)
-	if err != nil {
-		return nil, nil, err
+	if len(personIDs) == 0 {
+		return nil, nil, ErrNotInvitable
 	}
-	if added && personID != userID {
-		s.notify.Notify(ctx, notifications.Notification{
-			UserID: personID, ActorID: userID, Kind: notifications.KindProjectInvited, ProjectID: p.ID, Subject: p.Name,
-		})
+	seen := map[string]bool{}
+	for _, personID := range personIDs {
+		if personID == "" || seen[personID] {
+			continue
+		}
+		seen[personID] = true
+		added, err := s.repo.Invite(ctx, id, personID, userID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if added && personID != userID {
+			s.notify.Notify(ctx, notifications.Notification{
+				UserID: personID, ActorID: userID, Kind: notifications.KindProjectInvited, ProjectID: p.ID, Subject: p.Name,
+			})
+		}
 	}
 	return s.People(ctx, userID, id)
 }

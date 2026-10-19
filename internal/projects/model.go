@@ -39,11 +39,13 @@ type Person struct {
 // PersonalFilter is the counterpart filter value that selects personal projects.
 const PersonalFilter = "personal"
 
-// Party is one side of a project.
+// Party is one side of a project, or someone on it.
 type Party struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
+	// Role is set for a participant: "freelancer", "owner", "member" or "contractor".
+	Role string `json:"role,omitempty"`
 }
 
 // Project groups tasks between the same freelancer and client.
