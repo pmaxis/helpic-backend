@@ -3,6 +3,7 @@ package clients
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -86,7 +87,12 @@ func (s *Service) Invite(ctx context.Context, freelancerID string, p InviteParam
 	if err != nil {
 		return Invitation{}, err
 	}
-	s.emailInvitation(ctx, freelancerID, inv, token)
+	if err := s.emailInvitation(ctx, freelancerID, inv, token); err != nil {
+		if delErr := s.repo.DeleteInvitation(ctx, freelancerID, inv.ID); delErr != nil {
+			slog.Error("failed to roll back invitation", "error", delErr)
+		}
+		return Invitation{}, err
+	}
 	return inv, nil
 }
 

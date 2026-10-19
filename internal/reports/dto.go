@@ -192,7 +192,7 @@ type DTO struct {
 	CanEdit bool `json:"can_edit"`
 	// CanMarkPaid is true for the client of a sent, unpaid report.
 	CanMarkPaid bool `json:"can_mark_paid"`
-	// CanDelete is true for the freelancer, sent or not.
+	// CanDelete is true for the freelancer while the report is a draft.
 	CanDelete bool      `json:"can_delete"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -220,7 +220,7 @@ func ToDTO(r Report, viewerID string) DTO {
 		ItemCount:   r.ItemCount,
 		Currency:    r.Currency,
 		CanEdit:     r.Freelancer.ID == viewerID && r.Status == StatusDraft,
-		CanDelete:   r.Freelancer.ID == viewerID,
+		CanDelete:   r.Freelancer.ID == viewerID && r.Status == StatusDraft,
 		CanMarkPaid: r.Client != nil && r.Client.ID == viewerID && r.Status == StatusSent,
 		TotalCents:  r.ListTotal,
 		CreatedAt:   r.CreatedAt,

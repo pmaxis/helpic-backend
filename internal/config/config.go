@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -143,8 +144,93 @@ func Load() (Config, error) {
 	if cfg.TrustedProxies, err = parsePrefixes(os.Getenv("TRUSTED_PROXIES")); err != nil {
 		return Config{}, fmt.Errorf("invalid TRUSTED_PROXIES: %w", err)
 	}
+	if err := cfg.validateProduction(); err != nil {
+		return Config{}, err
+	}
 
 	return cfg, nil
+}
+
+// validateProduction refuses a production process whose accounts, mail or
+// database would be exposed the way the development stack is.
+func (c Config) validateProduction() error {
+	if !c.IsProduction() {
+		return nil
+	}
+	var problems []string
+	if len(c.JWTSecret) < 32 || strings.EqualFold(c.JWTSecret, "change-me-in-production") {
+		problems = append(problems, "JWT_SECRET must be at least 32 characters and not the placeholder")
+	}
+	if !c.CookieSecure {
+		problems = append(problems, "COOKIE_SECURE must be true")
+	}
+	if c.CookieSameSite == http.SameSiteNoneMode {
+		problems = append(problems, "COOKIE_SAME_SITE=none is refused; serve the site and the API as one site and keep lax")
+	}
+	if !c.RateLimit {
+		problems = append(problems, "RATE_LIMIT must stay on")
+	}
+	if c.SwaggerEnabled {
+		problems = append(problems, "SWAGGER_ENABLED must be false")
+	}
+	if reason := insecureDatabase(c.DatabaseURL); reason != "" {
+		problems = append(problems, reason)
+	}
+	if c.SMTPHost == "" || isMailpit(c.SMTPHost) {
+		problems = append(problems, "SMTP_HOST must be a real mail server, not Mailpit or empty")
+	}
+	if strings.Contains(strings.ToLower(c.MailFrom), "helpic.local") {
+		problems = append(problems, "MAIL_FROM must be a real sender address")
+	}
+	if reason := localAppURL(c.AppURL); reason != "" {
+		problems = append(problems, "APP_URL "+reason)
+	}
+	if reason := localAppURL(c.CORSOrigin); reason != "" {
+		problems = append(problems, "CORS_ORIGIN "+reason)
+	}
+	if len(problems) == 0 {
+		return nil
+	}
+	return fmt.Errorf("refusing to start in production: %s", strings.Join(problems, "; "))
+}
+
+// insecureDatabase reports why this URL is not fit for production.
+func insecureDatabase(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return databaseProblem("is not a URL")
+	}
+	if pass, _ := u.User.Password(); pass == "" || pass == "postgres" {
+		return databaseProblem("must not use the default postgres password")
+	}
+	switch strings.ToLower(u.Query().Get("sslmode")) {
+	case "verify-full", "verify-ca":
+		return ""
+	default:
+		return databaseProblem("must set sslmode to verify-full or verify-ca")
+	}
+}
+
+func databaseProblem(detail string) string {
+	return "DATABASE_URL " + detail
+}
+
+func isMailpit(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	return host == "mailpit" || strings.HasPrefix(host, "mailpit.")
+}
+
+// localAppURL reports why a link base is not a public https address.
+func localAppURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "must be the public https address"
+	}
+	host := strings.ToLower(u.Hostname())
+	if u.Scheme != "https" || host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return "must be the public https address, not " + raw
+	}
+	return ""
 }
 
 func getEnv(key, fallback string) string {

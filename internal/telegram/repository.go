@@ -124,6 +124,29 @@ func (r *Repository) DisconnectChat(ctx context.Context, chatID int64) (int64, e
 	return tag.RowsAffected(), nil
 }
 
+// TryLock takes a session advisory lock on one pool connection and holds it
+// until release. ok is false when another copy of the API already holds it.
+// The lock drops when the connection does, so a crashed process lets the
+// next one poll.
+func (r *Repository) TryLock(ctx context.Context, key int64) (release func(), ok bool, err error) {
+	conn, err := r.db.Acquire(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf("acquire telegram lock: %w", err)
+	}
+	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, key).Scan(&ok); err != nil {
+		conn.Release()
+		return nil, false, fmt.Errorf("telegram lock: %w", err)
+	}
+	if !ok {
+		conn.Release()
+		return nil, false, nil
+	}
+	return func() {
+		_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, key)
+		conn.Release()
+	}, true, nil
+}
+
 // DeleteExpiredCodes removes connect codes nobody used in time.
 func (r *Repository) DeleteExpiredCodes(ctx context.Context) error {
 	if _, err := r.db.Exec(ctx, `DELETE FROM telegram_link_codes WHERE expires_at <= now()`); err != nil {

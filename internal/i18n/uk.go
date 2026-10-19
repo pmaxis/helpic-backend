@@ -206,8 +206,11 @@ var uk = map[string]string{
 	"A personal report has no client to send it to — download it instead": "Особистий звіт нікому надсилати — завантажте його",
 	"Only the client marks a report as paid":                              "Позначити звіт оплаченим може лише клієнт",
 	"Only a sent report that isn't paid yet can be marked as paid":        "Оплаченим можна позначити лише надісланий і ще не оплачений звіт",
-	"PDF export is not available on this server":                          "Експорт у PDF на цьому сервері недоступний",
-	"Could not generate the PDF":                                          "Не вдалося створити PDF",
+	"A sent report stays with your client. Only a draft can be deleted.":  "Надісланий звіт лишається в клієнта. Видалити можна лише чернетку.",
+	"You already have prices. Clear them before changing the currency, so the amounts aren't relabeled.": "У вас уже є ціни. Приберіть їх перед зміною валюти, щоб суми не змінили назву валюти.",
+	"The database is not reachable":              "База даних недоступна",
+	"PDF export is not available on this server": "Експорт у PDF на цьому сервері недоступний",
+	"Could not generate the PDF":                 "Не вдалося створити PDF",
 
 	// --- API errors: notifications and Telegram ---------------------------------------
 	"Unknown notification kind":                            "Невідомий тип сповіщення",

@@ -21,6 +21,9 @@ import (
 const (
 	// pollTimeout is how long one getUpdates call waits for messages.
 	pollTimeout = 30 * time.Second
+	// pollLock is the advisory lock only one API copy holds while it reads
+	// the bot's messages. Two copies would steal updates from each other.
+	pollLock int64 = 740021
 	// retryDelay is the pause after the Bot API fails.
 	retryDelay = 5 * time.Second
 	// queueSize bounds the notifications waiting to be sent; past it they are
@@ -195,8 +198,35 @@ func (s *Service) deliver(ctx context.Context, n notifications.Notification) {
 	}
 }
 
-// poll introduces the bot to Telegram, then reads its messages until ctx ends.
+// poll is the one reader of the bot's messages. Another copy waits.
 func (s *Service) poll(ctx context.Context) {
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		release, ok, err := s.repo.TryLock(ctx, pollLock)
+		if err != nil {
+			slog.Error("telegram: lock", "error", err)
+			if !sleep(ctx, retryDelay) {
+				return
+			}
+			continue
+		}
+		if !ok {
+			if !sleep(ctx, retryDelay) {
+				return
+			}
+			continue
+		}
+		s.readUpdates(ctx)
+		release()
+		return
+	}
+}
+
+// readUpdates introduces the bot to Telegram, then reads its messages until
+// ctx ends. The caller holds the poll lock.
+func (s *Service) readUpdates(ctx context.Context) {
 	for s.botUsername() == "" {
 		me, err := s.bot.GetMe(ctx)
 		if err == nil {

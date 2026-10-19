@@ -71,7 +71,7 @@ func (s *Service) RequestReset(ctx context.Context, email string) error {
 		Paragraphs: []string{
 			t("Someone asked to reset the password for your Helpic account, %s. If it was you, set a new one below.", u.Email),
 		},
-		Button: &mail.Button{Text: t("Set a new password"), URL: s.appURL + "/reset-password/" + raw},
+		Button: &mail.Button{Text: t("Set a new password"), URL: s.appURL + "/reset-password#" + raw},
 		Note:   t("The link works once, for an hour. If you didn't ask for it, ignore this email: your password stays as it is."),
 	})
 }

@@ -134,7 +134,7 @@ func (r *Repository) ProjectName(ctx context.Context, freelancerID, clientID, pr
 // completed for the client — or personal tasks, without a client — in the
 // period (in its projects, if it has any), leaving out tasks a paid report
 // already covers.
-func (r *Repository) Create(ctx context.Context, freelancerID string, p CreateParams, projects []ProjectRef) (string, error) {
+func (r *Repository) Create(ctx context.Context, freelancerID string, p CreateParams, projects []ProjectRef, zone string) (string, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return "", fmt.Errorf("begin: %w", err)
@@ -157,18 +157,18 @@ func (r *Repository) Create(ctx context.Context, freelancerID string, p CreatePa
 		}
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO report_items (report_id, task_id, title, project_name, status_name, completed_on, price_cents, notes, position)
-		SELECT $1, t.id, t.title, coalesce(pr.name, ''), ws.name, t.completed_at::date, t.price_cents, t.description,
+		SELECT $1, t.id, t.title, coalesce(pr.name, ''), ws.name, (t.completed_at AT TIME ZONE $7)::date, t.price_cents, t.description,
 			row_number() OVER (ORDER BY t.completed_at, t.title) - 1
 		FROM tasks t
 		JOIN workflow_statuses ws ON ws.id = t.status_id
 		LEFT JOIN projects pr ON pr.id = t.project_id
 		WHERE t.freelancer_id = $2 AND t.client_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid AND t.status = 'done'
-		  AND t.completed_at::date BETWEEN $4 AND $5
+		  AND (t.completed_at AT TIME ZONE $7)::date BETWEEN $4 AND $5
 		  AND (cardinality($6::text[]) = 0 OR t.project_id::text = ANY($6))
-		  -- a task already paid for in another report isn't billed again
-		  AND NOT EXISTS (SELECT 1 FROM report_items pi JOIN reports pr ON pr.id = pi.report_id
-			WHERE pi.task_id = t.id AND pr.status = 'paid')`,
-		id, freelancerID, p.ClientID, p.From, p.To, projectIDs)
+		  -- a task already on a report, draft or sent, is not billed again
+		  AND NOT EXISTS (SELECT 1 FROM report_items pi WHERE pi.task_id = t.id)
+		ON CONFLICT (task_id) WHERE task_id IS NOT NULL DO NOTHING`,
+		id, freelancerID, p.ClientID, p.From, p.To, projectIDs, zone)
 	if err != nil {
 		return "", fmt.Errorf("snapshot tasks: %w", err)
 	}

@@ -88,6 +88,14 @@ func TestPrices_TasksAndReports(t *testing.T) {
 	resp = do(t, freelancer, http.MethodPut, landingURL+"/price", map[string]any{"price": nil})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
+	// The logo is still priced, so the currency stays: the digits would
+	// otherwise become dollars without a conversion.
+	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/me/currency", map[string]string{"currency": "USD"})
+	wantStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/tasks/"+logo["id"].(string)+"/price", map[string]any{"price": nil})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
 	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/me/currency", map[string]string{"currency": "USD"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()

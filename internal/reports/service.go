@@ -20,12 +20,18 @@ type Service struct {
 	repo   *Repository
 	notify notifier
 	tasks  taskRecorder
+	// zone is the IANA name completed days are counted in.
+	zone string
 }
 
 // NewService creates a reports Service; tasks records a paid report's moves
-// in its tasks' history.
-func NewService(repo *Repository, notify notifier, tasks taskRecorder) *Service {
-	return &Service{repo: repo, notify: notify, tasks: tasks}
+// in its tasks' history. zone is the app time zone, where a completed day is
+// a day; "" is UTC.
+func NewService(repo *Repository, notify notifier, tasks taskRecorder, zone string) *Service {
+	if zone == "" {
+		zone = "UTC"
+	}
+	return &Service{repo: repo, notify: notify, tasks: tasks, zone: zone}
 }
 
 // List returns the reports the user may see.
@@ -68,7 +74,7 @@ func (s *Service) Create(ctx context.Context, freelancerID string, p CreateParam
 		}
 		p.Title = DefaultTitle(head, p.From, p.To, i18n.FromContext(ctx))
 	}
-	id, err := s.repo.Create(ctx, freelancerID, p, projects)
+	id, err := s.repo.Create(ctx, freelancerID, p, projects, s.zone)
 	if err != nil {
 		return Report{}, err
 	}
@@ -214,8 +220,8 @@ func soleProject(r Report) string {
 	return ""
 }
 
-// Delete removes one of the freelancer's reports, a draft or a sent one;
-// a sent report disappears for the client too.
+// Delete removes one of the freelancer's drafts. A sent or paid report stays,
+// so the client keeps the copy they were sent.
 func (s *Service) Delete(ctx context.Context, freelancerID, id string) error {
 	r, err := s.repo.Get(ctx, freelancerID, id)
 	if err != nil {
@@ -223,6 +229,9 @@ func (s *Service) Delete(ctx context.Context, freelancerID, id string) error {
 	}
 	if r.Freelancer.ID != freelancerID {
 		return ErrNotFound
+	}
+	if r.Status != StatusDraft {
+		return ErrKept
 	}
 	return s.repo.Delete(ctx, id)
 }

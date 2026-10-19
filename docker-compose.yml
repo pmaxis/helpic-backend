@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-helpic}
     ports:
-      - "${POSTGRES_PORT:-5435}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5435}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,7 +24,7 @@ services:
     image: axllent/mailpit:v1.21
     restart: unless-stopped
     ports:
-      - "${MAILPIT_PORT:-8025}:8025"
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
 
   # Browse the database at http://localhost:8088 (server is filled in; the
   # user and password are POSTGRES_USER and POSTGRES_PASSWORD).
@@ -34,7 +34,7 @@ services:
     environment:
       ADMINER_DEFAULT_SERVER: postgres
     ports:
-      - "${ADMINER_PORT:-8088}:8080"
+      - "127.0.0.1:${ADMINER_PORT:-8088}:8080"
     depends_on:
       - postgres
 
@@ -72,7 +72,7 @@ services:
     volumes:
       - uploads:/app/uploads
     ports:
-      - "${APP_PORT:-8090}:8080"
+      - "127.0.0.1:${APP_PORT:-8090}:8080"
     depends_on:
       postgres:
         condition: service_healthy

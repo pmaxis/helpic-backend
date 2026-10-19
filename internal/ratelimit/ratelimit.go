@@ -1,13 +1,15 @@
-// Package ratelimit slows down guessing and abuse: token buckets kept in
-// memory, one per key (an IP, an email, a user). Each bucket holds up to
-// burst tokens and gains one every interval; a request that finds it empty is
-// refused with 429 and told when to come back.
+// Package ratelimit slows down guessing and abuse: token buckets, one per key
+// (an IP, an email, a user). Each bucket holds up to burst tokens and gains
+// one every interval; a request that finds it empty is refused with 429 and
+// told when to come back.
 //
-// Buckets live in this process, so with several instances each counts on its
-// own. It is application infrastructure, not a feature.
+// Limiter keeps its buckets in this process, for tests. Store keeps them in
+// Postgres, so every copy of the API shares one budget. It is application
+// infrastructure, not a feature.
 package ratelimit
 
 import (
+	"context"
 	"math"
 	"net/http"
 	"strconv"
@@ -17,6 +19,15 @@ import (
 	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/response"
 )
+
+// Gate is a set of token buckets. Allow and Check report whether a token is
+// there; Take uses one up. An error means the buckets could not be read.
+type Gate interface {
+	Allow(ctx context.Context, key string) (bool, time.Duration, error)
+	Check(ctx context.Context, key string) (bool, time.Duration, error)
+	Take(ctx context.Context, key string) error
+	Sweep(ctx context.Context) error
+}
 
 // Limiter is a set of token buckets, one per key.
 type Limiter struct {
@@ -71,38 +82,39 @@ func (l *Limiter) wait(b *bucket) time.Duration {
 
 // Allow takes a token for key. When there is none it takes nothing and
 // returns how long until there is.
-func (l *Limiter) Allow(key string) (bool, time.Duration) {
+func (l *Limiter) Allow(_ context.Context, key string) (bool, time.Duration, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	b := l.refill(key)
 	if b.tokens < 1 {
-		return false, l.wait(b)
+		return false, l.wait(b), nil
 	}
 	b.tokens--
-	return true, 0
+	return true, 0, nil
 }
 
 // Check reports whether key has a token, without taking it, and if not how
 // long until it has. With Take it counts only some requests, e.g. failed
 // sign-ins.
-func (l *Limiter) Check(key string) (bool, time.Duration) {
+func (l *Limiter) Check(_ context.Context, key string) (bool, time.Duration, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	b := l.refill(key)
-	return b.tokens >= 1, l.wait(b)
+	return b.tokens >= 1, l.wait(b), nil
 }
 
 // Take uses up a token for key, if it has one.
-func (l *Limiter) Take(key string) {
+func (l *Limiter) Take(_ context.Context, key string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	b := l.refill(key)
 	b.tokens = math.Max(0, b.tokens-1)
+	return nil
 }
 
 // Sweep forgets the buckets that have filled up again: a new one would be the
 // same. Run it now and then so the map doesn't grow without end.
-func (l *Limiter) Sweep() {
+func (l *Limiter) Sweep(context.Context) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for key := range l.buckets {
@@ -110,15 +122,21 @@ func (l *Limiter) Sweep() {
 			delete(l.buckets, key)
 		}
 	}
+	return nil
 }
 
 // Middleware refuses a request once its key's bucket is empty. key picks the
 // bucket; an empty key is not limited.
-func Middleware(l *Limiter, key func(*http.Request) string) func(http.Handler) http.Handler {
+func Middleware(l Gate, key func(*http.Request) string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if k := key(r); k != "" {
-				if ok, retry := l.Allow(k); !ok {
+				ok, retry, err := l.Allow(r.Context(), k)
+				if err != nil {
+					response.Internal(w, err)
+					return
+				}
+				if !ok {
 					TooMany(w, retry)
 					return
 				}

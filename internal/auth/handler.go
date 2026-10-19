@@ -35,9 +35,9 @@ type Handler struct {
 	svc    *Service
 	cookie CookieConfig
 	// failures counts wrong passwords per email; nil doesn't limit them.
-	failures *ratelimit.Limiter
+	failures ratelimit.Gate
 	// resets counts reset links asked for per email; nil doesn't limit them.
-	resets *ratelimit.Limiter
+	resets ratelimit.Gate
 }
 
 // NewHandler creates an auth Handler.
@@ -47,13 +47,13 @@ func NewHandler(svc *Service, cookie CookieConfig) *Handler {
 
 // LimitResetRequests stops emailing reset links to an address once l runs
 // out. The answer stays the same, so it tells nothing and floods no inbox.
-func (h *Handler) LimitResetRequests(l *ratelimit.Limiter) {
+func (h *Handler) LimitResetRequests(l ratelimit.Gate) {
 	h.resets = l
 }
 
 // LimitFailedLogins refuses sign-ins to an email once l runs out: each wrong
 // password takes a token, a right one takes none.
-func (h *Handler) LimitFailedLogins(l *ratelimit.Limiter) {
+func (h *Handler) LimitFailedLogins(l ratelimit.Gate) {
 	h.failures = l
 }
 
@@ -120,7 +120,12 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.failures != nil {
-		if ok, retry := h.failures.Check(params.Email); !ok {
+		ok, retry, err := h.failures.Check(r.Context(), params.Email)
+		if err != nil {
+			response.Internal(w, err)
+			return
+		}
+		if !ok {
 			ratelimit.TooMany(w, retry)
 			return
 		}
@@ -129,7 +134,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	u, tokens, err := h.svc.Login(r.Context(), params, ClientOf(r))
 	if errors.Is(err, ErrInvalidCredentials) {
 		if h.failures != nil {
-			h.failures.Take(params.Email)
+			if err := h.failures.Take(r.Context(), params.Email); err != nil {
+				response.Internal(w, err)
+				return
+			}
 		}
 		response.Error(w, http.StatusUnauthorized, response.CodeInvalidCredential, "Invalid email or password")
 		return
@@ -206,7 +214,12 @@ func (h *Handler) Forgot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.resets != nil {
-		if ok, _ := h.resets.Allow(email); !ok {
+		ok, _, err := h.resets.Allow(r.Context(), email)
+		if err != nil {
+			response.Internal(w, err)
+			return
+		}
+		if !ok {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

@@ -88,7 +88,7 @@ func TestPasswordReset(t *testing.T) {
 	resp.Body.Close()
 
 	forgot(t, srv.URL, "Forgetful@Example.com")
-	token := linkToken(t, lastEmailTo(t, "forgetful@example.com"), "/reset-password/")
+	token := linkToken(t, lastEmailTo(t, "forgetful@example.com"), "/reset-password#")
 
 	resp = reset(t, srv.URL, token, "short")
 	wantStatus(t, resp, http.StatusBadRequest)
@@ -126,7 +126,7 @@ func TestPasswordReset(t *testing.T) {
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
 	forgot(t, srv.URL, "forgetful@example.com")
-	older := linkToken(t, lastEmailTo(t, "forgetful@example.com"), "/reset-password/")
+	older := linkToken(t, lastEmailTo(t, "forgetful@example.com"), "/reset-password#")
 	forgot(t, srv.URL, "forgetful@example.com")
 	resp = reset(t, srv.URL, older, "another-pw-1")
 	wantStatus(t, resp, http.StatusBadRequest)
@@ -134,7 +134,7 @@ func TestPasswordReset(t *testing.T) {
 
 	// An expired link doesn't work.
 	forgot(t, srv.URL, "forgetful@example.com")
-	expired := linkToken(t, lastEmailTo(t, "forgetful@example.com"), "/reset-password/")
+	expired := linkToken(t, lastEmailTo(t, "forgetful@example.com"), "/reset-password#")
 	if _, err := testPool.Exec(context.Background(), `UPDATE password_resets SET expires_at = now() - interval '1 second'`); err != nil {
 		t.Fatal(err)
 	}

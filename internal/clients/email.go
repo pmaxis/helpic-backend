@@ -3,7 +3,6 @@ package clients
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/mail"
@@ -13,12 +12,10 @@ import (
 // freelancer's language (the client has no account to have one yet). The link
 // goes only to the invited address: opening it is the proof the email is
 // theirs. The token rides in the fragment, which browsers send to no server.
-// A failure is only logged; the freelancer can invite again.
-func (s *Service) emailInvitation(ctx context.Context, freelancerID string, inv Invitation, token string) {
+func (s *Service) emailInvitation(ctx context.Context, freelancerID string, inv Invitation, token string) error {
 	from, err := s.repo.PersonName(ctx, freelancerID)
 	if err != nil {
-		slog.Error("failed to email invitation", "error", err)
-		return
+		return err
 	}
 	locale := i18n.FromContext(ctx)
 	t := func(text string, args ...any) string { return i18n.T(locale, text, args...) }
@@ -38,8 +35,9 @@ func (s *Service) emailInvitation(ctx context.Context, freelancerID string, inv 
 		Button: &mail.Button{Text: t("Accept the invitation"), URL: s.appURL + "/invite#" + token},
 		Note:   t("The link works once, until %s. If you weren't expecting this, ignore this email.", i18n.Date(locale, inv.ExpiresAt)),
 	}); err != nil {
-		slog.Error("failed to email invitation", "error", err)
+		return err
 	}
+	return nil
 }
 
 // PersonName is how an account is shown: its name, or its email.

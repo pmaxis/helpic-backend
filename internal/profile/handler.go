@@ -202,7 +202,7 @@ func (h *Handler) SetLocale(w http.ResponseWriter, r *http.Request) {
 // SetCurrency handles PUT /api/v1/me/currency: what a freelancer bills in.
 //
 //	@Summary		Set the billing currency
-//	@Description	What a freelancer bills in: USD, EUR, GBP, UAH, PLN or CAD.
+//	@Description	What a freelancer bills in: USD, EUR, GBP, UAH, PLN or CAD. Refused while a task still has a price, so amounts are not relabeled.
 //	@Tags			account
 //	@Accept			json
 //	@Produce		json
@@ -233,6 +233,8 @@ func writeUser(w http.ResponseWriter, u user.User, err error) {
 	switch {
 	case errors.Is(err, ErrWrongPassword):
 		response.ValidationError(w, map[string]string{"current_password": "Wrong password"})
+	case errors.Is(err, ErrCurrencyLocked):
+		response.ValidationError(w, map[string]string{"currency": "You already have prices. Clear them before changing the currency, so the amounts aren't relabeled."})
 	case errors.Is(err, user.ErrNotFound):
 		response.Error(w, http.StatusUnauthorized, response.CodeUnauthorized, "Authentication required")
 	case err != nil:

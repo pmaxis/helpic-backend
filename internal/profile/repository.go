@@ -62,6 +62,17 @@ func (r *Repository) SetCurrency(ctx context.Context, id, currency string) (user
 	return r.updateOne(ctx, `UPDATE users SET currency = $2 WHERE id = $1 RETURNING `+user.Columns, id, currency)
 }
 
+// HasPricedTasks reports whether the freelancer has a task with a price.
+func (r *Repository) HasPricedTasks(ctx context.Context, userID string) (bool, error) {
+	var priced bool
+	err := r.db.QueryRow(ctx, `SELECT EXISTS (
+		SELECT 1 FROM tasks WHERE freelancer_id = $1 AND price_cents IS NOT NULL)`, userID).Scan(&priced)
+	if err != nil {
+		return false, fmt.Errorf("check priced tasks: %w", err)
+	}
+	return priced, nil
+}
+
 func (r *Repository) updateOne(ctx context.Context, q string, args ...any) (user.User, error) {
 	u, err := user.Scan(r.db.QueryRow(ctx, q, args...))
 	if errors.Is(err, pgx.ErrNoRows) {
