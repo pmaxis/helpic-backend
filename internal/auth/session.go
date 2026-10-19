@@ -200,9 +200,9 @@ func (s *Service) EndOtherSessions(ctx context.Context, userID, keepID string) e
 }
 
 // Cleanup removes sessions that have expired (they can't be refreshed
-// anyway) and reset links nobody used in time.
+// anyway), reset links nobody used in time, and sign-ups nobody confirmed.
 func (s *Service) Cleanup(ctx context.Context) error {
-	return errors.Join(s.repo.DeleteExpiredSessions(ctx), s.repo.DeleteExpiredResets(ctx))
+	return errors.Join(s.repo.DeleteExpiredSessions(ctx), s.repo.DeleteExpiredResets(ctx), s.repo.DeleteExpiredSignups(ctx))
 }
 
 // --- repository ----------------------------------------------------------------

@@ -42,10 +42,7 @@ func field(body map[string]any, key string) map[string]any {
 func signUpFreelancer(t *testing.T, srv *httptest.Server, email string) *http.Client {
 	t.Helper()
 	c := newClient()
-	wantStatus(t, register(t, c, srv.URL, email, "supersecret"), http.StatusCreated)
-	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{"email": email, "password": "supersecret"})
-	wantStatus(t, resp, http.StatusOK)
-	resp.Body.Close()
+	confirmed(t, c, srv.URL, email, "supersecret")
 	return c
 }
 

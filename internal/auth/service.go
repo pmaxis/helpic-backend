@@ -34,6 +34,11 @@ type repository interface {
 	TakeReset(ctx context.Context, hash []byte) (userID, email, locale string, err error)
 	SetPasswordAndSignOut(ctx context.Context, userID, passwordHash string) error
 	DeleteExpiredResets(ctx context.Context) error
+
+	SavePendingSignup(ctx context.Context, email, name, passwordHash, locale string, hash []byte, expiresAt time.Time) error
+	TakePendingSignup(ctx context.Context, hash []byte) (email, name, passwordHash, locale string, err error)
+	DeletePendingSignup(ctx context.Context, email string, hash []byte) error
+	DeleteExpiredSignups(ctx context.Context) error
 }
 
 // tokenIssuer issues signed access JWTs. Implemented by *token.Manager.
