@@ -45,6 +45,10 @@ func (s *Service) Pair(ctx context.Context, userID, role string, sc Scope) (Pair
 		return s.repo.ProjectPair(ctx, userID, sc.ProjectID)
 	}
 	p := Pair{FreelancerID: userID, ClientID: sc.With}
+	if sc.With == tasks.PersonalFilter {
+		// Anyone's own board: its owner stands where the freelancer would.
+		return Pair{FreelancerID: userID}, nil
+	}
 	if role == user.RoleClient {
 		// A company member works on the company's boards: its owner is the client.
 		acting, err := s.repo.ActingClient(ctx, userID)
@@ -52,8 +56,6 @@ func (s *Service) Pair(ctx context.Context, userID, role string, sc Scope) (Pair
 			return Pair{}, err
 		}
 		p = Pair{FreelancerID: sc.With, ClientID: acting}
-	} else if sc.With == tasks.PersonalFilter {
-		p.ClientID = ""
 	}
 	if p.FreelancerID == "" {
 		return Pair{}, ErrNoBoard
@@ -72,11 +74,11 @@ func (s *Service) Pair(ctx context.Context, userID, role string, sc Scope) (Pair
 
 // counterpart is the tasks filter value for a pair's tasks, as the user sees them.
 func counterpart(p Pair, role string) string {
-	if role == user.RoleClient {
-		return p.FreelancerID
-	}
 	if p.ClientID == "" {
 		return tasks.PersonalFilter
+	}
+	if role == user.RoleClient {
+		return p.FreelancerID
 	}
 	return p.ClientID
 }
@@ -181,15 +183,34 @@ func (s *Service) DeleteColumn(ctx context.Context, userID, id string) error {
 	if err != nil {
 		return err
 	}
-	if n == 0 {
-		return s.repo.Delete(ctx, id, "")
-	}
+	same := ""
 	for _, x := range cols {
 		if x.ID != c.ID && StatusCategoryOf(x.Category) == StatusCategoryOf(c.Category) {
-			return s.repo.Delete(ctx, id, x.ID)
+			same = x.ID
+			break
 		}
 	}
-	return ErrHasTasks
+	if n > 0 && same == "" {
+		return ErrHasTasks
+	}
+	if n == 0 && same == "" {
+		// Only archived tasks may be left: they need some other column to
+		// point at, though they're on no board.
+		archived, err := s.repo.HasArchived(ctx, id)
+		if err != nil {
+			return err
+		}
+		if !archived {
+			return s.repo.Delete(ctx, id, "")
+		}
+		for _, x := range cols {
+			if x.ID != c.ID {
+				same = x.ID
+				break
+			}
+		}
+	}
+	return s.repo.Delete(ctx, id, same)
 }
 
 // Reorder sets the order of a board's columns. The freelancer may, and so may
@@ -249,34 +270,15 @@ func (s *Service) Move(ctx context.Context, userID, role, taskID, columnID, afte
 		return tasks.Task{}, err
 	}
 
-	// Rewrite the whole column's order across the pair's tasks, so cards
-	// nobody moved keep their places around this one.
-	p := Pair{FreelancerID: t.Freelancer.ID}
-	if t.Client != nil {
-		p.ClientID = t.Client.ID
-	}
-	if t.Project != nil {
-		p.ProjectID = t.Project.ID
-	}
-	list, err := s.tasks.List(ctx, userID, role, tasks.Filter{CounterpartID: counterpart(p, role)})
+	// Rewrite the whole column's order across every task in it, including
+	// ones this user doesn't see (another freelancer's on a project, ones a
+	// contractor isn't on), so cards nobody moved keep their places around
+	// this one.
+	ids, err := s.repo.ColumnTaskIDs(ctx, columnID)
 	if err != nil {
 		return tasks.Task{}, err
 	}
-	cols, err := s.repo.Columns(ctx, p)
-	if err != nil {
-		return tasks.Task{}, err
-	}
-	var order []string
-	for _, l := range Arrange(cols, list) {
-		if l.Column.ID != columnID {
-			continue
-		}
-		for _, x := range l.Tasks {
-			if x.ID != taskID {
-				order = append(order, x.ID)
-			}
-		}
-	}
+	order := slices.DeleteFunc(ids, func(id string) bool { return id == taskID })
 	at := 0
 	if i := slices.Index(order, afterTaskID); i >= 0 {
 		at = i + 1

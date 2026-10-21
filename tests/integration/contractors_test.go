@@ -185,3 +185,32 @@ func TestContractors(t *testing.T) {
 	wantStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 }
+
+func TestContractors_DontChangeTheCompanysLabels(t *testing.T) {
+	srv, _ := newAPI(t)
+	freelancer := signUpFreelancer(t, srv, "free@example.com")
+	owner := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
+	freelancerID := myID(t, srv, freelancer)
+	member := joinTeamAs(t, srv, owner, "max@acme.example", "member")
+	contractor := joinTeamAs(t, srv, owner, "olga@studio.example", "contractor")
+	labelsURL := srv.URL + "/api/v1/board/labels"
+
+	resp := post(t, member, labelsURL, map[string]string{"with": freelancerID, "name": "Bug", "color": "red"})
+	wantStatus(t, resp, http.StatusCreated)
+	bug := field(decode(t, resp), "label")
+
+	// The labels sit on tasks a contractor doesn't see: they leave them be.
+	resp = post(t, contractor, labelsURL, map[string]string{"with": freelancerID, "name": "Mine", "color": "red"})
+	wantStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+	resp = do(t, contractor, http.MethodPut, labelsURL+"/"+bug["id"].(string), map[string]string{"name": "Gone", "color": "gray"})
+	wantStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+	resp = do(t, contractor, http.MethodDelete, labelsURL+"/"+bug["id"].(string), nil)
+	wantStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+
+	resp = do(t, member, http.MethodDelete, labelsURL+"/"+bug["id"].(string), nil)
+	wantStatus(t, resp, http.StatusNoContent)
+	resp.Body.Close()
+}

@@ -157,14 +157,16 @@ func (r ResetRequest) Validate() map[string]string {
 }
 
 // passwordIssue reports why a new password is refused, or "" when it is
-// long enough and contains a letter and a number. Letters and numbers of
-// any alphabet count.
+// long enough, short enough for bcrypt, and contains a letter and a number.
+// Letters and numbers of any alphabet count.
 func passwordIssue(password string) string {
 	switch {
 	case password == "":
 		return "Password is required"
 	case utf8.RuneCountInString(password) < MinPasswordLength:
 		return "Password must be at least 8 characters"
+	case len(password) > MaxPasswordBytes:
+		return "Password is too long"
 	case !hasLetterAndNumber(password):
 		return "Password must include a letter and a number"
 	}

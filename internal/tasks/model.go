@@ -1,7 +1,11 @@
 // Package tasks holds the work between a freelancer and a client they are
-// linked with, and a freelancer's personal tasks that have no client. Either
-// side can create a task; its creator and its freelancer edit it, the
-// freelancer moves it through the work statuses.
+// linked with, and personal tasks that have no other side: a freelancer's,
+// or a client's. Either side can create a task; its creator and its
+// freelancer edit it, the freelancer moves it through the work statuses.
+// A personal task's owner sits where the freelancer would.
+//
+// A task is archived when its report is paid, or by hand when it's personal;
+// then it leaves the boards and nothing on it changes.
 package tasks
 
 import (
@@ -57,6 +61,19 @@ var (
 	// ErrKeepParticipant is returned for taking the freelancer or the creator
 	// off their own task.
 	ErrKeepParticipant = errors.New("the freelancer and the creator stay on the task")
+	// ErrNeedsFreelancer is returned for taking the freelancer off a task
+	// outside any project, or taking an unassigned task out of its project:
+	// such a task is on its pair's board, which needs a freelancer.
+	ErrNeedsFreelancer = errors.New("a task outside a project needs a freelancer")
+	// ErrAssignNotAllowed is returned when someone outside the task's client
+	// side (or a contractor who didn't set it) picks its freelancer.
+	ErrAssignNotAllowed = errors.New("only the client side picks the freelancer")
+	// ErrArchived is returned for any change to an archived task: it's
+	// closed and paid, or put away, and stays as it is.
+	ErrArchived = errors.New("the task is archived")
+	// ErrArchiveNotAllowed is returned for archiving a task by hand that isn't
+	// the user's own personal task: shared work is archived by its payment.
+	ErrArchiveNotAllowed = errors.New("only a personal task is archived by hand")
 )
 
 // Person is someone on the task's client side who can be on the task: the
@@ -113,8 +130,12 @@ var transitions = map[string]map[string][]string{
 }
 
 // NextStatuses returns the statuses the viewer may move the task to. A
-// personal task is the freelancer's alone, so any status goes.
+// personal task is its owner's alone, so any status goes; an archived one
+// stays where it is.
 func NextStatuses(t Task, role, viewerID string) []string {
+	if t.Archived() {
+		return []string{}
+	}
 	if t.Client == nil {
 		out := []string{}
 		for _, s := range Statuses {
@@ -142,13 +163,13 @@ func CanTransition(t Task, role, viewerID, to string) bool {
 // creator, or its freelancer (who also edits what a client set), in any
 // status — the history keeps every change.
 func CanEdit(t Task, viewerID string) bool {
-	return t.CreatedBy == viewerID || t.Freelancer.ID == viewerID
+	return !t.Archived() && (t.CreatedBy == viewerID || t.Freelancer.ID == viewerID)
 }
 
 // CanDelete reports whether the viewer may delete the task: only its creator,
 // and only before work has started.
 func CanDelete(t Task, viewerID string) bool {
-	return t.CreatedBy == viewerID && t.Status == StatusNew
+	return !t.Archived() && t.CreatedBy == viewerID && t.Status == StatusNew
 }
 
 // CanSeePrice reports whether the viewer sees the task's price: its
@@ -159,9 +180,16 @@ func CanSeePrice(t Task, viewerID string) bool {
 }
 
 // CanSetPrice reports whether the viewer may set the task's price: its
-// freelancer may, at any time.
+// freelancer may, until it's archived. A client's personal task has no
+// price: nobody bills for it.
 func CanSetPrice(t Task, viewerID string) bool {
-	return t.Freelancer.ID == viewerID
+	return !t.Archived() && t.Freelancer.ID == viewerID && t.FreelancerRole == user.RoleFreelancer
+}
+
+// CanArchive reports whether the viewer may archive the task by hand: only
+// their own personal task. Shared work is archived when its report is paid.
+func CanArchive(t Task, viewerID string) bool {
+	return !t.Archived() && t.Client == nil && t.Freelancer.ID == viewerID
 }
 
 // Party is one side of a task.
@@ -178,6 +206,12 @@ type Label struct {
 	Color string `json:"color"`
 }
 
+// ReportRef names the report whose payment archived a task.
+type ReportRef struct {
+	ID    string
+	Title string
+}
+
 // ProjectRef names the project a task belongs to.
 type ProjectRef struct {
 	ID   string
@@ -188,7 +222,11 @@ type ProjectRef struct {
 type Task struct {
 	ID         string
 	Freelancer Party
-	// Client is nil for a freelancer's personal task.
+	// FreelancerRole is the role of the user in Freelancer: "freelancer",
+	// or "client" for a client's personal task, which they own the way a
+	// freelancer owns theirs.
+	FreelancerRole string
+	// Client is nil for a personal task.
 	Client *Party
 	// Project is nil for a task outside any project.
 	Project   *ProjectRef
@@ -219,7 +257,16 @@ type Task struct {
 	Labels    []Label
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	// ArchivedAt is when the task was archived; nil while it's on a board.
+	// ArchivedBy is the paid report that archived it, nil for one put away
+	// by hand.
+	ArchivedAt *time.Time
+	ArchivedBy *ReportRef
 }
+
+// Archived reports whether the task is archived: it's off the boards and
+// nothing on it changes any more.
+func (t Task) Archived() bool { return t.ArchivedAt != nil }
 
 // Filter narrows a task list.
 type Filter struct {

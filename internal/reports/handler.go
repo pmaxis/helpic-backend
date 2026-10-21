@@ -241,7 +241,7 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 // MarkPaid handles POST /api/v1/reports/{id}/paid: the client paid it.
 //
 //	@Summary		Mark a sent report paid
-//	@Description	The report's client only. Its tasks move to the board's Paid column; the freelancer is notified.
+//	@Description	The report's client only. Its tasks go to the archive for good; the freelancer is notified.
 //	@Tags			reports
 //	@Produce		json
 //	@Param			id	path		string					true	"Report ID"

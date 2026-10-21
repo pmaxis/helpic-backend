@@ -128,25 +128,37 @@ func (r *Repository) Update(ctx context.Context, id, name, bucket string) error 
 	if _, err := tx.Exec(ctx, `UPDATE workflow_statuses SET name = $2, category = $3 WHERE id::text = $1`, id, name, bucket); err != nil {
 		return fmt.Errorf("update column: %w", err)
 	}
+	// Archived tasks keep the status they were closed in.
 	if _, err := tx.Exec(ctx, `UPDATE tasks SET status = $2,
 			completed_at = CASE WHEN $2 = 'done' THEN coalesce(completed_at, now()) END
-		WHERE status_id::text = $1 AND status <> $2`, id, bucket); err != nil {
+		WHERE status_id::text = $1 AND status <> $2 AND archived_at IS NULL`, id, bucket); err != nil {
 		return fmt.Errorf("recategorise tasks: %w", err)
 	}
 	return tx.Commit(ctx)
 }
 
-// TaskCount returns how many tasks are in a column.
+// HasArchived reports whether any archived task points at a column.
+func (r *Repository) HasArchived(ctx context.Context, id string) (bool, error) {
+	var ok bool
+	if err := r.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tasks WHERE status_id::text = $1 AND archived_at IS NOT NULL)`, id).Scan(&ok); err != nil {
+		return false, fmt.Errorf("check archived tasks: %w", err)
+	}
+	return ok, nil
+}
+
+// TaskCount returns how many tasks are on the board in a column; archived
+// ones don't count.
 func (r *Repository) TaskCount(ctx context.Context, id string) (int, error) {
 	var n int
-	if err := r.db.QueryRow(ctx, `SELECT count(*) FROM tasks WHERE status_id::text = $1`, id).Scan(&n); err != nil {
+	if err := r.db.QueryRow(ctx, `SELECT count(*) FROM tasks WHERE status_id::text = $1 AND archived_at IS NULL`, id).Scan(&n); err != nil {
 		return 0, fmt.Errorf("count tasks: %w", err)
 	}
 	return n, nil
 }
 
 // Delete removes a column, first moving its tasks to fallbackID ("" when the
-// column is empty).
+// column has none, archived ones included). An archived task keeps its status:
+// it only needs a column to point at.
 func (r *Repository) Delete(ctx context.Context, id, fallbackID string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -154,8 +166,9 @@ func (r *Repository) Delete(ctx context.Context, id, fallbackID string) error {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	if fallbackID != "" {
-		if _, err := tx.Exec(ctx, `UPDATE tasks t SET status_id = ws.id, status = ws.category, position = NULL,
-				completed_at = CASE WHEN ws.category = 'done' THEN coalesce(t.completed_at, now()) ELSE t.completed_at END
+		if _, err := tx.Exec(ctx, `UPDATE tasks t SET status_id = ws.id, position = NULL,
+				status = CASE WHEN t.archived_at IS NULL THEN ws.category ELSE t.status END,
+				completed_at = CASE WHEN ws.category = 'done' OR t.archived_at IS NOT NULL THEN coalesce(t.completed_at, now()) ELSE t.completed_at END
 			FROM workflow_statuses ws
 			WHERE t.status_id::text = $1 AND ws.id::text = $2`, id, fallbackID); err != nil {
 			return fmt.Errorf("move tasks out: %w", err)
@@ -205,6 +218,21 @@ func (r *Repository) PlaceAll(ctx context.Context, columnID string, taskIDs []st
 	return nil
 }
 
+// ColumnTaskIDs lists every task in a column, in its board order: ordered
+// cards first, then the rest the way task lists sort them.
+func (r *Repository) ColumnTaskIDs(ctx context.Context, columnID string) ([]string, error) {
+	rows, err := r.db.Query(ctx, `SELECT id::text FROM tasks WHERE status_id::text = $1 AND archived_at IS NULL
+		ORDER BY position NULLS LAST, due_on ASC NULLS LAST, created_at DESC`, columnID)
+	if err != nil {
+		return nil, fmt.Errorf("list column tasks: %w", err)
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, fmt.Errorf("scan column tasks: %w", err)
+	}
+	return ids, nil
+}
+
 // Linked reports whether the freelancer and the client work together.
 func (r *Repository) Linked(ctx context.Context, freelancerID, clientID string) (bool, error) {
 	var ok bool
@@ -230,6 +258,15 @@ func (r *Repository) ProjectPair(ctx context.Context, userID, projectID string) 
 		return Pair{}, fmt.Errorf("get project pair: %w", err)
 	}
 	return p, nil
+}
+
+// IsContractor reports whether the user is a client company's contractor.
+func (r *Repository) IsContractor(ctx context.Context, userID string) (bool, error) {
+	var ok bool
+	if err := r.db.QueryRow(ctx, `SELECT is_contractor($1::uuid)`, userID).Scan(&ok); err != nil {
+		return false, fmt.Errorf("check contractor: %w", err)
+	}
+	return ok, nil
 }
 
 // ActingClient is the client the user acts as: their company's owner for a

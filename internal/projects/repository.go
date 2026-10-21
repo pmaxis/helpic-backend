@@ -327,6 +327,13 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 	if !exists {
 		return nil
 	}
+	var unassigned bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tasks WHERE project_id = $1 AND freelancer_id IS NULL)`, id).Scan(&unassigned); err != nil {
+		return fmt.Errorf("check unassigned tasks: %w", err)
+	}
+	if unassigned {
+		return ErrUnassignedTasks
+	}
 	if _, err := tx.Exec(ctx, `SELECT ensure_workflow(freelancer_id, client_id)
 		FROM (SELECT DISTINCT freelancer_id, client_id FROM tasks WHERE project_id = $1) pairs`, id); err != nil {
 		return fmt.Errorf("ensure workflow: %w", err)

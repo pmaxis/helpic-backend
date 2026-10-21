@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -37,13 +38,15 @@ const selectTask = `SELECT t.id, t.created_by, t.title, t.description, t.status,
 		coalesce((SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email)
 				ORDER BY tp.user_id = t.freelancer_id DESC, tp.first_at, u.id)
 			FROM task_participants tp JOIN users u ON u.id = tp.user_id
-			WHERE tp.task_id = t.id), '[]')
+			WHERE tp.task_id = t.id), '[]'),
+		coalesce(f.role, ''), t.archived_at, ar.id, ar.title
 	FROM tasks t
 	JOIN workflow_statuses ws ON ws.id = t.status_id
 	LEFT JOIN users f ON f.id = t.freelancer_id
 	LEFT JOIN users c ON c.id = t.client_id
 	LEFT JOIN projects pr ON pr.id = t.project_id
-	LEFT JOIN users cr ON cr.id = t.created_by`
+	LEFT JOIN users cr ON cr.id = t.created_by
+	LEFT JOIN reports ar ON ar.id = t.archived_report_id`
 
 func scanTask(row pgx.Row) (Task, error) {
 	var (
@@ -53,12 +56,14 @@ func scanTask(row pgx.Row) (Task, error) {
 		projectID, projectName                        *string
 		labels                                        []byte
 		participants                                  []byte
+		reportID, reportTitle                         *string
 	)
 	err := row.Scan(&t.ID, &t.CreatedBy, &t.Title, &t.Description, &t.Status, &t.StatusID, &t.StatusName, &t.Position,
 		&t.DueOn, &t.PriceCents, &t.Currency, &t.Priority, &labels, &t.CreatedAt, &t.UpdatedAt,
 		&freelancerID, &freelancerName, &freelancerEmail,
 		&clientID, &clientName, &mail, &projectID, &projectName,
-		&t.Creator.Name, &t.Creator.Email, &participants)
+		&t.Creator.Name, &t.Creator.Email, &participants,
+		&t.FreelancerRole, &t.ArchivedAt, &reportID, &reportTitle)
 	if err != nil {
 		return t, err
 	}
@@ -85,15 +90,21 @@ func scanTask(row pgx.Row) (Task, error) {
 	if projectID != nil {
 		t.Project = &ProjectRef{ID: *projectID, Name: *projectName}
 	}
+	if reportID != nil {
+		t.ArchivedBy = &ReportRef{ID: *reportID, Title: *reportTitle}
+	}
 	return t, nil
 }
 
 // ownerColumns returns the condition matching the user's ($1) side of a task
 // and the column holding the other side. A client acts for their company, so
-// a member sees the owner's tasks, and a contractor the ones they take part in.
+// a member sees the owner's tasks, and a contractor the ones they take part
+// in; their own personal tasks are theirs alone. A personal task's owner is
+// in freelancer_id, whatever their role.
 func ownerColumns(role string) (own, other string) {
 	if role == user.RoleClient {
-		return "t.client_id = acting_client($1) AND sees_task($1, t.id, t.freelancer_id, t.client_id)", "t.freelancer_id"
+		return `((t.client_id = acting_client($1) AND sees_task($1, t.id, t.freelancer_id, t.client_id))
+			OR (t.client_id IS NULL AND t.freelancer_id = $1))`, "t.freelancer_id"
 	}
 	return "t.freelancer_id = $1", "t.client_id"
 }
@@ -206,7 +217,8 @@ func (r *Repository) AssignFreelancer(ctx context.Context, taskID, freelancerID 
 	if err != nil {
 		return fmt.Errorf("read task assignee: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `UPDATE tasks SET freelancer_id = NULLIF($2, '')::uuid WHERE id = $1`, taskID, freelancerID); err != nil {
+	// The price was the previous freelancer's, in their currency.
+	if _, err := tx.Exec(ctx, `UPDATE tasks SET freelancer_id = NULLIF($2, '')::uuid, price_cents = NULL WHERE id = $1`, taskID, freelancerID); err != nil {
 		return fmt.Errorf("assign freelancer: %w", err)
 	}
 	if freelancerID != "" {
@@ -253,13 +265,14 @@ func (r *Repository) RemoveParticipant(ctx context.Context, taskID, userID strin
 	return nil
 }
 
-// List returns the user's tasks: open ones first, then by due date and newest.
+// List returns the user's tasks on the boards, archived ones left out: open
+// ones first, then by due date and newest.
 func (r *Repository) List(ctx context.Context, userID, role string, f Filter) ([]Task, error) {
 	own, other := ownerColumns(role)
-	q := selectTask + ` WHERE ` + own + `
+	q := selectTask + ` WHERE ` + own + ` AND t.archived_at IS NULL
 		AND (cardinality($2::text[]) = 0 OR t.status = ANY($2))
-		AND ($3 = '' OR ` + other + `::text = $3
-			OR ($3 = '` + PersonalFilter + `' AND ` + other + ` IS NULL))
+		AND ($3 = '' OR (t.client_id IS NOT NULL AND ` + other + `::text = $3)
+			OR ($3 = '` + PersonalFilter + `' AND t.client_id IS NULL))
 		AND ($4 = '' OR t.project_id::text = $4)
 		ORDER BY t.status = 'done', t.due_on ASC NULLS LAST, t.created_at DESC`
 	statuses := f.Statuses
@@ -494,8 +507,8 @@ func (r *Repository) Update(ctx context.Context, id, projectID string, p Params)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	var freelancerID string
-	var clientID *string
+	// The freelancer is NULL while a project task waits for one.
+	var freelancerID, clientID *string
 	err = tx.QueryRow(ctx, `UPDATE tasks
 		SET title = $2, description = $3, due_on = $4, project_id = NULLIF($5, '')::uuid
 		WHERE id = $1
@@ -507,7 +520,9 @@ func (r *Repository) Update(ctx context.Context, id, projectID string, p Params)
 		if _, err := tx.Exec(ctx, `SELECT ensure_project_workflow($1::uuid)`, projectID); err != nil {
 			return fmt.Errorf("ensure workflow: %w", err)
 		}
-	} else if _, err := tx.Exec(ctx, `SELECT ensure_workflow($1, $2)`, freelancerID, clientID); err != nil {
+	} else if freelancerID == nil {
+		return ErrNeedsFreelancer
+	} else if _, err := tx.Exec(ctx, `SELECT ensure_workflow($1, $2)`, *freelancerID, clientID); err != nil {
 		return fmt.Errorf("ensure workflow: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE tasks t SET status_id = picked.id, status = picked.category
@@ -559,8 +574,14 @@ func (r *Repository) SetLabels(ctx context.Context, id string, labelIDs []string
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	var matching int
-	err = tx.QueryRow(ctx, `SELECT count(*) FROM labels l JOIN tasks t ON t.id = $1
-		WHERE l.id::text = ANY($2) AND l.freelancer_id = t.freelancer_id AND l.client_id IS NOT DISTINCT FROM t.client_id`,
+	// A project task takes labels of the project's board as well as its own
+	// pair's: on a project with several freelancers the board is the
+	// project's, and a task waiting for a freelancer has no pair of its own.
+	err = tx.QueryRow(ctx, `SELECT count(DISTINCT l.id) FROM labels l
+		JOIN tasks t ON t.id = $1
+		LEFT JOIN projects pr ON pr.id = t.project_id
+		WHERE l.id::text = ANY($2) AND l.client_id IS NOT DISTINCT FROM t.client_id
+		  AND (l.freelancer_id = t.freelancer_id OR l.freelancer_id = pr.freelancer_id)`,
 		id, labelIDs).Scan(&matching)
 	if err != nil {
 		return fmt.Errorf("check labels: %w", err)
@@ -635,4 +656,65 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 		return fmt.Errorf("delete task: %w", err)
 	}
 	return nil
+}
+
+// Archive archives a task by hand. ErrArchived when it already is.
+func (r *Repository) Archive(ctx context.Context, id string) error {
+	tag, err := r.db.Exec(ctx, `UPDATE tasks SET archived_at = now(), position = NULL
+		WHERE id = $1 AND archived_at IS NULL`, id)
+	if err != nil {
+		return fmt.Errorf("archive task: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrArchived
+	}
+	return nil
+}
+
+// ArchiveFilter narrows the archive. With and ProjectID work as in Filter;
+// Before is the cursor a previous page ended at.
+type ArchiveFilter struct {
+	With      string
+	ProjectID string
+	Before    *ArchiveCursor
+	Limit     int
+}
+
+// ArchiveCursor is where an archive page ends: the archive is newest first.
+type ArchiveCursor struct {
+	At time.Time
+	ID string
+}
+
+// ListArchive returns a page of the archived tasks the user sees, the most
+// recently archived first, and whether there are more after it.
+func (r *Repository) ListArchive(ctx context.Context, userID, role string, f ArchiveFilter) ([]Task, bool, error) {
+	other := "t.client_id"
+	if role == user.RoleClient {
+		other = "t.freelancer_id"
+	}
+	var beforeAt *time.Time
+	beforeID := ""
+	if f.Before != nil {
+		beforeAt, beforeID = &f.Before.At, f.Before.ID
+	}
+	rows, err := r.db.Query(ctx, selectTask+`
+		WHERE t.archived_at IS NOT NULL AND sees_task($1, t.id, t.freelancer_id, t.client_id)
+		  AND ($2 = '' OR (t.client_id IS NOT NULL AND `+other+`::text = $2)
+			OR ($2 = '`+PersonalFilter+`' AND t.client_id IS NULL))
+		  AND ($3 = '' OR t.project_id::text = $3)
+		  AND ($4::timestamptz IS NULL OR (t.archived_at, t.id::text) < ($4, $5))
+		ORDER BY t.archived_at DESC, t.id::text DESC
+		LIMIT $6`, userID, f.With, f.ProjectID, beforeAt, beforeID, f.Limit+1)
+	if err != nil {
+		return nil, false, fmt.Errorf("list archive: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Task, error) { return scanTask(row) })
+	if err != nil {
+		return nil, false, fmt.Errorf("scan archive: %w", err)
+	}
+	if len(out) > f.Limit {
+		return out[:f.Limit], true, nil
+	}
+	return out, false, nil
 }

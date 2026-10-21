@@ -31,12 +31,13 @@ func (h *Handler) PublicRoutes(r chi.Router) {
 	r.Post("/invites/accept", h.AcceptInvite)
 }
 
-// FreelancerRoutes mounts the freelancer-only endpoints.
-func (h *Handler) FreelancerRoutes(r chi.Router) {
+// FreelancerRoutes mounts the freelancer-only endpoints. guard limits the
+// invitations sent, each an email to an address the freelancer types.
+func (h *Handler) FreelancerRoutes(r chi.Router, guard func(http.Handler) http.Handler) {
 	r.Get("/clients", h.ListClients)
 	r.Route("/invitations", func(r chi.Router) {
 		r.Get("/", h.ListInvitations)
-		r.Post("/", h.Invite)
+		r.With(guard).Post("/", h.Invite)
 		r.Delete("/{id}", h.DeleteInvitation)
 	})
 }

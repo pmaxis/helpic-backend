@@ -74,6 +74,27 @@ func reset(t *testing.T, srv, token, password string) *http.Response {
 	})
 }
 
+func TestPasswordReset_EndsWithTheEmail(t *testing.T) {
+	srv, _ := newAPI(t)
+	c := signUpFreelancer(t, srv, "old@example.com")
+	forgot(t, srv.URL, "old@example.com")
+	token := linkToken(t, lastEmailTo(t, "old@example.com"), "/reset-password/")
+
+	resp := do(t, c, http.MethodPut, srv.URL+"/api/v1/me/email", map[string]string{"email": "new@example.com", "current_password": "supersecret1"})
+	wantStatus(t, resp, http.StatusAccepted)
+	resp.Body.Close()
+	resp = post(t, newClient(), srv.URL+"/api/v1/email-changes/confirm", map[string]string{
+		"token": linkToken(t, lastEmailTo(t, "new@example.com"), "/confirm-email/"),
+	})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	// A link sent to the old address no longer sets the password.
+	resp = reset(t, srv.URL, token, "takenover1")
+	wantStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+}
+
 func TestPasswordReset(t *testing.T) {
 	srv, _ := newAPI(t)
 	laptop := signUpFreelancer(t, srv, "forgetful@example.com")

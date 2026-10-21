@@ -189,10 +189,14 @@ func writeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound), errors.Is(err, tasks.ErrNotFound):
 		response.Error(w, http.StatusNotFound, response.CodeNotFound, "File not found")
+	case errors.Is(err, tasks.ErrArchived):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "This task is archived: its files stay as they are")
 	case errors.Is(err, ErrNotAllowed):
 		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only whoever uploaded a file can delete it")
 	case errors.Is(err, ErrTooLarge):
 		response.Error(w, http.StatusRequestEntityTooLarge, response.CodeValidation, "The file is too large")
+	case errors.Is(err, ErrQuota):
+		response.Error(w, http.StatusRequestEntityTooLarge, response.CodeValidation, "You've used up your space for files. Delete some of yours to add more.")
 	case errors.Is(err, ErrEmpty):
 		response.ValidationError(w, map[string]string{"file": "The file is empty"})
 	default:

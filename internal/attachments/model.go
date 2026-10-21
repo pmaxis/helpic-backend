@@ -14,6 +14,9 @@ var (
 	ErrNotAllowed = errors.New("only the uploader deletes a file")
 	// ErrTooLarge is returned for a file over the size limit.
 	ErrTooLarge = errors.New("file is too large")
+	// ErrQuota is returned when a file would take the uploader past the space
+	// they have for files.
+	ErrQuota = errors.New("upload quota used up")
 	// ErrEmpty is returned for an upload without a file in it.
 	ErrEmpty = errors.New("no file in the upload")
 )

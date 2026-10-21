@@ -17,6 +17,7 @@ import (
 // here (consumer side) but implemented by *Repository.
 type repository interface {
 	CreateUser(ctx context.Context, email, name, role, passwordHash, locale string) (user.User, error)
+	DeleteUser(ctx context.Context, id string) error
 	GetByEmail(ctx context.Context, email string) (user.User, error)
 
 	CreateSession(ctx context.Context, userID string, refreshHash []byte, c Client, expiresAt time.Time) (Session, error)
@@ -85,6 +86,13 @@ func (s *Service) Register(ctx context.Context, p RegisterParams, role string) (
 		return user.User{}, err
 	}
 	return u, nil
+}
+
+// Discard deletes an account Register has just made, when what it was made
+// for (an invitation used up in the meantime) didn't happen. Nothing refers
+// to it yet.
+func (s *Service) Discard(ctx context.Context, userID string) error {
+	return s.repo.DeleteUser(ctx, userID)
 }
 
 // Login verifies credentials and, on success, starts a session for the device

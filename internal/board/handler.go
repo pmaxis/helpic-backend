@@ -273,6 +273,8 @@ func writeErr(w http.ResponseWriter, err error) {
 		response.Error(w, http.StatusConflict, response.CodeConflict, "This column has tasks. Move them to another column first, or add another column that counts the same way")
 	case errors.Is(err, ErrLastColumn):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "A board needs at least one column")
+	case errors.Is(err, tasks.ErrArchived):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "This task is archived: it's closed and stays as it is")
 	case errors.Is(err, tasks.ErrTransition):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "You can't move this task to that column")
 	case errors.Is(err, tasks.ErrNotFound):

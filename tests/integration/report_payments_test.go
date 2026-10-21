@@ -68,29 +68,30 @@ func TestReports_PaidAndHistory(t *testing.T) {
 	wantStatus(t, resp, http.StatusConflict)
 	resp.Body.Close()
 
-	// The report's task moved to a new Paid column, right after Done; the
-	// dropped one stayed where it was.
+	// The report's task left the board for the archive; no Paid column is
+	// made, and the dropped one stayed where it was.
 	b := getBoard(t, srv, freelancer, "?with="+clientID)
-	names := []string{}
-	for _, c := range b.Columns {
-		names = append(names, c.Name)
-	}
-	paid := column(b, "Paid")
-	if len(names) != 4 || names[3] != "Paid" || paid.Category != "done" || len(paid.Tasks) != 1 || paid.Tasks[0] != "Logo" {
+	if len(b.Columns) != 3 || column(b, "Paid").ID != "" || len(column(b, "Done").Tasks) != 1 || column(b, "Done").Tasks[0] != "Landing" {
 		t.Fatalf("board after payment = %+v", b.Columns)
+	}
+	resp = get(t, freelancer, srv.URL+"/api/v1/tasks/"+logo)
+	wantStatus(t, resp, http.StatusOK)
+	archived := field(decode(t, resp), "task")
+	if archived["archived_at"] == nil || field(archived, "archived_by")["title"] != "October" || archived["can_edit"] != false {
+		t.Fatalf("paid task = %v", archived)
 	}
 	resp = get(t, freelancer, srv.URL+"/api/v1/tasks/"+landing)
 	wantStatus(t, resp, http.StatusOK)
-	if got := field(decode(t, resp), "task"); got["status_name"] != "Done" {
+	if got := field(decode(t, resp), "task"); got["status_name"] != "Done" || got["archived_at"] != nil {
 		t.Fatalf("dropped task = %v", got)
 	}
 
-	// The task's history says who moved it.
+	// The task's history says who archived it, and for which report.
 	resp = get(t, freelancer, srv.URL+"/api/v1/tasks/"+logo+"/history")
 	wantStatus(t, resp, http.StatusOK)
 	events := decode(t, resp)["events"].([]any)
 	last := events[len(events)-1].(map[string]any)
-	if last["kind"] != "status" || last["data"].(map[string]any)["to"] != "Paid" || last["actor"].(map[string]any)["email"] != "client@example.com" {
+	if last["kind"] != "archived" || last["data"].(map[string]any)["report"] != "October" || last["actor"].(map[string]any)["email"] != "client@example.com" {
 		t.Fatalf("task's last event = %v", last)
 	}
 
@@ -123,8 +124,8 @@ func TestReports_PaidAndHistory(t *testing.T) {
 		t.Fatalf("client's report history = %v", got)
 	}
 
-	// A second report leaves out what was paid for; paying it reuses the
-	// Paid column.
+	// A second report leaves out what was paid for; paying it archives the
+	// rest.
 	reportURL, items = report()
 	if len(items) != 1 || items[0].(map[string]any)["title"] != "Landing" {
 		t.Fatalf("second report = %v", items)
@@ -136,7 +137,43 @@ func TestReports_PaidAndHistory(t *testing.T) {
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 	b = getBoard(t, srv, freelancer, "?with="+clientID)
-	if len(b.Columns) != 4 || len(column(b, "Paid").Tasks) != 2 {
+	if len(b.Columns) != 3 || len(column(b, "Done").Tasks) != 0 {
 		t.Fatalf("board after the second payment = %+v", b.Columns)
+	}
+}
+
+func TestReports_PaidOnSharedProject(t *testing.T) {
+	srv, _ := newAPI(t)
+	p := newSharedProject(t, srv)
+	today := time.Now().Format("2006-01-02")
+	task := newTask(t, srv, p.second, map[string]any{"project_id": p.id, "title": "Logo"})
+	resp := post(t, p.second, srv.URL+"/api/v1/tasks/"+task["id"].(string)+"/status", map[string]string{"status": "done"})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	// The second freelancer bills the client for it, and the client pays.
+	resp = post(t, p.second, srv.URL+"/api/v1/reports", map[string]string{"client_id": p.clientID, "from": today, "to": today})
+	wantStatus(t, resp, http.StatusCreated)
+	reportURL := srv.URL + "/api/v1/reports/" + field(decode(t, resp), "report")["id"].(string)
+	resp = post(t, p.second, reportURL+"/send", nil)
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	resp = post(t, p.client, reportURL+"/paid", nil)
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	// The task left the project's board for the archive, which the client
+	// and the freelancer both see.
+	b := getBoard(t, srv, p.client, "?project="+p.id)
+	if len(b.Columns) != 3 || len(column(b, "Done").Tasks) != 0 {
+		t.Fatalf("project board after payment = %+v", b.Columns)
+	}
+	for _, c := range []*http.Client{p.client, p.second} {
+		if got := archiveTitles(t, srv, c, ""); len(got) != 1 || got[0] != "Logo" {
+			t.Fatalf("archive = %v", got)
+		}
+	}
+	if got := archiveTitles(t, srv, p.first, ""); len(got) != 0 {
+		t.Fatalf("the other freelancer's archive = %v", got)
 	}
 }

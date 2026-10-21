@@ -27,12 +27,14 @@ const signupTTL = 24 * time.Hour
 var ErrSignupInvalid = errors.New("sign-up confirmation link is invalid")
 
 // RequestSignup emails a confirmation link. Nothing is created until it is
-// opened. An address that already has an account returns ErrEmailExists. A
-// second request for the same address replaces the first link.
+// opened. A second request for the same address replaces the first link. An
+// address that already has an account gets an email saying so instead, and
+// the caller hears the same either way: the answer doesn't tell who has an
+// account.
 func (s *Service) RequestSignup(ctx context.Context, p RegisterParams) error {
-	_, err := s.repo.GetByEmail(ctx, p.Email)
+	existing, err := s.repo.GetByEmail(ctx, p.Email)
 	if err == nil {
-		return ErrEmailExists
+		return s.mail.Send(ctx, accountExistsEmail(existing, s.appURL))
 	}
 	if !errors.Is(err, user.ErrNotFound) {
 		return err
@@ -69,6 +71,24 @@ func (s *Service) RequestSignup(ctx context.Context, p RegisterParams) error {
 		return err
 	}
 	return nil
+}
+
+// accountExistsEmail answers a sign-up for an address that already has an
+// account, in the account's language.
+func accountExistsEmail(u user.User, appURL string) mail.Email {
+	t := func(text string, args ...any) string { return i18n.T(u.Locale, text, args...) }
+	return mail.Email{
+		To:      u.Email,
+		Locale:  u.Locale,
+		Subject: t("You already have a Helpic account"),
+		Heading: t("You already have an account"),
+		Paragraphs: []string{
+			t("Someone asked to create a Helpic account with %s, but this address already has one.", u.Email),
+			t("If it was you, sign in. Forgot the password? Reset it from the sign-in page."),
+		},
+		Button: &mail.Button{Text: t("Sign in"), URL: appURL + "/login"},
+		Note:   t("If it wasn't you, ignore this email: nothing changed."),
+	}
 }
 
 // ConfirmSignup creates the freelancer account the link names and signs

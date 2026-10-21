@@ -24,12 +24,13 @@ func NewHandler(svc *Service, cookie auth.CookieConfig) *Handler {
 }
 
 // ClientRoutes mounts the endpoints for clients. Must be called inside an
-// authenticated, client-only group.
-func (h *Handler) ClientRoutes(r chi.Router) {
+// authenticated, client-only group. guard limits the invitations sent, each
+// an email to an address the owner types.
+func (h *Handler) ClientRoutes(r chi.Router, guard func(http.Handler) http.Handler) {
 	r.Route("/team", func(r chi.Router) {
 		r.Get("/", h.Overview)
 		r.Put("/", h.Rename)
-		r.Post("/invites", h.Invite)
+		r.With(guard).Post("/invites", h.Invite)
 		r.Delete("/invites/{id}", h.RevokeInvite)
 		r.Put("/members/{id}", h.SetRole)
 		r.Delete("/members/{id}", h.RemoveMember)

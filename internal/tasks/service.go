@@ -98,6 +98,9 @@ func (s *Service) AddParticipant(ctx context.Context, userID, id, personID strin
 	if err != nil {
 		return Task{}, err
 	}
+	if t.Archived() {
+		return Task{}, ErrArchived
+	}
 	if ok, err := s.canChangePeople(ctx, t, userID); err != nil || !ok {
 		if err == nil {
 			err = ErrPeopleNotAllowed
@@ -128,25 +131,48 @@ func (s *Service) AddParticipant(ctx context.Context, userID, id, personID strin
 	return s.repo.Get(ctx, userID, id)
 }
 
+// canAssign reports whether the user may pick the task's freelancer: its
+// client and their company, except a contractor on a task they didn't set.
+// The freelancer doesn't hand their work to someone else.
+func (s *Service) canAssign(ctx context.Context, t Task, userID string) (bool, error) {
+	acting, err := s.repo.ActingClient(ctx, userID)
+	if err != nil || acting != t.Client.ID {
+		return false, err
+	}
+	if userID == t.CreatedBy {
+		return true, nil
+	}
+	contractor, err := s.repo.IsContractor(ctx, userID)
+	return !contractor, err
+}
+
 // AssignFreelancer makes a freelancer the task's assignee, or clears the
 // assignee when freelancerID is empty. The creator stays a participant either
-// way. A personal task keeps its freelancer.
+// way. A personal task keeps its freelancer, and so does a task outside any
+// project: its board is its pair's. A new freelancer starts without a price:
+// the old one was the previous freelancer's, in their currency.
 func (s *Service) AssignFreelancer(ctx context.Context, userID, id, freelancerID string) (Task, error) {
 	t, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
 		return Task{}, err
 	}
+	if t.Archived() {
+		return Task{}, ErrArchived
+	}
 	if t.Client == nil {
 		return Task{}, ErrKeepParticipant
 	}
-	if ok, err := s.canChangePeople(ctx, t, userID); err != nil || !ok {
+	if ok, err := s.canAssign(ctx, t, userID); err != nil || !ok {
 		if err == nil {
-			err = ErrPeopleNotAllowed
+			err = ErrAssignNotAllowed
 		}
 		return Task{}, err
 	}
 	if freelancerID == t.Freelancer.ID {
 		return t, nil
+	}
+	if freelancerID == "" && t.Project == nil {
+		return Task{}, ErrNeedsFreelancer
 	}
 	if freelancerID != "" {
 		if t.Project != nil {
@@ -170,6 +196,11 @@ func (s *Service) AssignFreelancer(ctx context.Context, userID, id, freelancerID
 	if err := s.repo.AssignFreelancer(ctx, t.ID, freelancerID); err != nil {
 		return Task{}, err
 	}
+	if t.PriceCents != nil {
+		data := change(centsOrNil(t.PriceCents), nil)
+		data["currency"] = t.Currency
+		s.Record(ctx, t.ID, userID, EventPrice, data)
+	}
 	if freelancerID != "" && freelancerID != userID {
 		n := notifications.Notification{UserID: freelancerID, ActorID: userID, Kind: notifications.KindParticipantAdded, TaskID: t.ID, Subject: t.Title}
 		if t.Project != nil {
@@ -187,6 +218,9 @@ func (s *Service) RemoveParticipant(ctx context.Context, userID, id, personID st
 	t, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
 		return err
+	}
+	if t.Archived() {
+		return ErrArchived
 	}
 	if personID == t.Freelancer.ID || personID == t.CreatedBy {
 		return ErrKeepParticipant
@@ -218,7 +252,10 @@ func (s *Service) Get(ctx context.Context, userID, id string) (Task, error) {
 // takes that project's client, and a freelancer who is on the project.
 func (s *Service) Create(ctx context.Context, userID, role string, p Params) (Task, error) {
 	freelancerID, clientID := p.FreelancerID, userID
-	if role == user.RoleFreelancer {
+	if p.Personal {
+		// Anyone's own task: its owner stands where the freelancer would.
+		freelancerID, clientID = userID, ""
+	} else if role == user.RoleFreelancer {
 		freelancerID, clientID = userID, p.ClientID
 	} else {
 		// A company member sets tasks for the company: its owner is the client.
@@ -305,12 +342,41 @@ func (s *Service) Create(ctx context.Context, userID, role string, p Params) (Ta
 	return t, err
 }
 
+// Archive puts the user's own personal task away for good: it leaves the
+// boards and nothing on it changes any more. Shared work is archived when
+// its report is paid (see the reports package).
+func (s *Service) Archive(ctx context.Context, userID, id string) (Task, error) {
+	t, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return Task{}, err
+	}
+	if t.Archived() {
+		return Task{}, ErrArchived
+	}
+	if !CanArchive(t, userID) {
+		return Task{}, ErrArchiveNotAllowed
+	}
+	if err := s.repo.Archive(ctx, t.ID); err != nil {
+		return Task{}, err
+	}
+	s.Record(ctx, t.ID, userID, EventArchived, nil)
+	return s.repo.Get(ctx, userID, id)
+}
+
+// ListArchive returns a page of the archived tasks the user sees.
+func (s *Service) ListArchive(ctx context.Context, userID, role string, f ArchiveFilter) ([]Task, bool, error) {
+	return s.repo.ListArchive(ctx, userID, role, f)
+}
+
 // Update edits a task's content. Its creator or its freelancer may, in any
 // status.
 func (s *Service) Update(ctx context.Context, userID, id string, p Params) (Task, error) {
 	t, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
 		return Task{}, err
+	}
+	if t.Archived() {
+		return Task{}, ErrArchived
 	}
 	if !CanEdit(t, userID) {
 		return Task{}, ErrEditNotAllowed
@@ -335,13 +401,17 @@ func (s *Service) Update(ctx context.Context, userID, id string, p Params) (Task
 			if deref(pc) != taskClient {
 				return Task{}, ErrProjectMismatch
 			}
-			on, err := s.repo.IsFreelancerParticipant(ctx, projectID, t.Freelancer.ID)
-			if err != nil {
-				return Task{}, err
+			if t.Freelancer.ID != "" {
+				on, err := s.repo.IsFreelancerParticipant(ctx, projectID, t.Freelancer.ID)
+				if err != nil {
+					return Task{}, err
+				}
+				if !on {
+					return Task{}, ErrFreelancerNotOnProject
+				}
 			}
-			if !on {
-				return Task{}, ErrFreelancerNotOnProject
-			}
+		} else if t.Freelancer.ID == "" {
+			return Task{}, ErrNeedsFreelancer
 		}
 	}
 	if err := s.repo.Update(ctx, id, projectID, p); err != nil {
@@ -362,6 +432,9 @@ func (s *Service) SetPrice(ctx context.Context, userID, id string, cents *int64)
 	t, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
 		return Task{}, err
+	}
+	if t.Archived() {
+		return Task{}, ErrArchived
 	}
 	if !CanSetPrice(t, userID) {
 		return Task{}, ErrPriceNotAllowed
@@ -387,6 +460,9 @@ func (s *Service) SetPriority(ctx context.Context, userID, id, priority string) 
 	if err != nil {
 		return Task{}, err
 	}
+	if t.Archived() {
+		return Task{}, ErrArchived
+	}
 	if t.Priority == priority {
 		return t, nil
 	}
@@ -408,6 +484,9 @@ func (s *Service) SetLabels(ctx context.Context, userID, id string, labelIDs []s
 	t, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
 		return Task{}, err
+	}
+	if t.Archived() {
+		return Task{}, ErrArchived
 	}
 	if err := s.repo.SetLabels(ctx, id, labelIDs); err != nil {
 		return Task{}, err
@@ -448,6 +527,9 @@ func (s *Service) Delete(ctx context.Context, userID, id string) error {
 	if err != nil {
 		return err
 	}
+	if t.Archived() {
+		return ErrArchived
+	}
 	if !CanDelete(t, userID) {
 		return ErrNotEditable
 	}
@@ -470,6 +552,9 @@ func (s *Service) SetStatus(ctx context.Context, userID, role, id, status string
 	t, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
 		return Task{}, err
+	}
+	if t.Archived() {
+		return Task{}, ErrArchived
 	}
 	if !CanTransition(t, role, userID, status) {
 		return Task{}, ErrTransition
@@ -494,6 +579,9 @@ func (s *Service) MoveTo(ctx context.Context, userID, role, id, statusID string)
 	t, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
 		return Task{}, err
+	}
+	if t.Archived() {
+		return Task{}, ErrArchived
 	}
 	st, err := s.repo.Status(ctx, statusID)
 	if err != nil {

@@ -89,8 +89,8 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	// --- rate limits: slow down password guessing and sign-up spam -----------
 	lim := newLimits(pool, cfg.RateLimit)
 	if lim.loginFailures != nil {
-		authHandler.LimitFailedLogins(lim.loginFailures)
-		authHandler.LimitResetRequests(lim.resetRequests)
+		authHandler.LimitFailedLogins(lim.loginFailures, lim.emailFailures)
+		authHandler.LimitResetRequests(lim.resetRequests, lim.emailResets)
 	}
 
 	// --- notifications: what the other side of shared work did -------------
@@ -132,7 +132,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	attachmentsSvc := attachments.NewService(attachments.NewRepository(pool), uploads, tasksSvc, cfg.MaxUploadBytes)
+	attachmentsSvc := attachments.NewService(attachments.NewRepository(pool), uploads, tasksSvc, cfg.MaxUploadBytes, cfg.UploadQuotaBytes)
 	tasksSvc.OnDelete(attachmentsSvc.TaskDeleted)
 	attachmentsHandler := attachments.NewHandler(attachmentsSvc)
 
@@ -215,12 +215,12 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireRole(user.RoleFreelancer))
-				clientsHandler.FreelancerRoutes(r)
+				clientsHandler.FreelancerRoutes(r, byUser(lim.invites))
 			})
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireRole(user.RoleClient))
 				clientsHandler.ClientRoutes(r)
-				teamHandler.ClientRoutes(r)
+				teamHandler.ClientRoutes(r, byUser(lim.invites))
 			})
 		})
 	})

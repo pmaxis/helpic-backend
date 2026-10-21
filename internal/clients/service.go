@@ -16,6 +16,7 @@ import (
 // *auth.Service.
 type accounts interface {
 	Register(ctx context.Context, p auth.RegisterParams, role string) (user.User, error)
+	Discard(ctx context.Context, userID string) error
 	Login(ctx context.Context, p auth.LoginParams, c auth.Client) (user.User, auth.Tokens, error)
 	StartSession(ctx context.Context, u user.User, c auth.Client) (auth.Tokens, error)
 }
@@ -154,6 +155,11 @@ func (s *Service) AcceptNew(ctx context.Context, l Lookup, p AcceptParams, c aut
 		return Session{}, err
 	}
 	if err := s.repo.Accept(ctx, l.Invitation.ID, u.ID); err != nil {
+		// The invitation was used up or withdrawn meanwhile: the account
+		// was only for it.
+		if delErr := s.accounts.Discard(ctx, u.ID); delErr != nil {
+			slog.Error("failed to discard an unused account", "error", delErr)
+		}
 		return Session{}, err
 	}
 	s.joined(ctx, l, u.ID)

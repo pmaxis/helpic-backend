@@ -106,10 +106,11 @@ func (s *Service) Cleanup(ctx context.Context) error {
 
 // Due is an open task a reminder was claimed for, with who to tell.
 type Due struct {
-	TaskID       string
-	Title        string
-	ProjectID    string
-	DueOn        time.Time
+	TaskID    string
+	Title     string
+	ProjectID string
+	DueOn     time.Time
+	// FreelancerID is empty while a project task waits for a freelancer.
 	FreelancerID string
 	// ClientID is empty for personal work.
 	ClientID string
@@ -136,14 +137,14 @@ func (r *Repository) Claim(ctx context.Context, kind string, dueOn time.Time) ([
 		WITH due AS (
 			SELECT id, title, project_id, due_on, freelancer_id, client_id, created_by
 			FROM tasks
-			WHERE due_on = $2::date AND status IN ('new', 'in_progress')
+			WHERE due_on = $2::date AND status IN ('new', 'in_progress') AND archived_at IS NULL
 		), claimed AS (
 			INSERT INTO task_reminders (task_id, kind, due_on)
 			SELECT id, $1, due_on FROM due
 			ON CONFLICT DO NOTHING
 			RETURNING task_id
 		)
-		SELECT d.id, d.title, coalesce(d.project_id::text, ''), d.due_on, d.freelancer_id,
+		SELECT d.id, d.title, coalesce(d.project_id::text, ''), d.due_on, coalesce(d.freelancer_id::text, ''),
 			coalesce(d.client_id::text, ''),
 			CASE WHEN d.client_id IS NOT NULL AND d.created_by NOT IN (d.freelancer_id, d.client_id)
 				AND acting_client(d.created_by) = d.client_id

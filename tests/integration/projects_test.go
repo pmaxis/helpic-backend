@@ -3,6 +3,7 @@ package integration
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -268,4 +269,153 @@ func TestProjects_ClientChangesTaskFreelancer(t *testing.T) {
 	resp = do(t, client, http.MethodDelete, taskURL+"/participants/"+myID(t, srv, client), nil)
 	wantStatus(t, resp, http.StatusConflict)
 	resp.Body.Close()
+}
+
+// sharedProject is a client's project with two freelancers, each linked with
+// the client.
+type sharedProject struct {
+	client, first, second           *http.Client
+	clientID, firstID, secondID, id string
+}
+
+func newSharedProject(t *testing.T, srv *httptest.Server) sharedProject {
+	t.Helper()
+	first := signUpFreelancer(t, srv, "one@example.com")
+	client := acceptNew(t, srv, invite(t, srv, first, "client@example.com"))
+	second := signUpFreelancer(t, srv, "two@example.com")
+	resp := acceptInvite(t, srv, newClient(), invite(t, srv, second, "client@example.com"), map[string]string{"password": "clientsecret1"})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	p := sharedProject{client: client, first: first, second: second,
+		clientID: myID(t, srv, client), firstID: myID(t, srv, first), secondID: myID(t, srv, second)}
+	p.id = createProject(t, srv, client, map[string]any{"freelancer_ids": []string{p.firstID, p.secondID}, "name": "Site"})["id"].(string)
+	return p
+}
+
+func TestProjects_TaskWaitingForFreelancer(t *testing.T) {
+	srv, _ := newAPI(t)
+	p := newSharedProject(t, srv)
+	task := newTask(t, srv, p.client, map[string]any{"project_id": p.id, "freelancer_id": p.firstID, "title": "Logo"})
+	taskURL := srv.URL + "/api/v1/tasks/" + task["id"].(string)
+	resp := do(t, p.client, http.MethodPut, taskURL+"/freelancer", map[string]string{"freelancer_id": ""})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	// It is still edited, moved on the project's board and labelled with the
+	// project board's labels.
+	resp = do(t, p.client, http.MethodPut, taskURL, map[string]any{"title": "Logo v2", "description": "Bolder"})
+	wantStatus(t, resp, http.StatusOK)
+	if got := field(decode(t, resp), "task")["title"]; got != "Logo v2" {
+		t.Fatalf("title = %v", got)
+	}
+	inProgress := column(getBoard(t, srv, p.client, "?project="+p.id), "In progress")
+	resp = post(t, p.client, srv.URL+"/api/v1/board/moves", map[string]string{"task_id": task["id"].(string), "column_id": inProgress.ID})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	resp = post(t, p.client, srv.URL+"/api/v1/board/labels", map[string]string{"project_id": p.id, "name": "Brand", "color": "teal"})
+	wantStatus(t, resp, http.StatusCreated)
+	label := field(decode(t, resp), "label")
+	resp = do(t, p.client, http.MethodPut, taskURL+"/labels", map[string]any{"label_ids": []any{label["id"]}})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	// Off the project it would have no board: not taken out, and the project
+	// isn't deleted from under it.
+	resp = do(t, p.client, http.MethodPut, taskURL, map[string]any{"title": "Logo v2", "project_id": ""})
+	wantStatus(t, resp, http.StatusConflict)
+	resp.Body.Close()
+	resp = do(t, p.client, http.MethodDelete, srv.URL+"/api/v1/projects/"+p.id, nil)
+	wantStatus(t, resp, http.StatusConflict)
+	resp.Body.Close()
+
+	// Once someone does it, the project goes and the task stays.
+	resp = do(t, p.client, http.MethodPut, taskURL+"/freelancer", map[string]string{"freelancer_id": p.secondID})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	resp = do(t, p.client, http.MethodDelete, srv.URL+"/api/v1/projects/"+p.id, nil)
+	wantStatus(t, resp, http.StatusNoContent)
+	resp.Body.Close()
+	if got := taskTitles(t, p.second, srv.URL); len(got) != 1 || got[0] != "Logo v2" {
+		t.Fatalf("second freelancer sees %v", got)
+	}
+}
+
+func TestProjects_TaskOutsideProjectKeepsFreelancer(t *testing.T) {
+	srv, _ := newAPI(t)
+	p := newSharedProject(t, srv)
+	task := newTask(t, srv, p.client, map[string]any{"freelancer_id": p.firstID, "title": "Logo"})
+	resp := do(t, p.client, http.MethodPut, srv.URL+"/api/v1/tasks/"+task["id"].(string)+"/freelancer", map[string]string{"freelancer_id": ""})
+	wantStatus(t, resp, http.StatusConflict)
+	resp.Body.Close()
+	// Swapping for another linked freelancer is fine.
+	resp = do(t, p.client, http.MethodPut, srv.URL+"/api/v1/tasks/"+task["id"].(string)+"/freelancer", map[string]string{"freelancer_id": p.secondID})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+}
+
+func TestProjects_OnlyClientSideAssigns(t *testing.T) {
+	srv, _ := newAPI(t)
+	p := newSharedProject(t, srv)
+	task := newTask(t, srv, p.first, map[string]any{"project_id": p.id, "title": "Logo", "price": "500"})
+	taskURL := srv.URL + "/api/v1/tasks/" + task["id"].(string)
+
+	// The freelancer doesn't hand their task to someone else.
+	resp := do(t, p.first, http.MethodPut, taskURL+"/freelancer", map[string]string{"freelancer_id": p.secondID})
+	wantStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+
+	// The client does, and the first freelancer's price doesn't go with it.
+	resp = do(t, p.client, http.MethodPut, taskURL+"/freelancer", map[string]string{"freelancer_id": p.secondID})
+	wantStatus(t, resp, http.StatusOK)
+	got := field(decode(t, resp), "task")
+	if got["freelancer"].(map[string]any)["id"] != p.secondID || got["price_cents"] != nil {
+		t.Fatalf("reassigned task = %v", got)
+	}
+}
+
+func TestProjects_LabelsOnSharedProject(t *testing.T) {
+	srv, _ := newAPI(t)
+	p := newSharedProject(t, srv)
+	task := newTask(t, srv, p.client, map[string]any{"project_id": p.id, "freelancer_id": p.secondID, "title": "Logo"})
+	labelsURL := srv.URL + "/api/v1/board/labels"
+
+	// The project's board shows the project pair's labels; they go on any
+	// task of the project, the second freelancer's too.
+	resp := post(t, p.client, labelsURL, map[string]string{"project_id": p.id, "name": "Brand", "color": "teal"})
+	wantStatus(t, resp, http.StatusCreated)
+	label := field(decode(t, resp), "label")
+	resp = do(t, p.second, http.MethodPut, srv.URL+"/api/v1/tasks/"+task["id"].(string)+"/labels", map[string]any{"label_ids": []any{label["id"]}})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	// But the labels are the first freelancer's pair's: the second one doesn't
+	// change them.
+	resp = post(t, p.second, labelsURL, map[string]string{"project_id": p.id, "name": "Mine", "color": "red"})
+	wantStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+}
+
+func TestProjects_MoveKeepsOtherFreelancersOrder(t *testing.T) {
+	srv, _ := newAPI(t)
+	p := newSharedProject(t, srv)
+	a1 := newTask(t, srv, p.client, map[string]any{"project_id": p.id, "freelancer_id": p.firstID, "title": "A1"})
+	b1 := newTask(t, srv, p.client, map[string]any{"project_id": p.id, "freelancer_id": p.secondID, "title": "B1"})
+	a2 := newTask(t, srv, p.client, map[string]any{"project_id": p.id, "freelancer_id": p.firstID, "title": "A2"})
+	newCol := column(getBoard(t, srv, p.client, "?project="+p.id), "New")
+	move := func(c *http.Client, task map[string]any, after string) {
+		t.Helper()
+		resp := post(t, c, srv.URL+"/api/v1/board/moves", map[string]string{"task_id": task["id"].(string), "column_id": newCol.ID, "after_task_id": after})
+		wantStatus(t, resp, http.StatusOK)
+		resp.Body.Close()
+	}
+	move(p.client, a1, "")
+	move(p.client, b1, a1["id"].(string))
+	move(p.client, a2, b1["id"].(string))
+
+	// The first freelancer sees only A1 and A2, and puts A2 right after A1:
+	// B1, which they don't see, keeps its place after it.
+	move(p.first, a2, a1["id"].(string))
+	if got := column(getBoard(t, srv, p.client, "?project="+p.id), "New").Tasks; strings.Join(got, ",") != "A1,A2,B1" {
+		t.Fatalf("column = %v", got)
+	}
 }
