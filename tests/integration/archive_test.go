@@ -3,13 +3,12 @@ package integration
 import (
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 	"time"
 )
 
-// archivePage reads one page of the user's archive.
-func archivePage(t *testing.T, srv *httptest.Server, c *http.Client, query string) ([]string, string) {
+// archivePage reads one page of the user's archive: its titles and the total.
+func archivePage(t *testing.T, srv *httptest.Server, c *http.Client, query string) ([]string, int) {
 	t.Helper()
 	resp := get(t, c, srv.URL+"/api/v1/archive"+query)
 	wantStatus(t, resp, http.StatusOK)
@@ -18,8 +17,7 @@ func archivePage(t *testing.T, srv *httptest.Server, c *http.Client, query strin
 	for _, x := range body["tasks"].([]any) {
 		titles = append(titles, x.(map[string]any)["title"].(string))
 	}
-	next, _ := body["next"].(string)
-	return titles, next
+	return titles, int(body["total"].(float64))
 }
 
 // archiveTitles is the first page of the archive, optionally filtered.
@@ -204,16 +202,21 @@ func TestArchive_Pages(t *testing.T) {
 		resp.Body.Close()
 	}
 
-	// The most recently archived first, a page at a time.
-	first, next := archivePage(t, srv, freelancer, "?limit=2")
-	if len(first) != 2 || first[0] != "Three" || first[1] != "Two" || next == "" {
-		t.Fatalf("first page = %v, next %q", first, next)
+	// The most recently archived first, a numbered page at a time, with the total.
+	first, total := archivePage(t, srv, freelancer, "?limit=2")
+	if len(first) != 2 || first[0] != "Three" || first[1] != "Two" || total != 3 {
+		t.Fatalf("first page = %v, total %d", first, total)
 	}
-	second, next := archivePage(t, srv, freelancer, "?limit=2&before="+url.QueryEscape(next))
-	if len(second) != 1 || second[0] != "One" || next != "" {
-		t.Fatalf("second page = %v, next %q", second, next)
+	second, total := archivePage(t, srv, freelancer, "?limit=2&page=2")
+	if len(second) != 1 || second[0] != "One" || total != 3 {
+		t.Fatalf("second page = %v, total %d", second, total)
 	}
-	for _, bad := range []string{"?before=garbage", "?limit=0", "?limit=500"} {
+	// A page past the last is empty, and still says how many there are.
+	past, total := archivePage(t, srv, freelancer, "?limit=2&page=3")
+	if len(past) != 0 || total != 3 {
+		t.Fatalf("page past the last = %v, total %d", past, total)
+	}
+	for _, bad := range []string{"?page=0", "?page=x", "?limit=0", "?limit=500"} {
 		resp := get(t, freelancer, srv.URL+"/api/v1/archive"+bad)
 		wantStatus(t, resp, http.StatusBadRequest)
 		resp.Body.Close()

@@ -363,8 +363,8 @@ func (s *Service) Archive(ctx context.Context, userID, id string) (Task, error) 
 	return s.repo.Get(ctx, userID, id)
 }
 
-// ListArchive returns a page of the archived tasks the user sees.
-func (s *Service) ListArchive(ctx context.Context, userID, role string, f ArchiveFilter) ([]Task, bool, error) {
+// ListArchive returns a page of the archived tasks the user sees and how many there are in all.
+func (s *Service) ListArchive(ctx context.Context, userID, role string, f ArchiveFilter) ([]Task, int, error) {
 	return s.repo.ListArchive(ctx, userID, role, f)
 }
 

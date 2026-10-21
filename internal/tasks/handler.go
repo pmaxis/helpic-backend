@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -80,31 +79,33 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string][]DTO{"tasks": out})
 }
 
-// archivePage caps an archive page; maxArchivePage is the most one may ask for.
+// archivePage is an archive page's size; maxArchivePage is the most one may ask for.
 const (
-	archivePage    = 50
+	archivePage    = 10
 	maxArchivePage = 200
 )
 
-// ArchiveResponse is a page of the archive. Next, when set, is the cursor
-// (?before=) of the page after it.
+// ArchiveResponse is one numbered page of the archive: its tasks, which page
+// it is, how many tasks a page holds and how many there are in all.
 type ArchiveResponse struct {
-	Tasks []DTO  `json:"tasks"`
-	Next  string `json:"next,omitempty"`
+	Tasks []DTO `json:"tasks"`
+	Page  int   `json:"page"`
+	Limit int   `json:"limit"`
+	Total int   `json:"total"`
 }
 
-// ListArchive handles GET /api/v1/archive?with={userID|personal}&project={id}&before={cursor}&limit={n}.
+// ListArchive handles GET /api/v1/archive?with={userID|personal}&project={id}&page={n}&limit={n}.
 //
 //	@Summary		Archived tasks
-//	@Description	Tasks closed for good, the most recently archived first: shared work whose report was paid, and personal tasks put away by hand. Pages follow the next cursor.
+//	@Description	Tasks closed for good, the most recently archived first: shared work whose report was paid, and personal tasks put away by hand. A page at a time, with how many there are in all; a page past the last is empty.
 //	@Tags			tasks
 //	@Produce		json
 //	@Param			with	query		string					false	"A client's or freelancer's ID, or personal"
 //	@Param			project	query		string					false	"Project ID"
-//	@Param			before	query		string					false	"The next cursor of the previous page"
-//	@Param			limit	query		int						false	"Tasks per page, 50 by default, at most 200"
-//	@Success		200		{object}	ArchiveResponse			"tasks and the next page's cursor"
-//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid cursor or limit"
+//	@Param			page	query		int						false	"The page, from 1"
+//	@Param			limit	query		int						false	"Tasks per page, 10 by default, at most 200"
+//	@Success		200		{object}	ArchiveResponse			"the page's tasks and the total"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid page or limit"
 //	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
 //	@Router			/archive [get]
 func (h *Handler) ListArchive(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +114,7 @@ func (h *Handler) ListArchive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	f := ArchiveFilter{With: q.Get("with"), ProjectID: q.Get("project"), Limit: archivePage}
+	f := ArchiveFilter{With: q.Get("with"), ProjectID: q.Get("project"), Page: 1, Limit: archivePage}
 	if raw := q.Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 || n > maxArchivePage {
@@ -122,41 +123,24 @@ func (h *Handler) ListArchive(w http.ResponseWriter, r *http.Request) {
 		}
 		f.Limit = n
 	}
-	if raw := q.Get("before"); raw != "" {
-		c, ok := parseCursor(raw)
-		if !ok {
-			response.ValidationError(w, map[string]string{"before": "This page link is broken. Start from the first page."})
+	if raw := q.Get("page"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			response.ValidationError(w, map[string]string{"page": "This page link is broken. Start from the first page."})
 			return
 		}
-		f.Before = &c
+		f.Page = n
 	}
-	list, more, err := h.svc.ListArchive(r.Context(), userID, role, f)
+	list, total, err := h.svc.ListArchive(r.Context(), userID, role, f)
 	if err != nil {
 		response.Internal(w, err)
 		return
 	}
-	out := ArchiveResponse{Tasks: make([]DTO, 0, len(list))}
+	out := ArchiveResponse{Tasks: make([]DTO, 0, len(list)), Page: f.Page, Limit: f.Limit, Total: total}
 	for _, t := range list {
 		out.Tasks = append(out.Tasks, ToDTO(t, role, userID))
 	}
-	if more {
-		last := list[len(list)-1]
-		out.Next = last.ArchivedAt.UTC().Format(time.RFC3339Nano) + "_" + last.ID
-	}
 	response.JSON(w, http.StatusOK, out)
-}
-
-// parseCursor reads a next cursor: the archive time and the task's ID.
-func parseCursor(raw string) (ArchiveCursor, bool) {
-	at, id, ok := strings.Cut(raw, "_")
-	if !ok || id == "" {
-		return ArchiveCursor{}, false
-	}
-	t, err := time.Parse(time.RFC3339Nano, at)
-	if err != nil {
-		return ArchiveCursor{}, false
-	}
-	return ArchiveCursor{At: t, ID: id}, true
 }
 
 // Archive handles POST /api/v1/tasks/{id}/archive.
