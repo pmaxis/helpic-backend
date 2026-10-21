@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -671,50 +670,41 @@ func (r *Repository) Archive(ctx context.Context, id string) error {
 	return nil
 }
 
-// ArchiveFilter narrows the archive. With and ProjectID work as in Filter;
-// Before is the cursor a previous page ended at.
+// ArchiveFilter narrows the archive and picks a page of it. With and
+// ProjectID work as in Filter.
 type ArchiveFilter struct {
 	With      string
 	ProjectID string
-	Before    *ArchiveCursor
-	Limit     int
+	// Page counts from 1; Limit is how many tasks a page holds.
+	Page  int
+	Limit int
 }
 
-// ArchiveCursor is where an archive page ends: the archive is newest first.
-type ArchiveCursor struct {
-	At time.Time
-	ID string
-}
-
-// ListArchive returns a page of the archived tasks the user sees, the most
-// recently archived first, and whether there are more after it.
-func (r *Repository) ListArchive(ctx context.Context, userID, role string, f ArchiveFilter) ([]Task, bool, error) {
+// ListArchive returns one page of the archived tasks the user sees, the most
+// recently archived first, and how many there are in all.
+func (r *Repository) ListArchive(ctx context.Context, userID, role string, f ArchiveFilter) ([]Task, int, error) {
 	other := "t.client_id"
 	if role == user.RoleClient {
 		other = "t.freelancer_id"
 	}
-	var beforeAt *time.Time
-	beforeID := ""
-	if f.Before != nil {
-		beforeAt, beforeID = &f.Before.At, f.Before.ID
-	}
-	rows, err := r.db.Query(ctx, selectTask+`
+	where := `
 		WHERE t.archived_at IS NOT NULL AND sees_task($1, t.id, t.freelancer_id, t.client_id)
-		  AND ($2 = '' OR (t.client_id IS NOT NULL AND `+other+`::text = $2)
-			OR ($2 = '`+PersonalFilter+`' AND t.client_id IS NULL))
-		  AND ($3 = '' OR t.project_id::text = $3)
-		  AND ($4::timestamptz IS NULL OR (t.archived_at, t.id::text) < ($4, $5))
-		ORDER BY t.archived_at DESC, t.id::text DESC
-		LIMIT $6`, userID, f.With, f.ProjectID, beforeAt, beforeID, f.Limit+1)
+		  AND ($2 = '' OR (t.client_id IS NOT NULL AND ` + other + `::text = $2)
+			OR ($2 = '` + PersonalFilter + `' AND t.client_id IS NULL))
+		  AND ($3 = '' OR t.project_id::text = $3)`
+	var total int
+	if err := r.db.QueryRow(ctx, `SELECT count(*) FROM tasks t`+where, userID, f.With, f.ProjectID).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count archive: %w", err)
+	}
+	rows, err := r.db.Query(ctx, selectTask+where+`
+		ORDER BY t.archived_at DESC, t.id DESC
+		LIMIT $4 OFFSET $5`, userID, f.With, f.ProjectID, f.Limit, (f.Page-1)*f.Limit)
 	if err != nil {
-		return nil, false, fmt.Errorf("list archive: %w", err)
+		return nil, 0, fmt.Errorf("list archive: %w", err)
 	}
 	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Task, error) { return scanTask(row) })
 	if err != nil {
-		return nil, false, fmt.Errorf("scan archive: %w", err)
+		return nil, 0, fmt.Errorf("scan archive: %w", err)
 	}
-	if len(out) > f.Limit {
-		return out[:f.Limit], true, nil
-	}
-	return out, false, nil
+	return out, total, nil
 }

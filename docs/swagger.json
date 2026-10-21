@@ -10,7 +10,7 @@
     "paths": {
         "/archive": {
             "get": {
-                "description": "Tasks closed for good, the most recently archived first: shared work whose report was paid, and personal tasks put away by hand. Pages follow the next cursor.",
+                "description": "Tasks closed for good, the most recently archived first: shared work whose report was paid, and personal tasks put away by hand. A page at a time, with how many there are in all; a page past the last is empty.",
                 "produces": [
                     "application/json"
                 ],
@@ -32,27 +32,27 @@
                         "in": "query"
                     },
                     {
-                        "type": "string",
-                        "description": "The next cursor of the previous page",
-                        "name": "before",
+                        "type": "integer",
+                        "description": "The page, from 1",
+                        "name": "page",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "description": "Tasks per page, 50 by default, at most 200",
+                        "description": "Tasks per page, 10 by default, at most 200",
                         "name": "limit",
                         "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "tasks and the next page's cursor",
+                        "description": "the page's tasks and the total",
                         "schema": {
                             "$ref": "#/definitions/tasks.ArchiveResponse"
                         }
                     },
                     "400": {
-                        "description": "Invalid cursor or limit",
+                        "description": "Invalid page or limit",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -5486,14 +5486,20 @@
         "tasks.ArchiveResponse": {
             "type": "object",
             "properties": {
-                "next": {
-                    "type": "string"
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
                 },
                 "tasks": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/tasks.DTO"
                     }
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },
