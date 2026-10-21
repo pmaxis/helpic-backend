@@ -27,6 +27,9 @@ var (
 	// ErrUnassignedTasks is returned when deleting a project with tasks that
 	// wait for a freelancer: off the project they'd have no board.
 	ErrUnassignedTasks = errors.New("the project has tasks without a freelancer")
+	// ErrNotProjectFreelancer is returned when someone other than a freelancer
+	// on the project sets a rate for it.
+	ErrNotProjectFreelancer = errors.New("only a freelancer on the project sets a rate for it")
 )
 
 // Person is someone who can be on a project: its freelancer, the client, or a
@@ -51,6 +54,17 @@ type Party struct {
 	Role string `json:"role,omitempty"`
 }
 
+// CanSetRate reports whether the viewer may set an hourly rate on the
+// project: a freelancer on it, for their own work.
+func CanSetRate(p Project, viewerID string) bool {
+	for _, person := range p.Participants {
+		if person.ID == viewerID && person.Role == "freelancer" {
+			return true
+		}
+	}
+	return false
+}
+
 // Project groups tasks between the same freelancer and client.
 type Project struct {
 	ID         string
@@ -64,6 +78,9 @@ type Project struct {
 	TotalTasks  int
 	// Participants are the people on the project, the author first.
 	Participants []Party
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// MyRateCents is the viewer's hourly rate on this project, which their
+	// tasks in it are billed at instead of their own; nil when they set none.
+	MyRateCents *int64
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }

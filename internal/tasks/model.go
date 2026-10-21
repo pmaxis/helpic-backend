@@ -99,6 +99,13 @@ const (
 	StatusDone       = "done"
 )
 
+// Billing: a fixed price the freelancer sets, or the task's time at their
+// hourly rate (the database keeps the price up to date).
+const (
+	BillingFixed  = "fixed"
+	BillingHourly = "hourly"
+)
+
 // Priorities, least urgent first. A task starts with none.
 const (
 	PriorityNone   = "none"
@@ -186,6 +193,13 @@ func CanSetPrice(t Task, viewerID string) bool {
 	return !t.Archived() && t.Freelancer.ID == viewerID && t.FreelancerRole == user.RoleFreelancer
 }
 
+// CanTrackTime reports whether the viewer may write time on the task: its
+// freelancer, until it's on a sent report or archived. A client's personal
+// task isn't billed.
+func CanTrackTime(t Task, viewerID string) bool {
+	return !t.Archived() && !t.Billed && t.Freelancer.ID == viewerID && t.FreelancerRole == user.RoleFreelancer
+}
+
 // CanArchive reports whether the viewer may archive the task by hand: only
 // their own personal task. Shared work is archived when its report is paid.
 func CanArchive(t Task, viewerID string) bool {
@@ -252,7 +266,16 @@ type Task struct {
 	// freelancer's.
 	PriceCents *int64
 	Currency   string
-	Priority   string
+	Billing    string
+	// TrackedSeconds is the time written on the task; nil while there is
+	// none. HourlyRateCents is the freelancer's rate that applies to it: the
+	// project's, or their own; nil without one.
+	TrackedSeconds  *int64
+	HourlyRateCents *int64
+	// Billed is whether the task is on a report that was sent: its time is
+	// billed and stays as it is.
+	Billed   bool
+	Priority string
 	// Labels are sorted by name.
 	Labels    []Label
 	CreatedAt time.Time

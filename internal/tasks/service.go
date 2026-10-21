@@ -150,7 +150,8 @@ func (s *Service) canAssign(ctx context.Context, t Task, userID string) (bool, e
 // assignee when freelancerID is empty. The creator stays a participant either
 // way. A personal task keeps its freelancer, and so does a task outside any
 // project: its board is its pair's. A new freelancer starts without a price:
-// the old one was the previous freelancer's, in their currency.
+// the old one was the previous freelancer's, in their currency. By the hour,
+// the time is priced at the new freelancer's rate.
 func (s *Service) AssignFreelancer(ctx context.Context, userID, id, freelancerID string) (Task, error) {
 	t, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
@@ -196,7 +197,8 @@ func (s *Service) AssignFreelancer(ctx context.Context, userID, id, freelancerID
 	if err := s.repo.AssignFreelancer(ctx, t.ID, freelancerID); err != nil {
 		return Task{}, err
 	}
-	if t.PriceCents != nil {
+	// An hourly task is priced again at the new freelancer's rate.
+	if t.PriceCents != nil && t.Billing == BillingFixed {
 		data := change(centsOrNil(t.PriceCents), nil)
 		data["currency"] = t.Currency
 		s.Record(ctx, t.ID, userID, EventPrice, data)
@@ -426,9 +428,10 @@ func (s *Service) Update(ctx context.Context, userID, id string, p Params) (Task
 	return t, err
 }
 
-// SetPrice sets or clears the task's price. Only its freelancer may, in any
-// status: the price is what they bill for the work.
-func (s *Service) SetPrice(ctx context.Context, userID, id string, cents *int64) (Task, error) {
+// SetPrice sets how the task is billed and, at a fixed price, sets or clears
+// the price; by the hour the price follows the time. Only its freelancer
+// may, in any status: the price is what they bill for the work.
+func (s *Service) SetPrice(ctx context.Context, userID, id, billing string, cents *int64) (Task, error) {
 	t, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
 		return Task{}, err
@@ -439,12 +442,16 @@ func (s *Service) SetPrice(ctx context.Context, userID, id string, cents *int64)
 	if !CanSetPrice(t, userID) {
 		return Task{}, ErrPriceNotAllowed
 	}
-	if err := s.repo.SetPrice(ctx, id, cents); err != nil {
+	if err := s.repo.SetPrice(ctx, id, billing, cents); err != nil {
 		return Task{}, err
 	}
 	before := t
 	t, err = s.repo.Get(ctx, userID, id)
-	if err == nil && !samePrice(before.PriceCents, t.PriceCents) {
+	if err == nil && before.Billing != t.Billing {
+		s.Record(ctx, t.ID, userID, EventBilling, change(before.Billing, t.Billing))
+	}
+	// By the hour the price follows the time from now on: the switch is the event.
+	if err == nil && t.Billing == BillingFixed && !samePrice(before.PriceCents, t.PriceCents) {
 		data := change(centsOrNil(before.PriceCents), centsOrNil(t.PriceCents))
 		data["currency"] = t.Currency
 		s.Record(ctx, t.ID, userID, EventPrice, data)

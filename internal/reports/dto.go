@@ -162,6 +162,8 @@ type ItemDTO struct {
 	CompletedOn string  `json:"completed_on"`
 	// PriceCents is null for a task without a price.
 	PriceCents *int64 `json:"price_cents"`
+	// Seconds is the time a task billed by the hour took; null for a fixed price.
+	Seconds *int64 `json:"seconds"`
 	// Notes say what was done in the task (shown in a detailed report).
 	Notes string `json:"notes"`
 }
@@ -237,7 +239,7 @@ func ToDTO(r Report, viewerID string) DTO {
 		d.Items = make([]ItemDTO, 0, len(r.Items))
 		for _, it := range r.Items {
 			item := ItemDTO{ID: it.ID, Title: it.Title, ProjectName: it.ProjectName, StatusName: it.StatusName,
-				CompletedOn: it.CompletedOn.Format(dateLayout), PriceCents: it.PriceCents, Notes: it.Notes}
+				CompletedOn: it.CompletedOn.Format(dateLayout), PriceCents: it.PriceCents, Seconds: it.Seconds, Notes: it.Notes}
 			if it.TaskID != "" {
 				id := it.TaskID
 				item.TaskID = &id

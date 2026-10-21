@@ -38,7 +38,10 @@ const selectTask = `SELECT t.id, t.created_by, t.title, t.description, t.status,
 				ORDER BY tp.user_id = t.freelancer_id DESC, tp.first_at, u.id)
 			FROM task_participants tp JOIN users u ON u.id = tp.user_id
 			WHERE tp.task_id = t.id), '[]'),
-		coalesce(f.role, ''), t.archived_at, ar.id, ar.title
+		coalesce(f.role, ''), t.archived_at, ar.id, ar.title,
+		t.billing, task_seconds(t.id), task_billed(t.id),
+		coalesce((SELECT pp.hourly_rate_cents FROM project_participants pp WHERE pp.project_id = t.project_id AND pp.user_id = t.freelancer_id),
+			f.hourly_rate_cents)
 	FROM tasks t
 	JOIN workflow_statuses ws ON ws.id = t.status_id
 	LEFT JOIN users f ON f.id = t.freelancer_id
@@ -62,7 +65,8 @@ func scanTask(row pgx.Row) (Task, error) {
 		&freelancerID, &freelancerName, &freelancerEmail,
 		&clientID, &clientName, &mail, &projectID, &projectName,
 		&t.Creator.Name, &t.Creator.Email, &participants,
-		&t.FreelancerRole, &t.ArchivedAt, &reportID, &reportTitle)
+		&t.FreelancerRole, &t.ArchivedAt, &reportID, &reportTitle,
+		&t.Billing, &t.TrackedSeconds, &t.Billed, &t.HourlyRateCents)
 	if err != nil {
 		return t, err
 	}
@@ -547,9 +551,10 @@ func (r *Repository) Update(ctx context.Context, id, projectID string, p Params)
 	return nil
 }
 
-// SetPrice sets the task's price in cents (nil clears it).
-func (r *Repository) SetPrice(ctx context.Context, id string, cents *int64) error {
-	if _, err := r.db.Exec(ctx, `UPDATE tasks SET price_cents = $2 WHERE id = $1`, id, cents); err != nil {
+// SetPrice sets how the task is billed and, at a fixed price, the price in
+// cents (nil clears it). An hourly task is priced by the database.
+func (r *Repository) SetPrice(ctx context.Context, id, billing string, cents *int64) error {
+	if _, err := r.db.Exec(ctx, `UPDATE tasks SET billing = $2, price_cents = $3 WHERE id = $1`, id, billing, cents); err != nil {
 		return fmt.Errorf("set task price: %w", err)
 	}
 	return nil

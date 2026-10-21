@@ -19,6 +19,8 @@ var (
 	// ErrCurrencyLocked is returned when changing currency would relabel
 	// prices that already exist. Amounts are not converted.
 	ErrCurrencyLocked = errors.New("prices already exist in the current currency")
+	// ErrNotFreelancer is returned when someone who doesn't bill sets a rate.
+	ErrNotFreelancer = errors.New("only a freelancer has an hourly rate")
 )
 
 // sessions signs the user's other devices out. Implemented by *auth.Service.
@@ -94,6 +96,19 @@ func (s *Service) SetCurrency(ctx context.Context, userID, currency string) (use
 		return user.User{}, ErrCurrencyLocked
 	}
 	return s.repo.SetCurrency(ctx, userID, currency)
+}
+
+// SetHourlyRate sets or clears what a freelancer charges for an hour. Their
+// open hourly tasks are priced again at the new rate; billed ones keep theirs.
+func (s *Service) SetHourlyRate(ctx context.Context, userID string, cents *int64) (user.User, error) {
+	u, err := s.repo.Get(ctx, userID)
+	if err != nil {
+		return user.User{}, err
+	}
+	if u.Role != user.RoleFreelancer {
+		return user.User{}, ErrNotFreelancer
+	}
+	return s.repo.SetHourlyRate(ctx, userID, cents)
 }
 
 func (s *Service) verify(ctx context.Context, userID, password string) (user.User, error) {

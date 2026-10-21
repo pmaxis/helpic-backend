@@ -32,6 +32,7 @@ import (
 	"github.com/pmaxis/helpic/internal/tasks"
 	"github.com/pmaxis/helpic/internal/team"
 	"github.com/pmaxis/helpic/internal/telegram"
+	"github.com/pmaxis/helpic/internal/timelog"
 	"github.com/pmaxis/helpic/internal/token"
 	"github.com/pmaxis/helpic/internal/user"
 )
@@ -139,6 +140,9 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	// --- the discussion on a task ----------------------------------------------
 	commentsHandler := comments.NewHandler(comments.NewService(comments.NewRepository(pool), tasksSvc))
 
+	// --- time spent on tasks, which prices the ones billed by the hour --------
+	timelogHandler := timelog.NewHandler(timelog.NewService(timelog.NewRepository(pool), tasksSvc, cfg.Location))
+
 	// --- reports of work done, sent to clients ------------------------------
 	zone := "UTC"
 	if cfg.Location != nil {
@@ -206,6 +210,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			tasksHandler.Routes(r)
 			attachmentsHandler.Routes(r)
 			commentsHandler.Routes(r)
+			timelogHandler.Routes(r)
 			projectsHandler.Routes(r)
 			boardHandler.Routes(r)
 			notificationsHandler.Routes(r)

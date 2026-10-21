@@ -164,6 +164,22 @@ func (s *Service) RemoveParticipant(ctx context.Context, userID, id, personID st
 	return s.People(ctx, userID, id)
 }
 
+// SetRate sets or clears the hourly rate a freelancer on the project bills
+// their tasks in it at; their open hourly tasks there are priced again.
+func (s *Service) SetRate(ctx context.Context, userID, id string, cents *int64) (Project, error) {
+	p, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return Project{}, err
+	}
+	if !CanSetRate(p, userID) {
+		return Project{}, ErrNotProjectFreelancer
+	}
+	if err := s.repo.SetRate(ctx, p.ID, userID, cents); err != nil {
+		return Project{}, err
+	}
+	return s.repo.Get(ctx, userID, id)
+}
+
 func (s *Service) owned(ctx context.Context, userID, id string) (Project, error) {
 	p, err := s.repo.Get(ctx, userID, id)
 	if err != nil {

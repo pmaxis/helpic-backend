@@ -91,6 +91,24 @@ func (r CurrencyRequest) Validate() (string, map[string]string) {
 	return code, fields
 }
 
+// RateRequest is the JSON body for PUT /api/v1/me/rate; a null or empty rate
+// clears it.
+type RateRequest struct {
+	Rate *string `json:"rate"`
+}
+
+// Validate returns the rate in cents (nil = no rate) and per-field errors.
+func (r RateRequest) Validate() (*int64, map[string]string) {
+	if r.Rate == nil || strings.TrimSpace(*r.Rate) == "" {
+		return nil, nil
+	}
+	cents, err := money.ParsePrice(*r.Rate)
+	if err != nil {
+		return nil, map[string]string{"rate": "Enter an amount like 40 or 37.50"}
+	}
+	return &cents, nil
+}
+
 // PendingEmailDTO answers an email change: where the confirmation went.
 type PendingEmailDTO struct {
 	PendingEmail string `json:"pending_email"`

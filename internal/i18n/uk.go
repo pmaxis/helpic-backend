@@ -217,6 +217,23 @@ var uk = map[string]string{
 	"This task is archived: its files stay as they are":                      "Задача в архіві: її файли лишаються як є",
 	"Only whoever uploaded a file can delete it":                             "Видалити файл може лише той, хто його завантажив",
 
+	// --- API errors: time and rates ---------------------------------------------------
+	"Enter an amount like 40 or 37.50":                    "Вкажіть суму, наприклад 40 або 37.50",
+	"Only a freelancer has an hourly rate":                "Погодинна ставка буває лише у фрилансера",
+	"Only a freelancer on the project sets a rate for it": "Ставку на проєкті задає лише фрилансер цього проєкту",
+	"Choose a fixed price or by the hour":                 "Оберіть фіксовану ціну або погодинну оплату",
+	"Enter time like 1:30, 1h 30m or 45m":                 "Вкажіть час, наприклад 1:30, 1h 30m або 45m",
+	"Enter how long it took":                              "Вкажіть, скільки часу це забрало",
+	"One entry is at most 24 hours":                       "Один запис — щонайбільше 24 години",
+	"The note is too long":                                "Нотатка задовга",
+	"Time entry not found":                                "Запис часу не знайдено",
+	"Only the task's freelancer writes time on it":        "Час на задачі записує лише її фрилансер",
+	"Only the author can change a time entry":             "Змінити запис часу може лише його автор",
+	"The timer is still running. Stop it first.":          "Таймер ще працює. Спершу зупиніть його.",
+	"No timer is running":                                 "Жоден таймер не запущено",
+	"This task is on a sent report: its time is billed":   "Задача вже в надісланому звіті: її час виставлено до оплати",
+	"This task is archived: its time is closed":           "Задача в архіві: її час уже не змінюється",
+
 	// --- API errors: reports ------------------------------------------------------------
 	"Report not found":                                                    "Звіт не знайдено",
 	"Choose the first day":                                                "Оберіть перший день",
