@@ -1,0 +1,14 @@
+ALTER TABLE report_items DROP COLUMN seconds;
+DROP TRIGGER project_participants_reprice ON project_participants;
+DROP TRIGGER users_reprice ON users;
+DROP TRIGGER time_entries_reprice ON time_entries;
+DROP FUNCTION reprice_hourly_tasks();
+DROP TRIGGER tasks_hourly_price ON tasks;
+DROP FUNCTION tasks_hourly_price();
+DROP FUNCTION task_billed(UUID);
+DROP FUNCTION hourly_price(UUID, UUID, UUID);
+DROP FUNCTION task_seconds(UUID);
+ALTER TABLE tasks DROP COLUMN billing;
+ALTER TABLE project_participants DROP COLUMN hourly_rate_cents;
+ALTER TABLE users DROP COLUMN hourly_rate_cents;
+DROP TABLE time_entries;

@@ -36,6 +36,7 @@ func (h *Handler) Routes(r chi.Router, guard func(http.Handler) http.Handler) {
 	r.With(guard).Put("/me/email", h.ChangeEmail)
 	r.With(guard).Put("/me/password", h.ChangePassword)
 	r.Put("/me/currency", h.SetCurrency)
+	r.Put("/me/rate", h.SetHourlyRate)
 	r.Put("/me/locale", h.SetLocale)
 }
 
@@ -229,12 +230,45 @@ func (h *Handler) SetCurrency(w http.ResponseWriter, r *http.Request) {
 	writeUser(w, u, err)
 }
 
+// SetHourlyRate handles PUT /api/v1/me/rate: what a freelancer charges for an hour.
+//
+//	@Summary		Set the hourly rate
+//	@Description	An amount like "40" or "37.50" in the freelancer's currency; null or "" clears it. Tasks billed by the hour are priced at it, unless their project has its own rate.
+//	@Tags			account
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		RateRequest				true	"Request body"
+//	@Success		200		{object}	user.Response			"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not a freelancer"
+//	@Router			/me/rate [put]
+func (h *Handler) SetHourlyRate(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req RateRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	cents, fields := req.Validate()
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	u, err := h.svc.SetHourlyRate(r.Context(), userID, cents)
+	writeUser(w, u, err)
+}
+
 func writeUser(w http.ResponseWriter, u user.User, err error) {
 	switch {
 	case errors.Is(err, ErrWrongPassword):
 		response.ValidationError(w, map[string]string{"current_password": "Wrong password"})
 	case errors.Is(err, ErrCurrencyLocked):
 		response.ValidationError(w, map[string]string{"currency": "You already have prices. Clear them before changing the currency, so the amounts aren't relabeled."})
+	case errors.Is(err, ErrNotFreelancer):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only a freelancer has an hourly rate")
 	case errors.Is(err, user.ErrNotFound):
 		response.Error(w, http.StatusUnauthorized, response.CodeUnauthorized, "Authentication required")
 	case err != nil:

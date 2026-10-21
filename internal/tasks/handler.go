@@ -283,7 +283,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 // SetPrice handles PUT /api/v1/tasks/{id}/price.
 //
 //	@Summary		Price a task
-//	@Description	The task's freelancer only, in any status. A null price clears it.
+//	@Description	The task's freelancer only, in any status. At a fixed price a null price clears it; billed by the hour, the price is the task's time at the freelancer's rate.
 //	@Tags			tasks
 //	@Accept			json
 //	@Produce		json
@@ -304,12 +304,12 @@ func (h *Handler) SetPrice(w http.ResponseWriter, r *http.Request) {
 	if !request.Decode(w, r, &req) {
 		return
 	}
-	cents, fields := req.Validate()
+	billing, cents, fields := req.Validate()
 	if len(fields) > 0 {
 		response.ValidationError(w, fields)
 		return
 	}
-	t, err := h.svc.SetPrice(r.Context(), userID, chi.URLParam(r, "id"), cents)
+	t, err := h.svc.SetPrice(r.Context(), userID, chi.URLParam(r, "id"), billing, cents)
 	writeTask(w, http.StatusOK, t, role, userID, err)
 }
 

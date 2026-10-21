@@ -413,9 +413,19 @@ definitions:
       pending_email:
         type: string
     type: object
+  profile.RateRequest:
+    properties:
+      rate:
+        type: string
+    type: object
   projects.DTO:
     properties:
       can_edit:
+        type: boolean
+      can_set_rate:
+        description: |-
+          CanSetRate is true for a freelancer on the project; MyHourlyRateCents
+          is the rate they set on it (null: their own rate applies).
         type: boolean
       client:
         $ref: '#/definitions/projects.PartyDTO'
@@ -429,6 +439,8 @@ definitions:
         $ref: '#/definitions/projects.PartyDTO'
       id:
         type: string
+      my_hourly_rate_cents:
+        type: integer
       name:
         type: string
       open_tasks:
@@ -472,6 +484,11 @@ definitions:
         type: string
       role:
         description: Role is "freelancer", "owner", "member" or "contractor".
+        type: string
+    type: object
+  projects.RateRequest:
+    properties:
+      rate:
         type: string
     type: object
   projects.Request:
@@ -599,6 +616,10 @@ definitions:
         type: integer
       project_name:
         type: string
+      seconds:
+        description: Seconds is the time a task billed by the hour took; null for
+          a fixed price.
+        type: integer
       status_name:
         type: string
       task_id:
@@ -683,6 +704,12 @@ definitions:
         type: string
       archived_by:
         $ref: '#/definitions/tasks.ReportDTO'
+      billing:
+        description: |-
+          Billing is "fixed" or "hourly": then the price is TrackedSeconds at
+          HourlyRateCents. Like the price, the time and the rate are null for
+          whoever doesn't see the price.
+        type: string
       can_archive:
         description: |-
           CanArchive is true on the viewer's own personal task, which they may
@@ -698,6 +725,10 @@ definitions:
           left out for them.
         type: boolean
       can_set_price:
+        type: boolean
+      can_track_time:
+        description: CanTrackTime is true for the task's freelancer, who writes time
+          on it.
         type: boolean
       client:
         allOf:
@@ -723,6 +754,8 @@ definitions:
         allOf:
         - $ref: '#/definitions/tasks.PartyDTO'
         description: Freelancer is null while the task has no assignee.
+      hourly_rate_cents:
+        type: integer
       id:
         type: string
       labels:
@@ -764,6 +797,8 @@ definitions:
         type: string
       title:
         type: string
+      tracked_seconds:
+        type: integer
       updated_at:
         type: string
     type: object
@@ -828,6 +863,8 @@ definitions:
     type: object
   tasks.PriceRequest:
     properties:
+      billing:
+        type: string
       price:
         type: string
     type: object
@@ -1050,6 +1087,53 @@ definitions:
           first name.
         type: string
     type: object
+  timelog.DTO:
+    properties:
+      can_edit:
+        description: CanEdit is true for the author, who may change and delete it.
+        type: boolean
+      created_at:
+        type: string
+      id:
+        type: string
+      note:
+        type: string
+      running_since:
+        type: string
+      seconds:
+        description: |-
+          Seconds is the time so far; while RunningSince is set the timer adds
+          the time since then.
+        type: integer
+      spent_on:
+        type: string
+      task_id:
+        type: string
+      task_title:
+        type: string
+      user:
+        $ref: '#/definitions/timelog.UserDTO'
+    type: object
+  timelog.Request:
+    properties:
+      duration:
+        description: Duration is like "1:30", "1h 30m", "45m" or "1.5" (hours).
+        type: string
+      note:
+        type: string
+      spent_on:
+        description: SpentOn is the day, YYYY-MM-DD.
+        type: string
+    type: object
+  timelog.UserDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
   user.DTO:
     properties:
       created_at:
@@ -1060,6 +1144,10 @@ definitions:
         type: string
       first_name:
         type: string
+      hourly_rate_cents:
+        description: HourlyRateCents is a freelancer's rate for an hour of work; null
+          when unset.
+        type: integer
       id:
         type: string
       last_name:
@@ -2414,6 +2502,42 @@ paths:
       summary: Change your password
       tags:
       - account
+  /me/rate:
+    put:
+      consumes:
+      - application/json
+      description: An amount like "40" or "37.50" in the freelancer's currency; null
+        or "" clears it. Tasks billed by the hour are priced at it, unless their project
+        has its own rate.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/profile.RateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.Response'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not a freelancer
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Set the hourly rate
+      tags:
+      - account
   /me/sessions:
     delete:
       responses:
@@ -2913,6 +3037,52 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: A project's participants
+      tags:
+      - projects
+  /projects/{id}/rate:
+    put:
+      consumes:
+      - application/json
+      description: A freelancer on the project only. Their tasks in it billed by the
+        hour are priced at this rate instead of their own; null or "" clears it.
+      parameters:
+      - description: Project ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/projects.RateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: project
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/projects.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Set your hourly rate on a project
       tags:
       - projects
   /reports:
@@ -3717,8 +3887,9 @@ paths:
     put:
       consumes:
       - application/json
-      description: The task's freelancer only, in any status. A null price clears
-        it.
+      description: The task's freelancer only, in any status. At a fixed price a null
+        price clears it; billed by the hour, the price is the task's time at the freelancer's
+        rate.
       parameters:
       - description: Task ID
         in: path
@@ -4096,4 +4267,243 @@ paths:
       summary: Make someone a member or a contractor
       tags:
       - team
+  /time-entries:
+    get:
+      description: Newest day first. For whoever sees the task's price.
+      parameters:
+      - description: Task ID
+        in: query
+        name: task
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: entries
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/timelog.DTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: The time on a task
+      tags:
+      - time
+    post:
+      consumes:
+      - application/json
+      description: The task's freelancer only, until it's archived.
+      parameters:
+      - description: Task ID
+        in: query
+        name: task
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/timelog.Request'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: entry
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/timelog.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Archived
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Write time on a task
+      tags:
+      - time
+  /time-entries/{id}:
+    delete:
+      parameters:
+      - description: Entry ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Archived
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Delete your time entry
+      tags:
+      - time
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Entry ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/timelog.Request'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: entry
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/timelog.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Running, or archived
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Change your time entry
+      tags:
+      - time
+  /timer:
+    get:
+      description: Null when none runs.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: timer
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/timelog.DTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Your running timer
+      tags:
+      - time
+    post:
+      description: The task's freelancer only. A timer already running stops and keeps
+        its time.
+      parameters:
+      - description: Task ID
+        in: query
+        name: task
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: timer
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/timelog.DTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Archived
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Start a timer on a task
+      tags:
+      - time
+  /timer/stop:
+    post:
+      description: Its time is added to its entry.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: entry
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/timelog.DTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: No timer running
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Stop your timer
+      tags:
+      - time
 swagger: "2.0"

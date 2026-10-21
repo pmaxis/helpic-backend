@@ -83,9 +83,10 @@ func (r *Repository) Get(ctx context.Context, userID, id string) (Report, error)
 	if err != nil {
 		return Report{}, fmt.Errorf("get report: %w", err)
 	}
-	// A draft shows the tasks' current prices; a sent report its frozen ones.
+	// A draft shows the tasks' current prices and time; a sent report its frozen ones.
 	rows, err := r.db.Query(ctx, `SELECT i.id, coalesce(i.task_id::text, ''), i.title, i.project_name, i.status_name, i.completed_on, i.notes,
-			CASE WHEN $2 = 'draft' THEN t.price_cents ELSE i.price_cents END
+			CASE WHEN $2 = 'draft' THEN t.price_cents ELSE i.price_cents END,
+			CASE WHEN $2 = 'draft' THEN CASE WHEN t.billing = 'hourly' THEN task_seconds(t.id) END ELSE i.seconds END
 		FROM report_items i LEFT JOIN tasks t ON t.id = i.task_id
 		WHERE i.report_id = $1 ORDER BY i.position`, rep.ID, rep.Status)
 	if err != nil {
@@ -93,7 +94,7 @@ func (r *Repository) Get(ctx context.Context, userID, id string) (Report, error)
 	}
 	rep.Items, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (Item, error) {
 		var it Item
-		err := row.Scan(&it.ID, &it.TaskID, &it.Title, &it.ProjectName, &it.StatusName, &it.CompletedOn, &it.Notes, &it.PriceCents)
+		err := row.Scan(&it.ID, &it.TaskID, &it.Title, &it.ProjectName, &it.StatusName, &it.CompletedOn, &it.Notes, &it.PriceCents, &it.Seconds)
 		return it, err
 	})
 	if err != nil {
@@ -212,8 +213,8 @@ func (r *Repository) RemoveItem(ctx context.Context, reportID, itemID string) er
 	return nil
 }
 
-// Send marks a draft sent, at the given time, and freezes its prices and
-// currency as they are now.
+// Send marks a draft sent, at the given time, and freezes its prices, the
+// time of its hourly tasks and its currency as they are now.
 func (r *Repository) Send(ctx context.Context, id string, at time.Time) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -229,7 +230,8 @@ func (r *Repository) Send(ctx context.Context, id string, at time.Time) error {
 	if tag.RowsAffected() == 0 {
 		return ErrSent
 	}
-	_, err = tx.Exec(ctx, `UPDATE report_items i SET price_cents = t.price_cents
+	_, err = tx.Exec(ctx, `UPDATE report_items i
+		SET price_cents = t.price_cents, seconds = CASE WHEN t.billing = 'hourly' THEN task_seconds(t.id) END
 		FROM tasks t WHERE t.id = i.task_id AND i.report_id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("freeze report prices: %w", err)

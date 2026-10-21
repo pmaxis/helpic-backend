@@ -5,6 +5,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/pmaxis/helpic/internal/money"
 	"github.com/pmaxis/helpic/internal/user"
 )
 
@@ -98,8 +99,30 @@ type DTO struct {
 	TotalTasks   int        `json:"total_tasks"`
 	Participants []PartyDTO `json:"participants"`
 	CanEdit      bool       `json:"can_edit"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	// CanSetRate is true for a freelancer on the project; MyHourlyRateCents
+	// is the rate they set on it (null: their own rate applies).
+	CanSetRate        bool      `json:"can_set_rate"`
+	MyHourlyRateCents *int64    `json:"my_hourly_rate_cents"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+// RateRequest is the JSON body for PUT /api/v1/projects/{id}/rate; a null or
+// empty rate clears it.
+type RateRequest struct {
+	Rate *string `json:"rate"`
+}
+
+// Validate returns the rate in cents (nil = no rate) and per-field errors.
+func (r RateRequest) Validate() (*int64, map[string]string) {
+	if r.Rate == nil || strings.TrimSpace(*r.Rate) == "" {
+		return nil, nil
+	}
+	cents, err := money.ParsePrice(*r.Rate)
+	if err != nil {
+		return nil, map[string]string{"rate": "Enter an amount like 40 or 37.50"}
+	}
+	return &cents, nil
 }
 
 // PersonDTO is someone on a project, or someone the author can invite.
@@ -143,6 +166,7 @@ func ToDTO(p Project, viewerID string) DTO {
 		OpenTasks:   p.OpenTasks,
 		TotalTasks:  p.TotalTasks,
 		CanEdit:     p.CreatedBy == viewerID,
+		CanSetRate:  CanSetRate(p, viewerID),
 		CreatedAt:   p.CreatedAt,
 		UpdatedAt:   p.UpdatedAt,
 	}
@@ -153,6 +177,9 @@ func ToDTO(p Project, viewerID string) DTO {
 	if p.Client != nil {
 		c := PartyDTO(*p.Client)
 		d.Client = &c
+	}
+	if d.CanSetRate {
+		d.MyHourlyRateCents = p.MyRateCents
 	}
 	return d
 }

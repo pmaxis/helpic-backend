@@ -64,11 +64,18 @@ func (r *Repository) SetCurrency(ctx context.Context, id, currency string) (user
 	return r.updateOne(ctx, `UPDATE users SET currency = $2 WHERE id = $1 RETURNING `+user.Columns, id, currency)
 }
 
-// HasPricedTasks reports whether the freelancer has a task with a price.
+// SetHourlyRate changes what the freelancer charges for an hour (nil clears it).
+func (r *Repository) SetHourlyRate(ctx context.Context, id string, cents *int64) (user.User, error) {
+	return r.updateOne(ctx, `UPDATE users SET hourly_rate_cents = $2 WHERE id = $1 RETURNING `+user.Columns, id, cents)
+}
+
+// HasPricedTasks reports whether the freelancer has a task with a price, or
+// an hourly rate, their own or on a project.
 func (r *Repository) HasPricedTasks(ctx context.Context, userID string) (bool, error) {
 	var priced bool
-	err := r.db.QueryRow(ctx, `SELECT EXISTS (
-		SELECT 1 FROM tasks WHERE freelancer_id = $1 AND price_cents IS NOT NULL)`, userID).Scan(&priced)
+	err := r.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tasks WHERE freelancer_id = $1 AND price_cents IS NOT NULL)
+		OR EXISTS (SELECT 1 FROM users WHERE id = $1 AND hourly_rate_cents IS NOT NULL)
+		OR EXISTS (SELECT 1 FROM project_participants WHERE user_id = $1 AND hourly_rate_cents IS NOT NULL)`, userID).Scan(&priced)
 	if err != nil {
 		return false, fmt.Errorf("check priced tasks: %w", err)
 	}

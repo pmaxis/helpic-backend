@@ -29,6 +29,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Get("/{id}", h.Get)
 		r.Put("/{id}", h.Update)
 		r.Delete("/{id}", h.Delete)
+		r.Put("/{id}/rate", h.SetRate)
 		r.Get("/{id}/people", h.People)
 		r.Post("/{id}/participants", h.Invite)
 		r.Delete("/{id}/participants/{userID}", h.RemoveParticipant)
@@ -148,6 +149,39 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := h.svc.Update(r.Context(), userID, chi.URLParam(r, "id"), params)
+	writeProject(w, http.StatusOK, p, userID, err)
+}
+
+// SetRate handles PUT /api/v1/projects/{id}/rate.
+//
+//	@Summary		Set your hourly rate on a project
+//	@Description	A freelancer on the project only. Their tasks in it billed by the hour are priced at this rate instead of their own; null or "" clears it.
+//	@Tags			projects
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Project ID"
+//	@Param			body	body		RateRequest				true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"project"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/projects/{id}/rate [put]
+func (h *Handler) SetRate(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req RateRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	cents, fields := req.Validate()
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	p, err := h.svc.SetRate(r.Context(), userID, chi.URLParam(r, "id"), cents)
 	writeProject(w, http.StatusOK, p, userID, err)
 }
 
@@ -282,6 +316,8 @@ func writeProject(w http.ResponseWriter, status int, p Project, viewerID string,
 		response.Error(w, http.StatusNotFound, response.CodeNotFound, "Project not found")
 	case errors.Is(err, ErrNotOwner):
 		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the project's creator can change it")
+	case errors.Is(err, ErrNotProjectFreelancer):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only a freelancer on the project sets a rate for it")
 	case errors.Is(err, ErrContractor):
 		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Contractors can't start projects")
 	case errors.Is(err, ErrUnassignedTasks):

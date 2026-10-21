@@ -58,6 +58,9 @@ type Item struct {
 	CompletedOn time.Time
 	// PriceCents is nil for a task without a price.
 	PriceCents *int64
+	// Seconds is the time on a task billed by the hour, which its price is
+	// for; nil for a fixed price.
+	Seconds *int64
 	// Notes say what was done in the task, for a detailed report. They start
 	// as the task's description; the freelancer rewrites them in the draft.
 	Notes string

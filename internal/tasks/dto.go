@@ -117,22 +117,34 @@ func (r Request) Validate(creatorRole string) (Params, map[string]string) {
 	return p, fields
 }
 
-// PriceRequest is the JSON body for PUT /api/v1/tasks/{id}/price; a null or
-// empty price clears it.
+// PriceRequest is the JSON body for PUT /api/v1/tasks/{id}/price. Billing is
+// "fixed" (the default) or "hourly"; at a fixed price a null or empty price
+// clears it, by the hour the price comes from the time and is not read.
 type PriceRequest struct {
-	Price *string `json:"price"`
+	Billing string  `json:"billing"`
+	Price   *string `json:"price"`
 }
 
-// Validate returns the price in cents (nil = no price) and per-field errors.
-func (r PriceRequest) Validate() (*int64, map[string]string) {
+// Validate returns the billing, the price in cents (nil = no price) and
+// per-field errors.
+func (r PriceRequest) Validate() (string, *int64, map[string]string) {
+	billing := strings.TrimSpace(r.Billing)
+	switch billing {
+	case "", BillingFixed:
+		billing = BillingFixed
+	case BillingHourly:
+		return billing, nil, nil
+	default:
+		return billing, nil, map[string]string{"billing": "Choose a fixed price or by the hour"}
+	}
 	if r.Price == nil || strings.TrimSpace(*r.Price) == "" {
-		return nil, nil
+		return billing, nil, nil
 	}
 	cents, err := money.ParsePrice(*r.Price)
 	if err != nil {
-		return nil, map[string]string{"price": "Enter an amount like 1200 or 99.50"}
+		return billing, nil, map[string]string{"price": "Enter an amount like 1200 or 99.50"}
 	}
-	return &cents, nil
+	return billing, &cents, nil
 }
 
 // PriorityRequest is the JSON body for PUT /api/v1/tasks/{id}/priority.
@@ -249,17 +261,28 @@ type DTO struct {
 	DueOn       *string `json:"due_on"`
 	// PriceCents is null while the task has no price; Currency is the
 	// freelancer's.
-	PriceCents   *int64   `json:"price_cents"`
-	Currency     string   `json:"currency"`
-	Priority     string   `json:"priority"`
-	Labels       []Label  `json:"labels"`
-	NextStatuses []string `json:"next_statuses"`
-	CanEdit      bool     `json:"can_edit"`
-	CanDelete    bool     `json:"can_delete"`
-	CanSetPrice  bool     `json:"can_set_price"`
+	PriceCents *int64 `json:"price_cents"`
+	Currency   string `json:"currency"`
+	// Billing is "fixed" or "hourly": then the price is TrackedSeconds at
+	// HourlyRateCents. Like the price, the time and the rate are null for
+	// whoever doesn't see the price.
+	Billing         string   `json:"billing"`
+	TrackedSeconds  *int64   `json:"tracked_seconds"`
+	HourlyRateCents *int64   `json:"hourly_rate_cents"`
+	Priority        string   `json:"priority"`
+	Labels          []Label  `json:"labels"`
+	NextStatuses    []string `json:"next_statuses"`
+	CanEdit         bool     `json:"can_edit"`
+	CanDelete       bool     `json:"can_delete"`
+	CanSetPrice     bool     `json:"can_set_price"`
 	// CanSeePrice is false for a member of the client's team: the price is
 	// left out for them.
 	CanSeePrice bool `json:"can_see_price"`
+	// CanTrackTime is true for the task's freelancer, who writes time on it.
+	CanTrackTime bool `json:"can_track_time"`
+	// Billed is true once the task is on a sent report: its time and an
+	// hourly price stay as they were billed.
+	Billed bool `json:"billed"`
 	// CanArchive is true on the viewer's own personal task, which they may
 	// put in the archive by hand.
 	CanArchive bool      `json:"can_archive"`
@@ -292,6 +315,7 @@ func ToDTO(t Task, role, viewerID string) DTO {
 		Status:       t.Status,
 		PriceCents:   t.PriceCents,
 		Currency:     t.Currency,
+		Billing:      t.Billing,
 		Priority:     t.Priority,
 		Labels:       t.Labels,
 		NextStatuses: NextStatuses(t, role, viewerID),
@@ -299,6 +323,8 @@ func ToDTO(t Task, role, viewerID string) DTO {
 		CanDelete:    CanDelete(t, viewerID),
 		CanSetPrice:  CanSetPrice(t, viewerID),
 		CanSeePrice:  CanSeePrice(t, viewerID),
+		CanTrackTime: CanTrackTime(t, viewerID),
+		Billed:       t.Billed,
 		CanArchive:   CanArchive(t, viewerID),
 		CreatedAt:    t.CreatedAt,
 		UpdatedAt:    t.UpdatedAt,
@@ -318,7 +344,9 @@ func ToDTO(t Task, role, viewerID string) DTO {
 	if t.Project != nil {
 		d.Project = &ProjectDTO{ID: t.Project.ID, Name: t.Project.Name}
 	}
-	if !d.CanSeePrice {
+	if d.CanSeePrice {
+		d.TrackedSeconds, d.HourlyRateCents = t.TrackedSeconds, t.HourlyRateCents
+	} else {
 		d.PriceCents, d.Currency = nil, ""
 	}
 	d.Participants = make([]PartyDTO, 0, len(t.Participants))

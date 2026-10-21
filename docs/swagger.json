@@ -1974,6 +1974,58 @@
                 }
             }
         },
+        "/me/rate": {
+            "put": {
+                "description": "An amount like \"40\" or \"37.50\" in the freelancer's currency; null or \"\" clears it. Tasks billed by the hour are priced at it, unless their project has its own rate.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Set the hourly rate",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/profile.RateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not a freelancer",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/me/sessions": {
             "get": {
                 "produces": [
@@ -2714,6 +2766,74 @@
                     },
                     "401": {
                         "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}/rate": {
+            "put": {
+                "description": "A freelancer on the project only. Their tasks in it billed by the hour are priced at this rate instead of their own; null or \"\" clears it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "Set your hourly rate on a project",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/projects.RateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "project",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/projects.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -3916,7 +4036,7 @@
         },
         "/tasks/{id}/price": {
             "put": {
-                "description": "The task's freelancer only, in any status. A null price clears it.",
+                "description": "The task's freelancer only, in any status. At a fixed price a null price clears it; billed by the hour, the price is the task's time at the freelancer's rate.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4482,6 +4602,366 @@
                     },
                     "404": {
                         "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/time-entries": {
+            "get": {
+                "description": "Newest day first. For whoever sees the task's price.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "time"
+                ],
+                "summary": "The time on a task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "task",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "entries",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/timelog.DTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "The task's freelancer only, until it's archived.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "time"
+                ],
+                "summary": "Write time on a task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "task",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/timelog.Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "entry",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/timelog.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Archived",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/time-entries/{id}": {
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "time"
+                ],
+                "summary": "Change your time entry",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entry ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/timelog.Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "entry",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/timelog.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Running, or archived",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "time"
+                ],
+                "summary": "Delete your time entry",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entry ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Archived",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/timer": {
+            "get": {
+                "description": "Null when none runs.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "time"
+                ],
+                "summary": "Your running timer",
+                "responses": {
+                    "200": {
+                        "description": "timer",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/timelog.DTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "The task's freelancer only. A timer already running stops and keeps its time.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "time"
+                ],
+                "summary": "Start a timer on a task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "task",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "timer",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/timelog.DTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Archived",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/timer/stop": {
+            "post": {
+                "description": "Its time is added to its entry.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "time"
+                ],
+                "summary": "Stop your timer",
+                "responses": {
+                    "200": {
+                        "description": "entry",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/timelog.DTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "No timer running",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -5112,10 +5592,22 @@
                 }
             }
         },
+        "profile.RateRequest": {
+            "type": "object",
+            "properties": {
+                "rate": {
+                    "type": "string"
+                }
+            }
+        },
         "projects.DTO": {
             "type": "object",
             "properties": {
                 "can_edit": {
+                    "type": "boolean"
+                },
+                "can_set_rate": {
+                    "description": "CanSetRate is true for a freelancer on the project; MyHourlyRateCents\nis the rate they set on it (null: their own rate applies).",
                     "type": "boolean"
                 },
                 "client": {
@@ -5135,6 +5627,9 @@
                 },
                 "id": {
                     "type": "string"
+                },
+                "my_hourly_rate_cents": {
+                    "type": "integer"
                 },
                 "name": {
                     "type": "string"
@@ -5201,6 +5696,14 @@
                 },
                 "role": {
                     "description": "Role is \"freelancer\", \"owner\", \"member\" or \"contractor\".",
+                    "type": "string"
+                }
+            }
+        },
+        "projects.RateRequest": {
+            "type": "object",
+            "properties": {
+                "rate": {
                     "type": "string"
                 }
             }
@@ -5388,6 +5891,10 @@
                 "project_name": {
                     "type": "string"
                 },
+                "seconds": {
+                    "description": "Seconds is the time a task billed by the hour took; null for a fixed price.",
+                    "type": "integer"
+                },
                 "status_name": {
                     "type": "string"
                 },
@@ -5513,6 +6020,10 @@
                 "archived_by": {
                     "$ref": "#/definitions/tasks.ReportDTO"
                 },
+                "billing": {
+                    "description": "Billing is \"fixed\" or \"hourly\": then the price is TrackedSeconds at\nHourlyRateCents. Like the price, the time and the rate are null for\nwhoever doesn't see the price.",
+                    "type": "string"
+                },
                 "can_archive": {
                     "description": "CanArchive is true on the viewer's own personal task, which they may\nput in the archive by hand.",
                     "type": "boolean"
@@ -5528,6 +6039,10 @@
                     "type": "boolean"
                 },
                 "can_set_price": {
+                    "type": "boolean"
+                },
+                "can_track_time": {
+                    "description": "CanTrackTime is true for the task's freelancer, who writes time on it.",
                     "type": "boolean"
                 },
                 "client": {
@@ -5568,6 +6083,9 @@
                             "$ref": "#/definitions/tasks.PartyDTO"
                         }
                     ]
+                },
+                "hourly_rate_cents": {
+                    "type": "integer"
                 },
                 "id": {
                     "type": "string"
@@ -5621,6 +6139,9 @@
                 },
                 "title": {
                     "type": "string"
+                },
+                "tracked_seconds": {
+                    "type": "integer"
                 },
                 "updated_at": {
                     "type": "string"
@@ -5720,6 +6241,9 @@
         "tasks.PriceRequest": {
             "type": "object",
             "properties": {
+                "billing": {
+                    "type": "string"
+                },
                 "price": {
                     "type": "string"
                 }
@@ -6035,6 +6559,73 @@
                 }
             }
         },
+        "timelog.DTO": {
+            "type": "object",
+            "properties": {
+                "can_edit": {
+                    "description": "CanEdit is true for the author, who may change and delete it.",
+                    "type": "boolean"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "running_since": {
+                    "type": "string"
+                },
+                "seconds": {
+                    "description": "Seconds is the time so far; while RunningSince is set the timer adds\nthe time since then.",
+                    "type": "integer"
+                },
+                "spent_on": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "task_title": {
+                    "type": "string"
+                },
+                "user": {
+                    "$ref": "#/definitions/timelog.UserDTO"
+                }
+            }
+        },
+        "timelog.Request": {
+            "type": "object",
+            "properties": {
+                "duration": {
+                    "description": "Duration is like \"1:30\", \"1h 30m\", \"45m\" or \"1.5\" (hours).",
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "spent_on": {
+                    "description": "SpentOn is the day, YYYY-MM-DD.",
+                    "type": "string"
+                }
+            }
+        },
+        "timelog.UserDTO": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "user.DTO": {
             "type": "object",
             "properties": {
@@ -6049,6 +6640,10 @@
                 },
                 "first_name": {
                     "type": "string"
+                },
+                "hourly_rate_cents": {
+                    "description": "HourlyRateCents is a freelancer's rate for an hour of work; null when unset.",
+                    "type": "integer"
                 },
                 "id": {
                     "type": "string"

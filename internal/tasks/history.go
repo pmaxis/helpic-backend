@@ -20,7 +20,9 @@ const (
 	EventProject     = "project"
 	EventStatus      = "status"
 	EventPrice       = "price"
-	EventPriority    = "priority"
+	// EventBilling is a switch between a fixed price and billing by the hour.
+	EventBilling  = "billing"
+	EventPriority = "priority"
 	// EventLabels carries "added" and "removed": label names.
 	EventLabels            = "labels"
 	EventAttachmentAdded   = "attachment_added"

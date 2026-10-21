@@ -43,7 +43,8 @@ func selectProject(viewer string) string {
 				END)
 				ORDER BY u.id = p.created_by DESC, lower(u.name), u.email)
 			FROM project_participants pp JOIN users u ON u.id = pp.user_id
-			WHERE pp.project_id = p.id), '[]')
+			WHERE pp.project_id = p.id), '[]'),
+		(SELECT pp.hourly_rate_cents FROM project_participants pp WHERE pp.project_id = p.id AND pp.user_id = ` + viewer + `)
 	FROM projects p
 	JOIN users f ON f.id = p.freelancer_id
 	LEFT JOIN users c ON c.id = p.client_id`
@@ -57,7 +58,7 @@ func scanProject(row pgx.Row) (Project, error) {
 	)
 	err := row.Scan(&p.ID, &p.CreatedBy, &p.Name, &p.Description, &p.CreatedAt, &p.UpdatedAt,
 		&p.Freelancer.ID, &p.Freelancer.Name, &p.Freelancer.Email,
-		&clientID, &clientName, &mail, &p.OpenTasks, &p.TotalTasks, &participants)
+		&clientID, &clientName, &mail, &p.OpenTasks, &p.TotalTasks, &participants, &p.MyRateCents)
 	if err != nil {
 		return p, err
 	}
@@ -298,6 +299,15 @@ func addParticipants(ctx context.Context, tx pgx.Tx, projectID, invitedBy string
 		SELECT $1::uuid, u::uuid, $2::uuid FROM unnest($3::text[]) AS u
 		ON CONFLICT DO NOTHING`, projectID, invitedBy, ids); err != nil {
 		return fmt.Errorf("add project participants: %w", err)
+	}
+	return nil
+}
+
+// SetRate sets or clears a participant's hourly rate on the project.
+func (r *Repository) SetRate(ctx context.Context, projectID, userID string, cents *int64) error {
+	if _, err := r.db.Exec(ctx, `UPDATE project_participants SET hourly_rate_cents = $3 WHERE project_id = $1 AND user_id = $2`,
+		projectID, userID, cents); err != nil {
+		return fmt.Errorf("set project rate: %w", err)
 	}
 	return nil
 }

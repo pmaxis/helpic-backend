@@ -12,6 +12,8 @@ type DTO struct {
 	Name      string `json:"name"`
 	Role      string `json:"role"`
 	Currency  string `json:"currency"`
+	// HourlyRateCents is a freelancer's rate for an hour of work; null when unset.
+	HourlyRateCents *int64 `json:"hourly_rate_cents"`
 	// Locale is the language they read Helpic in: "en" or "uk".
 	Locale string `json:"locale"`
 	// MemberOf is set for a member of a client's company; null otherwise.
@@ -35,7 +37,7 @@ type Response struct {
 
 // ToDTO maps a domain user to its public representation.
 func ToDTO(u User) DTO {
-	d := DTO{ID: u.ID, Email: u.Email, FirstName: u.FirstName, LastName: u.LastName, Name: u.Name, Role: u.Role, Currency: u.Currency, Locale: u.Locale, CreatedAt: u.CreatedAt}
+	d := DTO{ID: u.ID, Email: u.Email, FirstName: u.FirstName, LastName: u.LastName, Name: u.Name, Role: u.Role, Currency: u.Currency, HourlyRateCents: u.HourlyRateCents, Locale: u.Locale, CreatedAt: u.CreatedAt}
 	if u.TeamOwnerID != nil {
 		d.MemberOf = &TeamDTO{OwnerID: *u.TeamOwnerID, Name: u.TeamName, Role: u.TeamRole}
 	}
