@@ -139,7 +139,16 @@ func (s *Service) allColumns(ctx context.Context, userID, role string) ([]Column
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.ClientColumns(ctx, clientID)
+	company, err := s.repo.ClientColumns(ctx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	// Their own personal board too, where their personal tasks are.
+	own, err := s.repo.AllColumns(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return append(company, own...), nil
 }
 
 // placeOnMerged lays tasks onto lanes merged by category and column name,

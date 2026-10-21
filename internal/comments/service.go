@@ -45,6 +45,9 @@ func (s *Service) Create(ctx context.Context, userID, taskID, body string) (Comm
 	if err != nil {
 		return Comment{}, err
 	}
+	if t.Archived() {
+		return Comment{}, tasks.ErrArchived
+	}
 	id, err := s.repo.Create(ctx, t.ID, userID, body)
 	if err != nil {
 		return Comment{}, err
@@ -74,17 +77,22 @@ func (s *Service) Delete(ctx context.Context, userID, id string) error {
 }
 
 // own loads a comment the user wrote: ErrNotFound when they can't see its
-// task, ErrNotAuthor when someone else wrote it.
+// task, ErrNotAuthor when someone else wrote it, tasks.ErrArchived when its
+// task is archived and the discussion closed with it.
 func (s *Service) own(ctx context.Context, userID, id string) (Comment, error) {
 	c, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return Comment{}, err
 	}
-	if _, err := s.tasks.Get(ctx, userID, c.TaskID); err != nil {
+	t, err := s.tasks.Get(ctx, userID, c.TaskID)
+	if err != nil {
 		return Comment{}, ErrNotFound
 	}
 	if c.Author.ID != userID {
 		return Comment{}, ErrNotAuthor
+	}
+	if t.Archived() {
+		return Comment{}, tasks.ErrArchived
 	}
 	return c, nil
 }

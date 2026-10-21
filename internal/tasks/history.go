@@ -25,6 +25,9 @@ const (
 	EventLabels            = "labels"
 	EventAttachmentAdded   = "attachment_added"
 	EventAttachmentRemoved = "attachment_removed"
+	// EventArchived carries "report": the paid report's title, or nothing
+	// when the owner archived a personal task.
+	EventArchived = "archived"
 )
 
 // Event is one change in a task's history.

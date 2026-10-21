@@ -82,6 +82,15 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// UsedBytes is the size of every file the user has uploaded.
+func (r *Repository) UsedBytes(ctx context.Context, userID string) (int64, error) {
+	var n int64
+	if err := r.db.QueryRow(ctx, `SELECT coalesce(sum(size_bytes), 0) FROM attachments WHERE uploaded_by = $1`, userID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("sum uploads: %w", err)
+	}
+	return n, nil
+}
+
 // IDsOfTask lists a task's file IDs, to remove the files with the task.
 func (r *Repository) IDsOfTask(ctx context.Context, taskID string) ([]string, error) {
 	rows, err := r.db.Query(ctx, `SELECT id::text FROM attachments WHERE task_id::text = $1`, taskID)

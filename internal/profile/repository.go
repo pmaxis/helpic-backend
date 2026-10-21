@@ -39,7 +39,9 @@ func (r *Repository) SetName(ctx context.Context, id, first, last string) (user.
 
 // SetEmail changes the sign-in email; a taken email yields auth.ErrEmailExists.
 func (r *Repository) SetEmail(ctx context.Context, id, email string) (user.User, error) {
-	u, err := r.updateOne(ctx, `UPDATE users SET email = $2 WHERE id = $1 RETURNING `+user.Columns, id, email)
+	// A reset link sent to the old address stops working with it.
+	u, err := r.updateOne(ctx, `WITH resets AS (DELETE FROM password_resets WHERE user_id = $1)
+		UPDATE users SET email = $2 WHERE id = $1 RETURNING `+user.Columns, id, email)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode {
 		return user.User{}, auth.ErrEmailExists

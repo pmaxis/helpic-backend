@@ -3,6 +3,7 @@ package integration
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -57,6 +58,51 @@ func TestRateLimit_WrongPasswordsPerEmail(t *testing.T) {
 	resp := login(t, srv, c, "someone-else@example.com", "whatever1")
 	wantStatus(t, resp, http.StatusUnauthorized)
 	resp.Body.Close()
+}
+
+func TestRateLimit_WrongPasswordsElsewhereDontLockTheOwner(t *testing.T) {
+	srv, _, _ := newAPIWith(t, func(cfg *config.Config) {
+		cfg.RateLimit = true
+		cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32"), netip.MustParsePrefix("::1/128")}
+	})
+	c := newClient()
+	confirmed(t, c, srv.URL, "owner@example.com", "supersecret1")
+	from := func(ip, password string) *http.Response {
+		body, _ := json.Marshal(map[string]string{"email": "owner@example.com", "password": password})
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/auth/login", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Forwarded-For", ip)
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	for range 10 {
+		resp := from("203.0.113.66", "wrong-password1")
+		wantStatus(t, resp, http.StatusUnauthorized)
+		resp.Body.Close()
+	}
+	// The guesser waits; the owner, somewhere else, signs in.
+	wantLimited(t, from("203.0.113.66", "supersecret1"))
+	resp := from("198.51.100.7", "supersecret1")
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+}
+
+func TestRateLimit_InvitationsPerUser(t *testing.T) {
+	srv := newLimitedAPI(t)
+	freelancer := signUpFreelancer(t, srv, "inviter@example.com")
+	for i := range 20 {
+		resp := post(t, freelancer, srv.URL+"/api/v1/invitations", map[string]string{"email": fmt.Sprintf("client%d@example.com", i), "name": "Acme"})
+		wantStatus(t, resp, http.StatusCreated)
+		resp.Body.Close()
+	}
+	wantLimited(t, post(t, freelancer, srv.URL+"/api/v1/invitations", map[string]string{"email": "one-more@example.com", "name": "Acme"}))
+	if n := len(emailsTo(t, "one-more@example.com")); n != 0 {
+		t.Fatalf("emailed past the limit %d times", n)
+	}
 }
 
 func TestRateLimit_SignInAttemptsPerAddress(t *testing.T) {

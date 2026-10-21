@@ -20,6 +20,9 @@ const (
 // names the freelancer and a freelancer names the client, or leaves it empty
 // for a personal task; neither is read on edit.
 type Request struct {
+	// Personal makes a task with no other side: a client's own (a freelancer's
+	// is made by leaving client_id empty). Create only.
+	Personal     bool   `json:"personal"`
 	FreelancerID string `json:"freelancer_id"`
 	ClientID     string `json:"client_id"`
 	// ProjectID puts the task in a project; on edit null keeps the current
@@ -40,6 +43,7 @@ type Request struct {
 
 // Params is the validated task input.
 type Params struct {
+	Personal     bool
 	FreelancerID string
 	ClientID     string
 	ProjectID    *string
@@ -57,6 +61,7 @@ type Params struct {
 func (r Request) Validate(creatorRole string) (Params, map[string]string) {
 	fields := map[string]string{}
 	p := Params{
+		Personal:     r.Personal && creatorRole != "",
 		FreelancerID: strings.TrimSpace(r.FreelancerID),
 		ClientID:     strings.TrimSpace(r.ClientID),
 		ProjectID:    r.ProjectID,
@@ -76,7 +81,11 @@ func (r Request) Validate(creatorRole string) (Params, map[string]string) {
 		trimmed := strings.TrimSpace(*p.ProjectID)
 		p.ProjectID = &trimmed
 	}
-	if creatorRole == user.RoleClient && p.FreelancerID == "" && (p.ProjectID == nil || *p.ProjectID == "") {
+	inProject := p.ProjectID != nil && *p.ProjectID != ""
+	switch {
+	case p.Personal && (p.FreelancerID != "" || p.ClientID != "" || inProject):
+		fields["freelancer_id"] = "A personal task has nobody else on it and no project"
+	case creatorRole == user.RoleClient && !p.Personal && p.FreelancerID == "" && !inProject:
 		fields["freelancer_id"] = "Choose a freelancer"
 	}
 	if p.Title == "" {
@@ -250,9 +259,23 @@ type DTO struct {
 	CanSetPrice  bool     `json:"can_set_price"`
 	// CanSeePrice is false for a member of the client's team: the price is
 	// left out for them.
-	CanSeePrice bool      `json:"can_see_price"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	CanSeePrice bool `json:"can_see_price"`
+	// CanArchive is true on the viewer's own personal task, which they may
+	// put in the archive by hand.
+	CanArchive bool      `json:"can_archive"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	// ArchivedAt is set once the task is archived: off the boards and closed
+	// to changes. ArchivedBy is the paid report that archived it, null when
+	// its owner did.
+	ArchivedAt *time.Time `json:"archived_at"`
+	ArchivedBy *ReportDTO `json:"archived_by"`
+}
+
+// ReportDTO names the report whose payment archived a task.
+type ReportDTO struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
 }
 
 // ToDTO maps a task for the viewer.
@@ -276,8 +299,13 @@ func ToDTO(t Task, role, viewerID string) DTO {
 		CanDelete:    CanDelete(t, viewerID),
 		CanSetPrice:  CanSetPrice(t, viewerID),
 		CanSeePrice:  CanSeePrice(t, viewerID),
+		CanArchive:   CanArchive(t, viewerID),
 		CreatedAt:    t.CreatedAt,
 		UpdatedAt:    t.UpdatedAt,
+		ArchivedAt:   t.ArchivedAt,
+	}
+	if t.ArchivedBy != nil {
+		d.ArchivedBy = &ReportDTO{ID: t.ArchivedBy.ID, Title: t.ArchivedBy.Title}
 	}
 	if t.Freelancer.ID != "" {
 		f := PartyDTO(t.Freelancer)

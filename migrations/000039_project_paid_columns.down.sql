@@ -1,0 +1,2 @@
+-- The columns stay with the project's pair: which freelancer made each one
+-- is not kept.

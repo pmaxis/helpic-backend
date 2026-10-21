@@ -307,11 +307,36 @@ func TestRegister_DuplicateEmail(t *testing.T) {
 	srv, c := newAPI(t)
 
 	confirmed(t, c, srv.URL, "dupe@example.com", "supersecret1")
+	before := len(emailsTo(t, "dupe@example.com"))
 
-	second := register(t, c, srv.URL, "Dupe@example.com", "supersecret1")
-	wantStatus(t, second, http.StatusConflict)
-	if got := errorCode(decode(t, second)); got != "EMAIL_ALREADY_EXISTS" {
-		t.Fatalf("code = %q, want EMAIL_ALREADY_EXISTS", got)
+	// The answer is the one a new address gets: it doesn't tell who has an
+	// account. The owner hears about it instead, with no link to confirm.
+	second := register(t, c, srv.URL, "Dupe@example.com", "othersecret1")
+	wantStatus(t, second, http.StatusAccepted)
+	if got := decode(t, second)["email"]; got != "dupe@example.com" {
+		t.Fatalf("email = %v", got)
+	}
+	list := emailsTo(t, "dupe@example.com")
+	if len(list) != before+1 {
+		t.Fatalf("emails = %d, want one more", len(list))
+	}
+	if last := list[len(list)-1]; last.Subject != "You already have a Helpic account" || strings.Contains(last.Text, "/confirm-signup") {
+		t.Fatalf("email = %+v", last)
+	}
+
+	// The password stays the owner's.
+	resp := post(t, c, srv.URL+"/api/v1/auth/login", map[string]string{"email": "dupe@example.com", "password": "othersecret1"})
+	wantStatus(t, resp, http.StatusUnauthorized)
+	resp.Body.Close()
+}
+
+func TestRegister_PasswordTooLong(t *testing.T) {
+	srv, c := newAPI(t)
+	// bcrypt reads 72 bytes; a longer password is refused, not cut short.
+	resp := register(t, c, srv.URL, "long@example.com", strings.Repeat("a1", 37))
+	wantStatus(t, resp, http.StatusBadRequest)
+	if fields := decode(t, resp)["error"].(map[string]any)["fields"].(map[string]any); fields["password"] != "Password is too long" {
+		t.Fatalf("fields = %v", fields)
 	}
 }
 

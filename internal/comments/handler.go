@@ -161,6 +161,8 @@ func writeError(w http.ResponseWriter, err error) {
 		response.Error(w, http.StatusNotFound, response.CodeNotFound, "Comment not found")
 	case errors.Is(err, ErrNotAuthor):
 		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the author can change a comment")
+	case errors.Is(err, tasks.ErrArchived):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "This task is archived: its discussion is closed")
 	default:
 		response.Internal(w, err)
 	}

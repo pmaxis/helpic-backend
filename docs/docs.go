@@ -15,6 +15,64 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/archive": {
+            "get": {
+                "description": "Tasks closed for good, the most recently archived first: shared work whose report was paid, and personal tasks put away by hand. Pages follow the next cursor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Archived tasks",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "A client's or freelancer's ID, or personal",
+                        "name": "with",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "project",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "The next cursor of the previous page",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Tasks per page, 50 by default, at most 200",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "tasks and the next page's cursor",
+                        "schema": {
+                            "$ref": "#/definitions/tasks.ArchiveResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid cursor or limit",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/attachments": {
             "get": {
                 "produces": [
@@ -379,6 +437,7 @@ const docTemplate = `{
         },
         "/auth/register": {
             "post": {
+                "description": "Emails a confirmation link. The account is created when that link is opened, not before. An email that already has an account gets a note saying so instead; the answer is the same, so it doesn't tell who has an account.",
                 "consumes": [
                     "application/json"
                 ],
@@ -401,10 +460,13 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "The new account",
+                    "202": {
+                        "description": "Confirmation emailed; no account yet",
                         "schema": {
-                            "$ref": "#/definitions/user.Response"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "400": {
@@ -413,14 +475,60 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
                     },
+                    "429": {
+                        "description": "Too many sign-ups from this address",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/signups/confirm": {
+            "post": {
+                "description": "Creates the freelancer account and signs this browser in. The link is the proof the inbox is theirs.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Confirm a sign-up email",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.SignupConfirmRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "The new account, signed in",
+                        "schema": {
+                            "$ref": "#/definitions/user.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "The link is invalid, replaced, used or expired (field token)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
                     "409": {
-                        "description": "The email is taken",
+                        "description": "The email was taken before the link was opened",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
                     },
                     "429": {
-                        "description": "Too many sign-ups from this address",
+                        "description": "Too many attempts from this address",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -1603,7 +1711,7 @@ const docTemplate = `{
         },
         "/me/currency": {
             "put": {
-                "description": "What a freelancer bills in: USD, EUR, GBP, UAH, PLN or CAD.",
+                "description": "What a freelancer bills in: USD, EUR, GBP, UAH, PLN or CAD. Refused while a task still has a price, so amounts are not relabeled.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2435,13 +2543,19 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
+                    },
+                    "409": {
+                        "description": "Tasks without a freelancer",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/projects/{id}/participants": {
             "post": {
-                "description": "The author only. A freelancer, an employee or a contractor; they're notified and can see the project.",
+                "description": "The author only. One person (user_id) or several (user_ids). They're notified and can see the project.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2814,7 +2928,7 @@ const docTemplate = `{
                 }
             },
             "delete": {
-                "description": "Its freelancer, sent or not; a sent one is gone for the client too.",
+                "description": "Its freelancer, and only while it is a draft. A sent report stays with the client.",
                 "tags": [
                     "reports"
                 ],
@@ -3042,7 +3156,7 @@ const docTemplate = `{
         },
         "/reports/{id}/paid": {
             "post": {
-                "description": "The report's client only. Its tasks move to the board's Paid column; the freelancer is notified.",
+                "description": "The report's client only. Its tasks go to the archive for good; the freelancer is notified.",
                 "produces": [
                     "application/json"
                 ],
@@ -3398,6 +3512,130 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflicts with the current state",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks/{id}/archive": {
+            "post": {
+                "description": "Puts your own personal task away for good: it leaves the boards and can't be changed. Shared work is archived when its report is paid.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Archive a personal task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not your personal task",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Already archived",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks/{id}/freelancer": {
+            "put": {
+                "description": "An empty freelancer_id takes the assignee off. The task's author stays a participant.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Change a task's freelancer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "freelancer_id",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Not a freelancer on the project",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -4398,6 +4636,14 @@ const docTemplate = `{
                 }
             }
         },
+        "auth.SignupConfirmRequest": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
         "board.BoardDTO": {
             "type": "object",
             "properties": {
@@ -4922,6 +5168,12 @@ const docTemplate = `{
             "properties": {
                 "user_id": {
                     "type": "string"
+                },
+                "user_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -4935,6 +5187,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "role": {
                     "type": "string"
                 }
             }
@@ -4968,6 +5223,12 @@ const docTemplate = `{
                 },
                 "freelancer_id": {
                     "type": "string"
+                },
+                "freelancer_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "name": {
                     "type": "string"
@@ -5013,7 +5274,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "can_delete": {
-                    "description": "CanDelete is true for the freelancer, sent or not.",
+                    "description": "CanDelete is true for the freelancer while the report is a draft.",
                     "type": "boolean"
                 },
                 "can_edit": {
@@ -5229,9 +5490,34 @@ const docTemplate = `{
                 }
             }
         },
+        "tasks.ArchiveResponse": {
+            "type": "object",
+            "properties": {
+                "next": {
+                    "type": "string"
+                },
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/tasks.DTO"
+                    }
+                }
+            }
+        },
         "tasks.DTO": {
             "type": "object",
             "properties": {
+                "archived_at": {
+                    "description": "ArchivedAt is set once the task is archived: off the boards and closed\nto changes. ArchivedBy is the paid report that archived it, null when\nits owner did.",
+                    "type": "string"
+                },
+                "archived_by": {
+                    "$ref": "#/definitions/tasks.ReportDTO"
+                },
+                "can_archive": {
+                    "description": "CanArchive is true on the viewer's own personal task, which they may\nput in the archive by hand.",
+                    "type": "boolean"
+                },
                 "can_delete": {
                     "type": "boolean"
                 },
@@ -5277,7 +5563,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "freelancer": {
-                    "$ref": "#/definitions/tasks.PartyDTO"
+                    "description": "Freelancer is null while the task has no assignee.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/tasks.PartyDTO"
+                        }
+                    ]
                 },
                 "id": {
                     "type": "string"
@@ -5454,6 +5745,17 @@ const docTemplate = `{
                 }
             }
         },
+        "tasks.ReportDTO": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "tasks.Request": {
             "type": "object",
             "properties": {
@@ -5468,6 +5770,10 @@ const docTemplate = `{
                 },
                 "freelancer_id": {
                     "type": "string"
+                },
+                "personal": {
+                    "description": "Personal makes a task with no other side: a client's own (a freelancer's\nis made by leaving client_id empty). Create only.",
+                    "type": "boolean"
                 },
                 "price": {
                     "description": "Price is an amount like \"1200.50\", set by a freelancer on create only;\nPUT /api/v1/tasks/{id}/price changes it later.",

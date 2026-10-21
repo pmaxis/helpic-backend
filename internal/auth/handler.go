@@ -34,10 +34,12 @@ type CookieConfig struct {
 type Handler struct {
 	svc    *Service
 	cookie CookieConfig
-	// failures counts wrong passwords per email; nil doesn't limit them.
-	failures ratelimit.Gate
-	// resets counts reset links asked for per email; nil doesn't limit them.
-	resets ratelimit.Gate
+	// failures counts wrong passwords per email from one address, and
+	// emailFailures per email from anywhere; nil doesn't limit them.
+	failures, emailFailures ratelimit.Gate
+	// resets counts reset links asked for per email from one address, and
+	// emailResets per email from anywhere; nil doesn't limit them.
+	resets, emailResets ratelimit.Gate
 }
 
 // NewHandler creates an auth Handler.
@@ -45,31 +47,68 @@ func NewHandler(svc *Service, cookie CookieConfig) *Handler {
 	return &Handler{svc: svc, cookie: cookie}
 }
 
-// LimitResetRequests stops emailing reset links to an address once l runs
-// out. The answer stays the same, so it tells nothing and floods no inbox.
-func (h *Handler) LimitResetRequests(l ratelimit.Gate) {
-	h.resets = l
+// LimitResetRequests stops emailing reset links to an address once either
+// gate runs out: perClient counts one sender's requests for the address,
+// perEmail everyone's, with room enough that a stranger running it down
+// takes a long, steady effort. The answer stays the same, so it tells
+// nothing and floods no inbox.
+func (h *Handler) LimitResetRequests(perClient, perEmail ratelimit.Gate) {
+	h.resets, h.emailResets = perClient, perEmail
 }
 
-// LimitFailedLogins refuses sign-ins to an email once l runs out: each wrong
-// password takes a token, a right one takes none.
-func (h *Handler) LimitFailedLogins(l ratelimit.Gate) {
-	h.failures = l
+// LimitFailedLogins refuses sign-ins to an email once either gate runs out:
+// each wrong password takes a token from both, a right one takes none.
+// perClient is per email and address, so guessing from one place doesn't
+// lock the owner out; perEmail caps guessing from many places at once.
+func (h *Handler) LimitFailedLogins(perClient, perEmail ratelimit.Gate) {
+	h.failures, h.emailFailures = perClient, perEmail
+}
+
+// clientKey is a bucket for one email from one address.
+func clientKey(email string, r *http.Request) string {
+	return email + " " + middleware.ClientIP(r)
+}
+
+// checkAll reports whether every gate has a token for its key, and if not
+// how long until they do. Nil gates don't limit.
+func checkAll(r *http.Request, gates []ratelimit.Gate, keys []string) (bool, time.Duration, error) {
+	for i, g := range gates {
+		if g == nil {
+			continue
+		}
+		ok, retry, err := g.Check(r.Context(), keys[i])
+		if err != nil || !ok {
+			return ok, retry, err
+		}
+	}
+	return true, 0, nil
+}
+
+// takeAll uses a token of every gate for its key.
+func takeAll(r *http.Request, gates []ratelimit.Gate, keys []string) error {
+	for i, g := range gates {
+		if g == nil {
+			continue
+		}
+		if err := g.Take(r.Context(), keys[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Register handles POST /api/v1/auth/register.
 //
 //	@Summary		Sign up as a freelancer
-//	@Description	Emails a confirmation link. The account is created when that link is opened, not before.
+//	@Description	Emails a confirmation link. The account is created when that link is opened, not before. An email that already has an account gets a note saying so instead; the answer is the same, so it doesn't tell who has an account.
 //	@Tags			auth
-//	@Accept		json
-//	@Produce	json
-//	@Param		body	body		RegisterRequest			true	"Request body"
-//	@Success	202		{object}	map[string]string		"Confirmation emailed; no account yet"
-//	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
-//	@Failure	409		{object}	response.ErrorEnvelope	"The email is taken"
-//	@Failure	429		{object}	response.ErrorEnvelope	"Too many sign-ups from this address"
-//	@Router		/auth/register [post]
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		RegisterRequest			true	"Request body"
+//	@Success		202		{object}	map[string]string		"Confirmation emailed; no account yet"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		429		{object}	response.ErrorEnvelope	"Too many sign-ups from this address"
+//	@Router			/auth/register [post]
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if !decodeJSON(w, r, &req) {
@@ -82,12 +121,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.svc.RequestSignup(r.Context(), params)
-	if errors.Is(err, ErrEmailExists) {
-		response.Error(w, http.StatusConflict, response.CodeEmailExists, "An account with this email already exists")
-		return
-	}
-	if err != nil {
+	if err := h.svc.RequestSignup(r.Context(), params); err != nil {
 		response.Internal(w, err)
 		return
 	}
@@ -161,25 +195,23 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.failures != nil {
-		ok, retry, err := h.failures.Check(r.Context(), params.Email)
-		if err != nil {
-			response.Internal(w, err)
-			return
-		}
-		if !ok {
-			ratelimit.TooMany(w, retry)
-			return
-		}
+	gates := []ratelimit.Gate{h.failures, h.emailFailures}
+	keys := []string{clientKey(params.Email, r), params.Email}
+	ok, retry, err := checkAll(r, gates, keys)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	if !ok {
+		ratelimit.TooMany(w, retry)
+		return
 	}
 
 	u, tokens, err := h.svc.Login(r.Context(), params, ClientOf(r))
 	if errors.Is(err, ErrInvalidCredentials) {
-		if h.failures != nil {
-			if err := h.failures.Take(r.Context(), params.Email); err != nil {
-				response.Internal(w, err)
-				return
-			}
+		if err := takeAll(r, gates, keys); err != nil {
+			response.Internal(w, err)
+			return
 		}
 		response.Error(w, http.StatusUnauthorized, response.CodeInvalidCredential, "Invalid email or password")
 		return
@@ -255,16 +287,20 @@ func (h *Handler) Forgot(w http.ResponseWriter, r *http.Request) {
 		response.ValidationError(w, fields)
 		return
 	}
-	if h.resets != nil {
-		ok, _, err := h.resets.Allow(r.Context(), email)
-		if err != nil {
-			response.Internal(w, err)
-			return
-		}
-		if !ok {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+	gates := []ratelimit.Gate{h.resets, h.emailResets}
+	keys := []string{clientKey(email, r), email}
+	ok, _, err := checkAll(r, gates, keys)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	if !ok {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if err := takeAll(r, gates, keys); err != nil {
+		response.Internal(w, err)
+		return
 	}
 	if err := h.svc.RequestReset(r.Context(), email); err != nil {
 		response.Internal(w, err)

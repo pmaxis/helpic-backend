@@ -3,7 +3,9 @@ package tasks
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -39,7 +41,9 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Put("/{id}/freelancer", h.AssignFreelancer)
 		r.Post("/{id}/participants", h.AddParticipant)
 		r.Delete("/{id}/participants/{userID}", h.RemoveParticipant)
+		r.Post("/{id}/archive", h.Archive)
 	})
+	r.Get("/archive", h.ListArchive)
 }
 
 // List handles GET /api/v1/tasks?status=new,in_progress&with={userID|personal}&project={id}.
@@ -74,6 +78,107 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		out = append(out, ToDTO(t, role, userID))
 	}
 	response.JSON(w, http.StatusOK, map[string][]DTO{"tasks": out})
+}
+
+// archivePage caps an archive page; maxArchivePage is the most one may ask for.
+const (
+	archivePage    = 50
+	maxArchivePage = 200
+)
+
+// ArchiveResponse is a page of the archive. Next, when set, is the cursor
+// (?before=) of the page after it.
+type ArchiveResponse struct {
+	Tasks []DTO  `json:"tasks"`
+	Next  string `json:"next,omitempty"`
+}
+
+// ListArchive handles GET /api/v1/archive?with={userID|personal}&project={id}&before={cursor}&limit={n}.
+//
+//	@Summary		Archived tasks
+//	@Description	Tasks closed for good, the most recently archived first: shared work whose report was paid, and personal tasks put away by hand. Pages follow the next cursor.
+//	@Tags			tasks
+//	@Produce		json
+//	@Param			with	query		string					false	"A client's or freelancer's ID, or personal"
+//	@Param			project	query		string					false	"Project ID"
+//	@Param			before	query		string					false	"The next cursor of the previous page"
+//	@Param			limit	query		int						false	"Tasks per page, 50 by default, at most 200"
+//	@Success		200		{object}	ArchiveResponse			"tasks and the next page's cursor"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid cursor or limit"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router			/archive [get]
+func (h *Handler) ListArchive(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	f := ArchiveFilter{With: q.Get("with"), ProjectID: q.Get("project"), Limit: archivePage}
+	if raw := q.Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > maxArchivePage {
+			response.ValidationError(w, map[string]string{"limit": "Ask for 1 to 200 tasks"})
+			return
+		}
+		f.Limit = n
+	}
+	if raw := q.Get("before"); raw != "" {
+		c, ok := parseCursor(raw)
+		if !ok {
+			response.ValidationError(w, map[string]string{"before": "This page link is broken. Start from the first page."})
+			return
+		}
+		f.Before = &c
+	}
+	list, more, err := h.svc.ListArchive(r.Context(), userID, role, f)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	out := ArchiveResponse{Tasks: make([]DTO, 0, len(list))}
+	for _, t := range list {
+		out.Tasks = append(out.Tasks, ToDTO(t, role, userID))
+	}
+	if more {
+		last := list[len(list)-1]
+		out.Next = last.ArchivedAt.UTC().Format(time.RFC3339Nano) + "_" + last.ID
+	}
+	response.JSON(w, http.StatusOK, out)
+}
+
+// parseCursor reads a next cursor: the archive time and the task's ID.
+func parseCursor(raw string) (ArchiveCursor, bool) {
+	at, id, ok := strings.Cut(raw, "_")
+	if !ok || id == "" {
+		return ArchiveCursor{}, false
+	}
+	t, err := time.Parse(time.RFC3339Nano, at)
+	if err != nil {
+		return ArchiveCursor{}, false
+	}
+	return ArchiveCursor{At: t, ID: id}, true
+}
+
+// Archive handles POST /api/v1/tasks/{id}/archive.
+//
+//	@Summary		Archive a personal task
+//	@Description	Puts your own personal task away for good: it leaves the boards and can't be changed. Shared work is archived when its report is paid.
+//	@Tags			tasks
+//	@Produce		json
+//	@Param			id	path		string					true	"Task ID"
+//	@Success		200	{object}	map[string]DTO			"task"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not your personal task"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409	{object}	response.ErrorEnvelope	"Already archived"
+//	@Router			/tasks/{id}/archive [post]
+func (h *Handler) Archive(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	t, err := h.svc.Archive(r.Context(), userID, chi.URLParam(r, "id"))
+	writeTask(w, http.StatusOK, t, role, userID, err)
 }
 
 // Get handles GET /api/v1/tasks/{id}.
@@ -499,6 +604,14 @@ func writeTask(w http.ResponseWriter, status int, t Task, role, viewerID string,
 		response.ValidationError(w, map[string]string{"user_id": "Only the client and their team can be added"})
 	case errors.Is(err, ErrKeepParticipant):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "The freelancer and whoever set the task stay on it")
+	case errors.Is(err, ErrArchived):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "This task is archived: it's closed and stays as it is")
+	case errors.Is(err, ErrArchiveNotAllowed):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only your own personal task goes to the archive by hand; shared work goes there when its report is paid")
+	case errors.Is(err, ErrAssignNotAllowed):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the client and their team choose who does the task")
+	case errors.Is(err, ErrNeedsFreelancer):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "A task outside a project needs a freelancer")
 	case errors.Is(err, ErrTransition):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "This status change isn't allowed")
 	case err != nil:

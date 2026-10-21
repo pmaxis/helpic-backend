@@ -19,7 +19,7 @@ const (
 	EventItemNotes   = "item_notes"   // task: the task's notes changed
 	EventItemRemoved = "item_removed" // task: dropped from the report
 	EventSent        = "sent"
-	EventPaid        = "paid" // tasks: how many moved to Paid
+	EventPaid        = "paid" // tasks: how many it archived
 )
 
 // clientEvents are what a client sees of a report's history: from the moment

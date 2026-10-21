@@ -90,6 +90,11 @@ definitions:
       user_agent:
         type: string
     type: object
+  auth.SignupConfirmRequest:
+    properties:
+      token:
+        type: string
+    type: object
   board.BoardDTO:
     properties:
       can_manage:
@@ -441,6 +446,10 @@ definitions:
     properties:
       user_id:
         type: string
+      user_ids:
+        items:
+          type: string
+        type: array
     type: object
   projects.PartyDTO:
     properties:
@@ -449,6 +458,8 @@ definitions:
       id:
         type: string
       name:
+        type: string
+      role:
         type: string
     type: object
   projects.PersonDTO:
@@ -471,6 +482,10 @@ definitions:
         type: string
       freelancer_id:
         type: string
+      freelancer_ids:
+        items:
+          type: string
+        type: array
       name:
         type: string
     type: object
@@ -501,7 +516,7 @@ definitions:
   reports.DTO:
     properties:
       can_delete:
-        description: CanDelete is true for the freelancer, sent or not.
+        description: CanDelete is true for the freelancer while the report is a draft.
         type: boolean
       can_edit:
         description: CanEdit is true for the freelancer while the report is a draft.
@@ -645,8 +660,30 @@ definitions:
       error:
         $ref: '#/definitions/response.APIError'
     type: object
+  tasks.ArchiveResponse:
+    properties:
+      next:
+        type: string
+      tasks:
+        items:
+          $ref: '#/definitions/tasks.DTO'
+        type: array
+    type: object
   tasks.DTO:
     properties:
+      archived_at:
+        description: |-
+          ArchivedAt is set once the task is archived: off the boards and closed
+          to changes. ArchivedBy is the paid report that archived it, null when
+          its owner did.
+        type: string
+      archived_by:
+        $ref: '#/definitions/tasks.ReportDTO'
+      can_archive:
+        description: |-
+          CanArchive is true on the viewer's own personal task, which they may
+          put in the archive by hand.
+        type: boolean
       can_delete:
         type: boolean
       can_edit:
@@ -679,7 +716,9 @@ definitions:
       due_on:
         type: string
       freelancer:
-        $ref: '#/definitions/tasks.PartyDTO'
+        allOf:
+        - $ref: '#/definitions/tasks.PartyDTO'
+        description: Freelancer is null while the task has no assignee.
       id:
         type: string
       labels:
@@ -800,6 +839,13 @@ definitions:
       name:
         type: string
     type: object
+  tasks.ReportDTO:
+    properties:
+      id:
+        type: string
+      title:
+        type: string
+    type: object
   tasks.Request:
     properties:
       client_id:
@@ -810,6 +856,11 @@ definitions:
         type: string
       freelancer_id:
         type: string
+      personal:
+        description: |-
+          Personal makes a task with no other side: a client's own (a freelancer's
+          is made by leaving client_id empty). Create only.
+        type: boolean
       price:
         description: |-
           Price is an amount like "1200.50", set by a freelancer on create only;
@@ -1049,6 +1100,46 @@ info:
   title: Helpic API
   version: "1.0"
 paths:
+  /archive:
+    get:
+      description: 'Tasks closed for good, the most recently archived first: shared
+        work whose report was paid, and personal tasks put away by hand. Pages follow
+        the next cursor.'
+      parameters:
+      - description: A client's or freelancer's ID, or personal
+        in: query
+        name: with
+        type: string
+      - description: Project ID
+        in: query
+        name: project
+        type: string
+      - description: The next cursor of the previous page
+        in: query
+        name: before
+        type: string
+      - description: Tasks per page, 50 by default, at most 200
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: tasks and the next page's cursor
+          schema:
+            $ref: '#/definitions/tasks.ArchiveResponse'
+        "400":
+          description: Invalid cursor or limit
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Archived tasks
+      tags:
+      - tasks
   /attachments:
     get:
       parameters:
@@ -1296,6 +1387,9 @@ paths:
     post:
       consumes:
       - application/json
+      description: Emails a confirmation link. The account is created when that link
+        is opened, not before. An email that already has an account gets a note saying
+        so instead; the answer is the same, so it doesn't tell who has an account.
       parameters:
       - description: Request body
         in: body
@@ -1306,16 +1400,14 @@ paths:
       produces:
       - application/json
       responses:
-        "201":
-          description: The new account
+        "202":
+          description: Confirmation emailed; no account yet
           schema:
-            $ref: '#/definitions/user.Response'
+            additionalProperties:
+              type: string
+            type: object
         "400":
           description: Invalid input
-          schema:
-            $ref: '#/definitions/response.ErrorEnvelope'
-        "409":
-          description: The email is taken
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
         "429":
@@ -1323,6 +1415,41 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Sign up as a freelancer
+      tags:
+      - auth
+  /auth/signups/confirm:
+    post:
+      consumes:
+      - application/json
+      description: Creates the freelancer account and signs this browser in. The link
+        is the proof the inbox is theirs.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.SignupConfirmRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: The new account, signed in
+          schema:
+            $ref: '#/definitions/user.Response'
+        "400":
+          description: The link is invalid, replaced, used or expired (field token)
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: The email was taken before the link was opened
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many attempts from this address
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Confirm a sign-up email
       tags:
       - auth
   /board:
@@ -2104,7 +2231,8 @@ paths:
     put:
       consumes:
       - application/json
-      description: 'What a freelancer bills in: USD, EUR, GBP, UAH, PLN or CAD.'
+      description: 'What a freelancer bills in: USD, EUR, GBP, UAH, PLN or CAD. Refused
+        while a task still has a price, so amounts are not relabeled.'
       parameters:
       - description: Request body
         in: body
@@ -2582,6 +2710,10 @@ paths:
           description: Not found
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Tasks without a freelancer
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
       summary: Delete a project
       tags:
       - projects
@@ -2660,7 +2792,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: The author only. A freelancer, an employee or a contractor; they're
+      description: The author only. One person (user_id) or several (user_ids). They're
         notified and can see the project.
       parameters:
       - description: Project ID
@@ -2834,8 +2966,8 @@ paths:
       - reports
   /reports/{id}:
     delete:
-      description: Its freelancer, sent or not; a sent one is gone for the client
-        too.
+      description: Its freelancer, and only while it is a draft. A sent report stays
+        with the client.
       parameters:
       - description: Report ID
         in: path
@@ -3061,7 +3193,7 @@ paths:
       - reports
   /reports/{id}/paid:
     post:
-      description: The report's client only. Its tasks move to the board's Paid column;
+      description: The report's client only. Its tasks go to the archive for good;
         the freelancer is notified.
       parameters:
       - description: Report ID
@@ -3302,6 +3434,90 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Edit a task
+      tags:
+      - tasks
+  /tasks/{id}/archive:
+    post:
+      description: 'Puts your own personal task away for good: it leaves the boards
+        and can''t be changed. Shared work is archived when its report is paid.'
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not your personal task
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Already archived
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Archive a personal task
+      tags:
+      - tasks
+  /tasks/{id}/freelancer:
+    put:
+      consumes:
+      - application/json
+      description: An empty freelancer_id takes the assignee off. The task's author
+        stays a participant.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: freelancer_id
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "400":
+          description: Not a freelancer on the project
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Change a task's freelancer
       tags:
       - tasks
   /tasks/{id}/history:

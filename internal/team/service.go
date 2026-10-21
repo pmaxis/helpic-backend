@@ -14,6 +14,7 @@ import (
 // accounts makes and signs in member accounts. Implemented by *auth.Service.
 type accounts interface {
 	Register(ctx context.Context, p auth.RegisterParams, role string) (user.User, error)
+	Discard(ctx context.Context, userID string) error
 	StartSession(ctx context.Context, u user.User, c auth.Client) (auth.Tokens, error)
 }
 
@@ -192,6 +193,11 @@ func (s *Service) Join(ctx context.Context, token string, p JoinParams, c auth.C
 		return Session{}, err
 	}
 	if err := s.repo.Join(ctx, l.Invite.ID, l.Invite.CompanyID, u.ID, l.Invite.Role); err != nil {
+		// The invitation was used up or withdrawn meanwhile: the account
+		// was only for it.
+		if delErr := s.accounts.Discard(ctx, u.ID); delErr != nil {
+			slog.Error("failed to discard an unused account", "error", delErr)
+		}
 		return Session{}, err
 	}
 	s.notify.Notify(ctx, notifications.Notification{UserID: l.Owner.ID, ActorID: u.ID, Kind: notifications.KindMemberJoined})

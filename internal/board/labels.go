@@ -24,6 +24,9 @@ var (
 	ErrLabelNotFound = errors.New("label not found")
 	// ErrLabelExists is returned for a second label with the same name.
 	ErrLabelExists = errors.New("label already exists")
+	// ErrLabelsNotAllowed is returned when someone outside a pair, or a
+	// contractor, changes its labels.
+	ErrLabelsNotAllowed = errors.New("not allowed to change these labels")
 )
 
 // LabelColors is the palette a label's color comes from; the frontend maps
@@ -131,10 +134,36 @@ func (s *Service) Labels(ctx context.Context, userID, role string, sc Scope) ([]
 	return s.repo.Labels(ctx, p)
 }
 
+// editsLabels reports whether the user may change a pair's labels: its
+// freelancer, or its client and their company — but not a contractor, who
+// works on only some of the pair's tasks. Labels are the pair's, so taking
+// part in one of its projects doesn't make them yours.
+func (s *Service) editsLabels(ctx context.Context, userID string, p Pair) error {
+	if userID == p.FreelancerID {
+		return nil
+	}
+	if p.ClientID != "" {
+		acting, err := s.repo.ActingClient(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if acting == p.ClientID {
+			contractor, err := s.repo.IsContractor(ctx, userID)
+			if err != nil || !contractor {
+				return err
+			}
+		}
+	}
+	return ErrLabelsNotAllowed
+}
+
 // CreateLabel adds a label to the board the user asked for.
 func (s *Service) CreateLabel(ctx context.Context, userID, role string, sc Scope, lp LabelParams) (Label, error) {
 	p, err := s.Pair(ctx, userID, role, sc)
 	if err != nil {
+		return Label{}, err
+	}
+	if err := s.editsLabels(ctx, userID, p); err != nil {
 		return Label{}, err
 	}
 	id, err := s.repo.CreateLabel(ctx, p, lp.Name, lp.Color)
@@ -150,6 +179,9 @@ func (s *Service) UpdateLabel(ctx context.Context, userID, id string, lp LabelPa
 	if err != nil {
 		return Label{}, err
 	}
+	if err := s.editsLabels(ctx, userID, l.Pair); err != nil {
+		return Label{}, err
+	}
 	if err := s.repo.UpdateLabel(ctx, l.ID, lp.Name, lp.Color); err != nil {
 		return Label{}, err
 	}
@@ -161,6 +193,9 @@ func (s *Service) UpdateLabel(ctx context.Context, userID, id string, lp LabelPa
 func (s *Service) DeleteLabel(ctx context.Context, userID, id string) error {
 	l, err := s.repo.Label(ctx, userID, id)
 	if err != nil {
+		return err
+	}
+	if err := s.editsLabels(ctx, userID, l.Pair); err != nil {
 		return err
 	}
 	return s.repo.DeleteLabel(ctx, l.ID)
@@ -349,6 +384,8 @@ func writeLabelErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrLabelNotFound):
 		response.Error(w, http.StatusNotFound, response.CodeNotFound, "Label not found")
+	case errors.Is(err, ErrLabelsNotAllowed):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the board's freelancer and the client's team change its labels")
 	case errors.Is(err, ErrLabelExists):
 		response.ValidationError(w, map[string]string{"name": "There's already a label with this name"})
 	default:

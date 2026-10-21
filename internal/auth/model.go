@@ -30,5 +30,9 @@ type LoginParams struct {
 // password also needs a letter and a number (see passwordIssue).
 const MinPasswordLength = 8
 
+// MaxPasswordBytes is as much of a password as bcrypt reads; a longer one
+// would fail to hash. Bytes, not letters: "ї" takes two.
+const MaxPasswordBytes = 72
+
 // MaxNameLength caps a display name.
 const MaxNameLength = 100

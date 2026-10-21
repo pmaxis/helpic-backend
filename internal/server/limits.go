@@ -20,12 +20,18 @@ type limits struct {
 	signUp ratelimit.Gate
 	// refresh: session refreshes per address; a tab refreshes every 15 minutes.
 	refresh ratelimit.Gate
-	// loginFailures: wrong passwords per email, from anywhere.
-	loginFailures ratelimit.Gate
+	// loginFailures: wrong passwords per email from one address;
+	// emailFailures: per email from anywhere, roomier, so a stranger can't
+	// simply lock the owner out but guessing from many addresses still stops.
+	loginFailures, emailFailures ratelimit.Gate
 	// passwordChecks: changes that check the current password, per user.
 	passwordChecks ratelimit.Gate
-	// resetRequests: password reset emails per address asked for.
-	resetRequests ratelimit.Gate
+	// resetRequests: password reset emails per inbox, asked from one
+	// address; emailResets: per inbox from anywhere.
+	resetRequests, emailResets ratelimit.Gate
+	// invites: invitation emails a user sends, to clients and to their team;
+	// enough to bring in a company, too few to send spam from our address.
+	invites ratelimit.Gate
 }
 
 func newLimits(pool *pgxpool.Pool, on bool) limits {
@@ -37,14 +43,17 @@ func newLimits(pool *pgxpool.Pool, on bool) limits {
 		signUp:         ratelimit.NewStore(pool, "sign-up", 5, 10*time.Minute),
 		refresh:        ratelimit.NewStore(pool, "refresh", 120, 5*time.Second),
 		loginFailures:  ratelimit.NewStore(pool, "login-failures", 10, 3*time.Minute),
+		emailFailures:  ratelimit.NewStore(pool, "login-failures-email", 100, time.Minute),
 		passwordChecks: ratelimit.NewStore(pool, "password-checks", 5, time.Minute),
 		resetRequests:  ratelimit.NewStore(pool, "reset", 3, 10*time.Minute),
+		emailResets:    ratelimit.NewStore(pool, "reset-email", 10, 30*time.Minute),
+		invites:        ratelimit.NewStore(pool, "invites", 20, 15*time.Minute),
 	}
 }
 
 // sweep forgets full buckets, so the maps don't grow without end.
 func (l limits) sweep(ctx context.Context) error {
-	for _, lim := range []ratelimit.Gate{l.signIn, l.signUp, l.refresh, l.loginFailures, l.passwordChecks, l.resetRequests} {
+	for _, lim := range []ratelimit.Gate{l.signIn, l.signUp, l.refresh, l.loginFailures, l.emailFailures, l.passwordChecks, l.resetRequests, l.emailResets, l.invites} {
 		if lim != nil {
 			if err := lim.Sweep(ctx); err != nil {
 				return err

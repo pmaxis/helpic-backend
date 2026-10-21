@@ -44,6 +44,14 @@ func (r *Repository) CreateUser(ctx context.Context, email, name, role, password
 	return u, nil
 }
 
+// DeleteUser removes an account.
+func (r *Repository) DeleteUser(ctx context.Context, id string) error {
+	if _, err := r.db.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	return nil
+}
+
 // GetByEmail loads an account by its normalized email. Returns user.ErrNotFound
 // when there is no match.
 func (r *Repository) GetByEmail(ctx context.Context, email string) (user.User, error) {

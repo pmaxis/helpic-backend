@@ -42,9 +42,11 @@ type Config struct {
 	// unless SWAGGER_ENABLED says otherwise.
 	SwaggerEnabled bool
 
-	// UploadsDir holds task attachments; MaxUploadBytes caps one file.
-	UploadsDir     string
-	MaxUploadBytes int64
+	// UploadsDir holds task attachments; MaxUploadBytes caps one file, and
+	// UploadQuotaBytes everything one user has uploaded.
+	UploadsDir       string
+	MaxUploadBytes   int64
+	UploadQuotaBytes int64
 
 	// AppURL is the frontend's address, for links sent outside the app.
 	AppURL string
@@ -124,6 +126,11 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("invalid MAX_UPLOAD_MB")
 	}
 	cfg.MaxUploadBytes = int64(maxMB) << 20
+	quotaMB, err := strconv.Atoi(getEnv("UPLOAD_QUOTA_MB", "1024"))
+	if err != nil || quotaMB < maxMB {
+		return Config{}, fmt.Errorf("invalid UPLOAD_QUOTA_MB: at least MAX_UPLOAD_MB")
+	}
+	cfg.UploadQuotaBytes = int64(quotaMB) << 20
 	cfg.AppURL = getEnv("APP_URL", cfg.CORSOrigin)
 	cfg.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	cfg.TelegramAPIURL = getEnv("TELEGRAM_API_URL", "https://api.telegram.org")

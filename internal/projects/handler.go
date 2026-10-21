@@ -161,6 +161,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 //	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
 //	@Failure		403	{object}	response.ErrorEnvelope	"Not allowed"
 //	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409	{object}	response.ErrorEnvelope	"Tasks without a freelancer"
 //	@Router			/projects/{id} [delete]
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := request.UserRole(w, r)
@@ -283,6 +284,8 @@ func writeProject(w http.ResponseWriter, status int, p Project, viewerID string,
 		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the project's creator can change it")
 	case errors.Is(err, ErrContractor):
 		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Contractors can't start projects")
+	case errors.Is(err, ErrUnassignedTasks):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "Some of the project's tasks have no freelancer yet. Assign them or delete them first.")
 	case err != nil:
 		response.Internal(w, err)
 	default:

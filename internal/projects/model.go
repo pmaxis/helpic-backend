@@ -24,6 +24,9 @@ var (
 	ErrNotInvitable = errors.New("this person can't be invited to the project")
 	// ErrKeepAuthor is returned when the project's author would be removed.
 	ErrKeepAuthor = errors.New("the project's author stays")
+	// ErrUnassignedTasks is returned when deleting a project with tasks that
+	// wait for a freelancer: off the project they'd have no board.
+	ErrUnassignedTasks = errors.New("the project has tasks without a freelancer")
 )
 
 // Person is someone who can be on a project: its freelancer, the client, or a

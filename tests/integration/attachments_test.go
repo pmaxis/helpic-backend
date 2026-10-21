@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/pmaxis/helpic/internal/config"
 )
 
 // upload posts one file to a task's attachments.
@@ -120,4 +122,35 @@ func TestAttachments(t *testing.T) {
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()
 	wantStatus(t, get(t, client, pageURL), http.StatusNotFound)
+}
+
+func TestAttachments_Quota(t *testing.T) {
+	srv, _, _ := newAPIWith(t, func(cfg *config.Config) {
+		cfg.MaxUploadBytes = 1 << 20
+		cfg.UploadQuotaBytes = 3 << 19 // a file and a half
+	})
+	freelancer := signUpFreelancer(t, srv, "free@example.com")
+	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
+	taskID := newTask(t, srv, freelancer, map[string]any{"client_id": myID(t, srv, client), "title": "Logo"})["id"].(string)
+	file := bytes.Repeat([]byte("x"), 1<<20)
+
+	resp := upload(t, srv, freelancer, taskID, "first.txt", file)
+	wantStatus(t, resp, http.StatusCreated)
+	first := field(decode(t, resp), "attachment")
+	resp = upload(t, srv, freelancer, taskID, "second.txt", file)
+	wantStatus(t, resp, http.StatusRequestEntityTooLarge)
+	resp.Body.Close()
+
+	// The quota is each uploader's own.
+	resp = upload(t, srv, client, taskID, "theirs.txt", file)
+	wantStatus(t, resp, http.StatusCreated)
+	resp.Body.Close()
+
+	// Deleting a file gives its space back.
+	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/v1/attachments/"+first["id"].(string), nil)
+	wantStatus(t, resp, http.StatusNoContent)
+	resp.Body.Close()
+	resp = upload(t, srv, freelancer, taskID, "second.txt", file)
+	wantStatus(t, resp, http.StatusCreated)
+	resp.Body.Close()
 }

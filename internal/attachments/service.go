@@ -34,11 +34,13 @@ type Service struct {
 	store   *Store
 	tasks   taskAccess
 	maxSize int64
+	quota   int64
 }
 
-// NewService creates an attachments Service; maxSize caps one file in bytes.
-func NewService(repo *Repository, store *Store, tasks taskAccess, maxSize int64) *Service {
-	return &Service{repo: repo, store: store, tasks: tasks, maxSize: maxSize}
+// NewService creates an attachments Service; maxSize caps one file in bytes,
+// and quota (when above zero) all the files one user has uploaded.
+func NewService(repo *Repository, store *Store, tasks taskAccess, maxSize, quota int64) *Service {
+	return &Service{repo: repo, store: store, tasks: tasks, maxSize: maxSize, quota: quota}
 }
 
 // MaxSize is the largest file accepted, in bytes.
@@ -59,6 +61,9 @@ func (s *Service) Upload(ctx context.Context, userID, taskID, fileName string, r
 	if err != nil {
 		return Attachment{}, err
 	}
+	if t.Archived() {
+		return Attachment{}, tasks.ErrArchived
+	}
 	id, err := s.repo.NewID(ctx)
 	if err != nil {
 		return Attachment{}, err
@@ -72,6 +77,16 @@ func (s *Service) Upload(ctx context.Context, userID, taskID, fileName string, r
 	size, err := s.store.Save(id, br, s.maxSize)
 	if err != nil {
 		return Attachment{}, err
+	}
+	if s.quota > 0 {
+		used, err := s.repo.UsedBytes(ctx, userID)
+		if err == nil && used+size > s.quota {
+			err = ErrQuota
+		}
+		if err != nil {
+			_ = s.store.Remove(id)
+			return Attachment{}, err
+		}
 	}
 
 	a := Attachment{
@@ -101,14 +116,21 @@ func (s *Service) Open(ctx context.Context, userID, id string) (Attachment, *os.
 	return a, f, err
 }
 
-// Delete removes a file its uploader added.
+// Delete removes a file its uploader added, while its task isn't archived.
 func (s *Service) Delete(ctx context.Context, userID, id string) error {
-	a, err := s.visible(ctx, userID, id)
+	a, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return err
 	}
+	t, err := s.tasks.Get(ctx, userID, a.TaskID)
+	if err != nil {
+		return ErrNotFound
+	}
 	if a.Uploader.ID != userID {
 		return ErrNotAllowed
+	}
+	if t.Archived() {
+		return tasks.ErrArchived
 	}
 	if err := s.repo.Delete(ctx, a.ID); err != nil {
 		return err
