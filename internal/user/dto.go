@@ -17,7 +17,9 @@ type DTO struct {
 	// Locale is the language they read Helpic in: "en" or "uk".
 	Locale string `json:"locale"`
 	// MemberOf is set for a member of a client's company; null otherwise.
-	MemberOf  *TeamDTO  `json:"member_of"`
+	MemberOf *TeamDTO `json:"member_of"`
+	// TwoFactor is on when signing in also takes a code from an authenticator app.
+	TwoFactor bool      `json:"two_factor"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -37,7 +39,7 @@ type Response struct {
 
 // ToDTO maps a domain user to its public representation.
 func ToDTO(u User) DTO {
-	d := DTO{ID: u.ID, Email: u.Email, FirstName: u.FirstName, LastName: u.LastName, Name: u.Name, Role: u.Role, Currency: u.Currency, HourlyRateCents: u.HourlyRateCents, Locale: u.Locale, CreatedAt: u.CreatedAt}
+	d := DTO{ID: u.ID, Email: u.Email, FirstName: u.FirstName, LastName: u.LastName, Name: u.Name, Role: u.Role, Currency: u.Currency, HourlyRateCents: u.HourlyRateCents, Locale: u.Locale, TwoFactor: u.TwoFactor, CreatedAt: u.CreatedAt}
 	if u.TeamOwnerID != nil {
 		d.MemberOf = &TeamDTO{OwnerID: *u.TeamOwnerID, Name: u.TeamName, Role: u.TeamRole}
 	}

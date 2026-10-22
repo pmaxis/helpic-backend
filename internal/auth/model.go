@@ -24,6 +24,9 @@ type RegisterParams struct {
 type LoginParams struct {
 	Email    string
 	Password string
+	// Code is from an authenticator app, or a recovery code; needed only
+	// when the account has two-factor on.
+	Code string
 }
 
 // MinPasswordLength is enforced by both the API and the frontend. A new

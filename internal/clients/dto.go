@@ -44,12 +44,13 @@ type LookupRequest struct {
 
 // AcceptRequest is the JSON body for POST /api/v1/invites/accept. A new
 // account needs the name, password and confirmation; an existing one only the
-// password.
+// password, and a code when it has two-factor on.
 type AcceptRequest struct {
 	Token                string `json:"token"`
 	Name                 string `json:"name"`
 	Password             string `json:"password"`
 	PasswordConfirmation string `json:"password_confirmation"`
+	Code                 string `json:"code,omitempty"`
 }
 
 // AcceptParams is the validated input for creating a client account.

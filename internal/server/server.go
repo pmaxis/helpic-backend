@@ -94,6 +94,19 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		authHandler.LimitResetRequests(lim.resetRequests, lim.emailResets)
 	}
 
+	// --- two-factor sign-in: authenticator secrets sealed with their own key -
+	// Development may go without one; the key is then made from JWT_SECRET
+	// (production refuses to start without TWO_FACTOR_KEY).
+	twoFactorKey := cfg.TwoFactorKey
+	if twoFactorKey == "" {
+		twoFactorKey = cfg.JWTSecret
+	}
+	sealer, err := auth.NewSealer(twoFactorKey)
+	if err != nil {
+		return nil, err
+	}
+	authSvc.UseTwoFactor(sealer, lim.twoFactorCodes)
+
 	// --- notifications: what the other side of shared work did -------------
 	notifier := notifications.NewService(notifications.NewRepository(pool))
 	notificationsHandler := notifications.NewHandler(notifier)
@@ -207,6 +220,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			r.Get("/me", userHandler.Me)
 			profileHandler.Routes(r, byUser(lim.passwordChecks))
 			authHandler.SessionRoutes(r)
+			authHandler.TwoFactorRoutes(r, byUser(lim.passwordChecks))
 			tasksHandler.Routes(r)
 			attachmentsHandler.Routes(r)
 			commentsHandler.Routes(r)

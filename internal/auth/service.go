@@ -10,6 +10,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/pmaxis/helpic/internal/i18n"
+	"github.com/pmaxis/helpic/internal/ratelimit"
 	"github.com/pmaxis/helpic/internal/user"
 )
 
@@ -19,6 +20,7 @@ type repository interface {
 	CreateUser(ctx context.Context, email, name, role, passwordHash, locale string) (user.User, error)
 	DeleteUser(ctx context.Context, id string) error
 	GetByEmail(ctx context.Context, email string) (user.User, error)
+	GetByID(ctx context.Context, id string) (user.User, error)
 
 	CreateSession(ctx context.Context, userID string, refreshHash []byte, c Client, expiresAt time.Time) (Session, error)
 	Rotate(ctx context.Context, old, next []byte, expiresAt time.Time) (Session, error)
@@ -40,6 +42,16 @@ type repository interface {
 	TakePendingSignup(ctx context.Context, hash []byte) (email, name, passwordHash, locale string, err error)
 	DeletePendingSignup(ctx context.Context, email string, hash []byte) error
 	DeleteExpiredSignups(ctx context.Context) error
+
+	SetPendingSecret(ctx context.Context, userID string, sealed []byte) error
+	PendingSecret(ctx context.Context, userID string) ([]byte, error)
+	ConfirmTwoFactor(ctx context.Context, userID string, pending []byte, step int64, hashes [][]byte) error
+	Secret(ctx context.Context, userID string) ([]byte, int64, error)
+	UseStep(ctx context.Context, userID string, step int64) (bool, error)
+	UseRecoveryCode(ctx context.Context, userID string, hash []byte) (bool, error)
+	RecoveryCodesLeft(ctx context.Context, userID string) (int, error)
+	ReplaceRecoveryCodes(ctx context.Context, userID string, hashes [][]byte) error
+	DisableTwoFactor(ctx context.Context, userID string) error
 }
 
 // tokenIssuer issues signed access JWTs. Implemented by *token.Manager.
@@ -52,7 +64,8 @@ type tokenIssuer interface {
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-password-for-timing"), bcrypt.DefaultCost)
 
 // Service contains authentication business logic: password hashing and
-// verification, registration rules and sessions (see session.go).
+// verification, registration rules, sessions (see session.go) and two-factor
+// sign-in (twofactor.go).
 type Service struct {
 	repo   repository
 	tokens tokenIssuer
@@ -61,6 +74,10 @@ type Service struct {
 	// mail sends reset links; appURL is the frontend they point to.
 	mail   Mailer
 	appURL string
+	// sealer seals authenticator secrets; codeGuesses counts wrong codes
+	// per account, nil doesn't limit them (see UseTwoFactor).
+	sealer      *Sealer
+	codeGuesses ratelimit.Gate
 }
 
 // NewService creates an auth Service.
@@ -97,7 +114,9 @@ func (s *Service) Discard(ctx context.Context, userID string) error {
 
 // Login verifies credentials and, on success, starts a session for the device
 // and returns the user. A wrong password and an unknown email both yield
-// ErrInvalidCredentials.
+// ErrInvalidCredentials. An account with two-factor on also needs a code:
+// without one, ErrTwoFactorRequired (said only once the password is right);
+// a wrong one, ErrTwoFactorCode or, after too many, a *CodeLimitError.
 func (s *Service) Login(ctx context.Context, p LoginParams, c Client) (user.User, Tokens, error) {
 	u, err := s.repo.GetByEmail(ctx, p.Email)
 	if errors.Is(err, user.ErrNotFound) {
@@ -111,6 +130,11 @@ func (s *Service) Login(ctx context.Context, p LoginParams, c Client) (user.User
 
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(p.Password)); err != nil {
 		return user.User{}, Tokens{}, ErrInvalidCredentials
+	}
+	if u.TwoFactor {
+		if err := s.secondFactor(ctx, u.ID, p.Code); err != nil {
+			return user.User{}, Tokens{}, err
+		}
 	}
 
 	tokens, err := s.StartSession(ctx, u, c)

@@ -26,6 +26,10 @@ type limits struct {
 	loginFailures, emailFailures ratelimit.Gate
 	// passwordChecks: changes that check the current password, per user.
 	passwordChecks ratelimit.Gate
+	// twoFactorCodes: wrong two-factor codes per account, from anywhere.
+	// After the first ten, one every ten minutes: guessing six digits takes
+	// years, and the owner, who has the app, is rarely held up.
+	twoFactorCodes ratelimit.Gate
 	// resetRequests: password reset emails per inbox, asked from one
 	// address; emailResets: per inbox from anywhere.
 	resetRequests, emailResets ratelimit.Gate
@@ -45,6 +49,7 @@ func newLimits(pool *pgxpool.Pool, on bool) limits {
 		loginFailures:  ratelimit.NewStore(pool, "login-failures", 10, 3*time.Minute),
 		emailFailures:  ratelimit.NewStore(pool, "login-failures-email", 100, time.Minute),
 		passwordChecks: ratelimit.NewStore(pool, "password-checks", 5, time.Minute),
+		twoFactorCodes: ratelimit.NewStore(pool, "two-factor-codes", 10, 10*time.Minute),
 		resetRequests:  ratelimit.NewStore(pool, "reset", 3, 10*time.Minute),
 		emailResets:    ratelimit.NewStore(pool, "reset-email", 10, 30*time.Minute),
 		invites:        ratelimit.NewStore(pool, "invites", 20, 15*time.Minute),
@@ -53,7 +58,7 @@ func newLimits(pool *pgxpool.Pool, on bool) limits {
 
 // sweep forgets full buckets, so the maps don't grow without end.
 func (l limits) sweep(ctx context.Context) error {
-	for _, lim := range []ratelimit.Gate{l.signIn, l.signUp, l.refresh, l.loginFailures, l.emailFailures, l.passwordChecks, l.resetRequests, l.emailResets, l.invites} {
+	for _, lim := range []ratelimit.Gate{l.signIn, l.signUp, l.refresh, l.loginFailures, l.emailFailures, l.passwordChecks, l.twoFactorCodes, l.resetRequests, l.emailResets, l.invites} {
 		if lim != nil {
 			if err := lim.Sweep(ctx); err != nil {
 				return err

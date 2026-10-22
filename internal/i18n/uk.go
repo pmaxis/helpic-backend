@@ -62,6 +62,21 @@ var uk = map[string]string{
 	"Your Helpic account now signs in with %s instead of this address, %s.":                        "Тепер ваш акаунт Helpic входить з %s замість цієї адреси, %s.",
 	"If that was you, there's nothing to do. If it wasn't, someone else may have your password.":   "Якщо це були ви, нічого робити не треба. Якщо ні — ваш пароль, можливо, знає хтось інший.",
 
+	// --- two-factor sign-in --------------------------------------------------------
+	"Helpic: %s":                       "Helpic: %s",
+	"Two-factor sign-in is on":         "Двофакторний вхід увімкнено",
+	"Two-factor sign-in is off":        "Двофакторний вхід вимкнено",
+	"New recovery codes":               "Нові резервні коди",
+	"Two-factor sign-in is already on": "Двофакторний вхід уже ввімкнено",
+	"Two-factor sign-in was turned on for your Helpic account, %s. Signing in now also takes a code from your authenticator app, and your other devices were signed out.": "Для вашого акаунта Helpic, %s, увімкнено двофакторний вхід. Тепер для входу потрібен ще й код із застосунку-автентифікатора, а з інших пристроїв виконано вихід.",
+	"Two-factor sign-in was turned off for your Helpic account, %s. Signing in takes only the password now.":                                                              "Для вашого акаунта Helpic, %s, вимкнено двофакторний вхід. Тепер для входу достатньо пароля.",
+	"New recovery codes were made for your Helpic account, %s. The old ones no longer work.":                                                                              "Для вашого акаунта Helpic, %s, створено нові резервні коди. Старі більше не діють.",
+	"If that was you, there's nothing to do. If it wasn't, change your password right away, and check which devices are signed in under Settings → Security.":             "Якщо це були ви, нічого робити не треба. Якщо ні — одразу змініть пароль і перевірте пристрої в Налаштування → Безпека.",
+	"Enter the code from your authenticator app":                                             "Введіть код із застосунку-автентифікатора",
+	"Enter a code from your authenticator app or a recovery code":                            "Введіть код із застосунку-автентифікатора або резервний код",
+	"That code didn't work. Check that your phone's clock is right, or use a recovery code.": "Код не підійшов. Перевірте, чи правильний час на телефоні, або скористайтеся резервним кодом.",
+	"This setup has expired. Start turning on two-factor sign-in again.":                     "Це налаштування вже неактуальне. Почніть вмикати двофакторний вхід заново.",
+
 	// --- invitations -------------------------------------------------------------
 	"Hi,":                                 "Вітаємо!",
 	"Hi %s,":                              "Вітаємо, %s!",

@@ -173,15 +173,16 @@ func (h *Handler) ConfirmSignup(w http.ResponseWriter, r *http.Request) {
 // Login handles POST /api/v1/auth/login.
 //
 //	@Summary		Sign in
-//	@Description	Sets the httpOnly auth cookie that every other endpoint reads.
+//	@Description	Sets the httpOnly auth cookie that every other endpoint reads. An account with two-factor on answers a right password without a code with 403 TWO_FACTOR_REQUIRED; send the same again with the code.
 //	@Tags			auth
 //	@Accept			json
 //	@Produce		json
 //	@Param			body	body		LoginRequest			true	"Request body"
 //	@Success		200		{object}	user.Response			"OK"
-//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input, or a wrong code (field code)"
 //	@Failure		401		{object}	response.ErrorEnvelope	"Wrong email or password"
-//	@Failure		429		{object}	response.ErrorEnvelope	"Too many attempts from this address, or wrong passwords for this email"
+//	@Failure		403		{object}	response.ErrorEnvelope	"The password is right; the account also needs a code (TWO_FACTOR_REQUIRED)"
+//	@Failure		429		{object}	response.ErrorEnvelope	"Too many attempts from this address, wrong passwords for this email, or wrong codes for this account"
 //	@Router			/auth/login [post]
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
@@ -214,6 +215,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		response.Error(w, http.StatusUnauthorized, response.CodeInvalidCredential, "Invalid email or password")
+		return
+	}
+	if WriteTwoFactorError(w, err) {
 		return
 	}
 	if err != nil {
@@ -421,6 +425,220 @@ func (h *Handler) EndOtherSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// WriteTwoFactorError answers for a second factor that is missing or wrong,
+// and reports whether err was one. Every way of signing in with a password
+// shares it: a missing code is 403 TWO_FACTOR_REQUIRED (not 401, which means
+// a session ended), a wrong one is the field "code", too many are 429.
+func WriteTwoFactorError(w http.ResponseWriter, err error) bool {
+	var limit *CodeLimitError
+	switch {
+	case errors.Is(err, ErrTwoFactorRequired):
+		response.Error(w, http.StatusForbidden, response.CodeTwoFactorRequired, "Enter the code from your authenticator app")
+	case errors.Is(err, ErrTwoFactorCode):
+		response.ValidationError(w, map[string]string{"code": "That code didn't work. Check that your phone's clock is right, or use a recovery code."})
+	case errors.As(err, &limit):
+		ratelimit.TooMany(w, limit.Retry)
+	default:
+		return false
+	}
+	return true
+}
+
+// TwoFactorRoutes mounts the endpoints for the user's two-factor sign-in.
+// Must be called inside an authenticated group; guard wraps the ones that
+// check the current password, to limit guessing.
+func (h *Handler) TwoFactorRoutes(r chi.Router, guard func(http.Handler) http.Handler) {
+	r.Route("/me/two-factor", func(r chi.Router) {
+		r.Get("/", h.TwoFactor)
+		r.With(guard).Post("/setup", h.BeginTwoFactor)
+		r.Post("/enable", h.ConfirmTwoFactor)
+		r.With(guard).Post("/disable", h.DisableTwoFactor)
+		r.With(guard).Post("/recovery-codes", h.RenewRecoveryCodes)
+	})
+}
+
+// TwoFactor handles GET /api/v1/me/two-factor.
+//
+//	@Summary	Your two-factor sign-in
+//	@Tags		account
+//	@Produce	json
+//	@Success	200	{object}	TwoFactorDTO			"OK"
+//	@Failure	401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router		/me/two-factor [get]
+func (h *Handler) TwoFactor(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	st, err := h.svc.TwoFactor(r.Context(), userID)
+	if err != nil {
+		writeTwoFactorChange(w, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, TwoFactorDTO{Enabled: st.Enabled, RecoveryCodesLeft: st.RecoveryCodesLeft})
+}
+
+// BeginTwoFactor handles POST /api/v1/me/two-factor/setup.
+//
+//	@Summary		Start turning on two-factor sign-in
+//	@Description	Needs the current password. Returns a new secret for an authenticator app, as a QR code and as text; it is used once a code from it confirms it (POST /me/two-factor/enable). Starting again replaces it.
+//	@Tags			account
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		PasswordConfirmRequest	true	"Request body"
+//	@Success		200		{object}	TwoFactorSetupDTO		"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Wrong password"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		409		{object}	response.ErrorEnvelope	"Two-factor is on already"
+//	@Failure		429		{object}	response.ErrorEnvelope	"Too many attempts"
+//	@Router			/me/two-factor/setup [post]
+func (h *Handler) BeginTwoFactor(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req PasswordConfirmRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	if fields := req.Validate(); len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	setup, err := h.svc.BeginTwoFactor(r.Context(), userID, req.CurrentPassword)
+	if err != nil {
+		writeTwoFactorChange(w, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, TwoFactorSetupDTO{Secret: setup.Secret, URI: setup.URI, QR: setup.QR})
+}
+
+// ConfirmTwoFactor handles POST /api/v1/me/two-factor/enable.
+//
+//	@Summary		Turn on two-factor sign-in
+//	@Description	With a code from the app the setup's secret went into. Signs out every other device and returns the recovery codes, shown this once.
+//	@Tags			account
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		TwoFactorCodeRequest	true	"Request body"
+//	@Success		200		{object}	TwoFactorOnDTO			"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Wrong code (field code)"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		409		{object}	response.ErrorEnvelope	"No setup was started, or it was started again elsewhere"
+//	@Failure		429		{object}	response.ErrorEnvelope	"Too many wrong codes"
+//	@Router			/me/two-factor/enable [post]
+func (h *Handler) ConfirmTwoFactor(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req TwoFactorCodeRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	if fields := req.Validate(); len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	u, codes, err := h.svc.ConfirmTwoFactor(r.Context(), userID, middleware.SessionID(r.Context()), req.Code)
+	if err != nil {
+		writeTwoFactorChange(w, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, TwoFactorOnDTO{User: user.ToDTO(u), RecoveryCodes: codes})
+}
+
+// DisableTwoFactor handles POST /api/v1/me/two-factor/disable.
+//
+//	@Summary		Turn off two-factor sign-in
+//	@Description	Needs the current password and a code from the app or a recovery code.
+//	@Tags			account
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		TwoFactorChangeRequest	true	"Request body"
+//	@Success		200		{object}	user.Response			"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Wrong password or code"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		409		{object}	response.ErrorEnvelope	"Two-factor is off"
+//	@Failure		429		{object}	response.ErrorEnvelope	"Too many attempts"
+//	@Router			/me/two-factor/disable [post]
+func (h *Handler) DisableTwoFactor(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req TwoFactorChangeRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	if fields := req.Validate(); len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	u, err := h.svc.DisableTwoFactor(r.Context(), userID, req.CurrentPassword, req.Code)
+	if err != nil {
+		writeTwoFactorChange(w, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, user.NewResponse(u))
+}
+
+// RenewRecoveryCodes handles POST /api/v1/me/two-factor/recovery-codes.
+//
+//	@Summary		Make new recovery codes
+//	@Description	Needs the current password and a code from the app or a recovery code. The old codes stop working; the new ones are shown this once.
+//	@Tags			account
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		TwoFactorChangeRequest	true	"Request body"
+//	@Success		200		{object}	RecoveryCodesDTO		"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Wrong password or code"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		409		{object}	response.ErrorEnvelope	"Two-factor is off"
+//	@Failure		429		{object}	response.ErrorEnvelope	"Too many attempts"
+//	@Router			/me/two-factor/recovery-codes [post]
+func (h *Handler) RenewRecoveryCodes(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req TwoFactorChangeRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	if fields := req.Validate(); len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	codes, err := h.svc.RenewRecoveryCodes(r.Context(), userID, req.CurrentPassword, req.Code)
+	if err != nil {
+		writeTwoFactorChange(w, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, RecoveryCodesDTO{RecoveryCodes: codes})
+}
+
+// writeTwoFactorChange answers for a failed change to two-factor sign-in.
+func writeTwoFactorChange(w http.ResponseWriter, err error) {
+	if WriteTwoFactorError(w, err) {
+		return
+	}
+	switch {
+	case errors.Is(err, ErrWrongPassword):
+		response.ValidationError(w, map[string]string{"current_password": "Wrong password"})
+	case errors.Is(err, ErrTwoFactorOn):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "Two-factor sign-in is already on")
+	case errors.Is(err, ErrTwoFactorOff):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "Two-factor sign-in is off")
+	case errors.Is(err, ErrTwoFactorNotStarted):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "This setup has expired. Start turning on two-factor sign-in again.")
+	case errors.Is(err, user.ErrNotFound):
+		response.Error(w, http.StatusUnauthorized, response.CodeUnauthorized, "Authentication required")
+	default:
+		response.Internal(w, err)
+	}
 }
 
 // Set writes the access cookie and, when the tokens carry one, the refresh
