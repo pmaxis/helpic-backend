@@ -39,6 +39,7 @@ func TestLoad_ProductionAcceptsAClosedSetup(t *testing.T) {
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("DATABASE_URL", "postgres://helpic:a-real-password@db.internal/helpic?sslmode=verify-full")
 	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("TWO_FACTOR_KEY", "fedcba9876543210fedcba9876543210")
 	t.Setenv("COOKIE_SECURE", "true")
 	t.Setenv("COOKIE_SAME_SITE", "lax")
 	t.Setenv("SWAGGER_ENABLED", "false")

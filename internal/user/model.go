@@ -35,9 +35,12 @@ type User struct {
 	// TeamOwnerID is set for a member of a client's company: its owner.
 	// TeamName is that company's name, TeamRole their role in it ("member"
 	// or "contractor").
-	TeamOwnerID  *string
-	TeamName     string
-	TeamRole     string
+	TeamOwnerID *string
+	TeamName    string
+	TeamRole    string
+	// TwoFactor is on when signing in also takes a code from an
+	// authenticator app (see package auth).
+	TwoFactor    bool
 	PasswordHash string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
@@ -48,11 +51,11 @@ const Columns = `id, email, first_name, last_name, name, role, currency, hourly_
 	(SELECT c.owner_id::text FROM company_members m JOIN companies c ON c.id = m.company_id WHERE m.user_id = users.id),
 	coalesce((SELECT c.name FROM company_members m JOIN companies c ON c.id = m.company_id WHERE m.user_id = users.id), ''),
 	coalesce((SELECT m.role FROM company_members m WHERE m.user_id = users.id), ''),
-	password_hash, created_at, updated_at`
+	two_factor_secret IS NOT NULL, password_hash, created_at, updated_at`
 
 // Scan reads one users row selected with Columns.
 func Scan(row interface{ Scan(dest ...any) error }) (User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Email, &u.FirstName, &u.LastName, &u.Name, &u.Role, &u.Currency, &u.HourlyRateCents, &u.Locale, &u.TeamOwnerID, &u.TeamName, &u.TeamRole, &u.PasswordHash, &u.CreatedAt, &u.UpdatedAt)
+	err := row.Scan(&u.ID, &u.Email, &u.FirstName, &u.LastName, &u.Name, &u.Role, &u.Currency, &u.HourlyRateCents, &u.Locale, &u.TeamOwnerID, &u.TeamName, &u.TeamRole, &u.TwoFactor, &u.PasswordHash, &u.CreatedAt, &u.UpdatedAt)
 	return u, err
 }

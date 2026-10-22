@@ -16,6 +16,7 @@ const (
 	CodeValidation        = "VALIDATION_ERROR"
 	CodeInvalidCredential = "INVALID_CREDENTIALS"
 	CodeEmailExists       = "EMAIL_ALREADY_EXISTS"
+	CodeTwoFactorRequired = "TWO_FACTOR_REQUIRED"
 	CodeUnauthorized      = "UNAUTHORIZED"
 	CodeForbidden         = "FORBIDDEN"
 	CodeNotFound          = "NOT_FOUND"

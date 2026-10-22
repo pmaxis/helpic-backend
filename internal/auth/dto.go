@@ -6,6 +6,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/pmaxis/helpic/internal/user"
 )
 
 // RegisterRequest is the JSON body for POST /api/v1/auth/register.
@@ -20,6 +22,9 @@ type RegisterRequest struct {
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	// Code is asked for once the password is right, when the account has
+	// two-factor on: six digits from the app, or a recovery code.
+	Code string `json:"code,omitempty"`
 }
 
 // NormalizeEmail lowercases and trims an email so that "User@Example.com" and
@@ -93,7 +98,7 @@ func (r LoginRequest) Validate() (LoginParams, map[string]string) {
 	if len(fields) > 0 {
 		return LoginParams{}, fields
 	}
-	return LoginParams{Email: email, Password: r.Password}, nil
+	return LoginParams{Email: email, Password: r.Password, Code: r.Code}, nil
 }
 
 // SessionDTO is a signed-in device as the API shows it.
@@ -192,4 +197,77 @@ func hasLetterAndNumber(password string) bool {
 func validEmail(email string) bool {
 	_, err := mail.ParseAddress(email)
 	return err == nil
+}
+
+// TwoFactorDTO is where the account's two-factor sign-in stands.
+type TwoFactorDTO struct {
+	Enabled bool `json:"enabled"`
+	// RecoveryCodesLeft is how many unused recovery codes there are; 0 while off.
+	RecoveryCodesLeft int `json:"recovery_codes_left"`
+}
+
+// TwoFactorSetupDTO is what goes into the authenticator app.
+type TwoFactorSetupDTO struct {
+	// Secret is for typing in by hand, base32.
+	Secret string `json:"secret"`
+	// URI is the otpauth:// link the QR code carries.
+	URI string `json:"uri"`
+	// QR is an SVG image of URI, as a data: URL.
+	QR string `json:"qr"`
+}
+
+// RecoveryCodesDTO are new recovery codes, shown this once.
+type RecoveryCodesDTO struct {
+	RecoveryCodes []string `json:"recovery_codes"`
+}
+
+// TwoFactorOnDTO is the account with two-factor just turned on, and its
+// recovery codes, shown this once.
+type TwoFactorOnDTO struct {
+	User          user.DTO `json:"user"`
+	RecoveryCodes []string `json:"recovery_codes"`
+}
+
+// PasswordConfirmRequest is the JSON body for POST /api/v1/me/two-factor/setup.
+type PasswordConfirmRequest struct {
+	CurrentPassword string `json:"current_password"`
+}
+
+// Validate returns per-field errors.
+func (r PasswordConfirmRequest) Validate() map[string]string {
+	fields := map[string]string{}
+	if r.CurrentPassword == "" {
+		fields["current_password"] = "Enter your current password"
+	}
+	return fields
+}
+
+// TwoFactorCodeRequest is the JSON body for POST /api/v1/me/two-factor/enable.
+type TwoFactorCodeRequest struct {
+	Code string `json:"code"`
+}
+
+// Validate returns per-field errors.
+func (r TwoFactorCodeRequest) Validate() map[string]string {
+	fields := map[string]string{}
+	if strings.TrimSpace(r.Code) == "" {
+		fields["code"] = "Enter the code from your authenticator app"
+	}
+	return fields
+}
+
+// TwoFactorChangeRequest is the JSON body for turning two-factor off and for
+// new recovery codes: the password, and a code from the app or a recovery code.
+type TwoFactorChangeRequest struct {
+	CurrentPassword string `json:"current_password"`
+	Code            string `json:"code"`
+}
+
+// Validate returns per-field errors.
+func (r TwoFactorChangeRequest) Validate() map[string]string {
+	fields := PasswordConfirmRequest{CurrentPassword: r.CurrentPassword}.Validate()
+	if strings.TrimSpace(r.Code) == "" {
+		fields["code"] = "Enter a code from your authenticator app or a recovery code"
+	}
+	return fields
 }

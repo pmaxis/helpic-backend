@@ -48,10 +48,27 @@ definitions:
     type: object
   auth.LoginRequest:
     properties:
+      code:
+        description: |-
+          Code is asked for once the password is right, when the account has
+          two-factor on: six digits from the app, or a recovery code.
+        type: string
       email:
         type: string
       password:
         type: string
+    type: object
+  auth.PasswordConfirmRequest:
+    properties:
+      current_password:
+        type: string
+    type: object
+  auth.RecoveryCodesDTO:
+    properties:
+      recovery_codes:
+        items:
+          type: string
+        type: array
     type: object
   auth.RegisterRequest:
     properties:
@@ -93,6 +110,48 @@ definitions:
   auth.SignupConfirmRequest:
     properties:
       token:
+        type: string
+    type: object
+  auth.TwoFactorChangeRequest:
+    properties:
+      code:
+        type: string
+      current_password:
+        type: string
+    type: object
+  auth.TwoFactorCodeRequest:
+    properties:
+      code:
+        type: string
+    type: object
+  auth.TwoFactorDTO:
+    properties:
+      enabled:
+        type: boolean
+      recovery_codes_left:
+        description: RecoveryCodesLeft is how many unused recovery codes there are;
+          0 while off.
+        type: integer
+    type: object
+  auth.TwoFactorOnDTO:
+    properties:
+      recovery_codes:
+        items:
+          type: string
+        type: array
+      user:
+        $ref: '#/definitions/user.DTO'
+    type: object
+  auth.TwoFactorSetupDTO:
+    properties:
+      qr:
+        description: 'QR is an SVG image of URI, as a data: URL.'
+        type: string
+      secret:
+        description: Secret is for typing in by hand, base32.
+        type: string
+      uri:
+        description: URI is the otpauth:// link the QR code carries.
         type: string
     type: object
   board.BoardDTO:
@@ -198,6 +257,8 @@ definitions:
     type: object
   clients.AcceptRequest:
     properties:
+      code:
+        type: string
       name:
         type: string
       password:
@@ -704,6 +765,11 @@ definitions:
         type: string
       archived_by:
         $ref: '#/definitions/tasks.ReportDTO'
+      billed:
+        description: |-
+          Billed is true once the task is on a sent report: its time and an
+          hourly price stay as they were billed.
+        type: boolean
       billing:
         description: |-
           Billing is "fixed" or "hourly": then the price is TrackedSeconds at
@@ -1163,6 +1229,10 @@ definitions:
         type: string
       role:
         type: string
+      two_factor:
+        description: TwoFactor is on when signing in also takes a code from an authenticator
+          app.
+        type: boolean
     type: object
   user.Response:
     properties:
@@ -1364,6 +1434,8 @@ paths:
       consumes:
       - application/json
       description: Sets the httpOnly auth cookie that every other endpoint reads.
+        An account with two-factor on answers a right password without a code with
+        403 TWO_FACTOR_REQUIRED; send the same again with the code.
       parameters:
       - description: Request body
         in: body
@@ -1379,16 +1451,20 @@ paths:
           schema:
             $ref: '#/definitions/user.Response'
         "400":
-          description: Invalid input
+          description: Invalid input, or a wrong code (field code)
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
         "401":
           description: Wrong email or password
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: The password is right; the account also needs a code (TWO_FACTOR_REQUIRED)
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
         "429":
-          description: Too many attempts from this address, or wrong passwords for
-            this email
+          description: Too many attempts from this address, wrong passwords for this
+            email, or wrong codes for this account
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Sign in
@@ -2220,8 +2296,8 @@ paths:
       consumes:
       - application/json
       description: Public. Creates the client account (name, password, confirmation)
-        or signs in to the existing one (password), links it with the freelancer and
-        sets the auth cookie.
+        or signs in to the existing one (password, and a code when it has two-factor
+        on), links it with the freelancer and sets the auth cookie.
       parameters:
       - description: Request body
         in: body
@@ -2237,11 +2313,19 @@ paths:
           schema:
             $ref: '#/definitions/user.Response'
         "400":
-          description: Invalid input
+          description: Invalid input, or a wrong code (field code)
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: The password is right; the account also needs a code (TWO_FACTOR_REQUIRED)
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
         "404":
           description: Invalid, used or expired
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many wrong codes for this account
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Accept a client invitation
@@ -2687,6 +2771,179 @@ paths:
       summary: Get a link that connects Telegram
       tags:
       - telegram
+  /me/two-factor:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.TwoFactorDTO'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Your two-factor sign-in
+      tags:
+      - account
+  /me/two-factor/disable:
+    post:
+      consumes:
+      - application/json
+      description: Needs the current password and a code from the app or a recovery
+        code.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.TwoFactorChangeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.Response'
+        "400":
+          description: Wrong password or code
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many attempts
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Turn off two-factor sign-in
+      tags:
+      - account
+  /me/two-factor/enable:
+    post:
+      consumes:
+      - application/json
+      description: With a code from the app the setup's secret went into. Signs out
+        every other device and returns the recovery codes, shown this once.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.TwoFactorCodeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.TwoFactorOnDTO'
+        "400":
+          description: Wrong code (field code)
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: No setup was started, or it was started again elsewhere
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many wrong codes
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Turn on two-factor sign-in
+      tags:
+      - account
+  /me/two-factor/recovery-codes:
+    post:
+      consumes:
+      - application/json
+      description: Needs the current password and a code from the app or a recovery
+        code. The old codes stop working; the new ones are shown this once.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.TwoFactorChangeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.RecoveryCodesDTO'
+        "400":
+          description: Wrong password or code
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many attempts
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Make new recovery codes
+      tags:
+      - account
+  /me/two-factor/setup:
+    post:
+      consumes:
+      - application/json
+      description: Needs the current password. Returns a new secret for an authenticator
+        app, as a QR code and as text; it is used once a code from it confirms it
+        (POST /me/two-factor/enable). Starting again replaces it.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/auth.PasswordConfirmRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.TwoFactorSetupDTO'
+        "400":
+          description: Wrong password
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Two-factor is on already
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many attempts
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Start turning on two-factor sign-in
+      tags:
+      - account
   /notifications:
     get:
       description: The latest 50, and how many are unread.

@@ -227,14 +227,16 @@ func (h *Handler) FindInvite(w http.ResponseWriter, r *http.Request) {
 // starts a session.
 //
 //	@Summary		Accept a client invitation
-//	@Description	Public. Creates the client account (name, password, confirmation) or signs in to the existing one (password), links it with the freelancer and sets the auth cookie.
+//	@Description	Public. Creates the client account (name, password, confirmation) or signs in to the existing one (password, and a code when it has two-factor on), links it with the freelancer and sets the auth cookie.
 //	@Tags			invitations
 //	@Accept			json
 //	@Produce		json
 //	@Param			body	body		AcceptRequest			true	"Request body"
 //	@Success		200		{object}	user.Response			"OK"
-//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input, or a wrong code (field code)"
+//	@Failure		403		{object}	response.ErrorEnvelope	"The password is right; the account also needs a code (TWO_FACTOR_REQUIRED)"
 //	@Failure		404		{object}	response.ErrorEnvelope	"Invalid, used or expired"
+//	@Failure		429		{object}	response.ErrorEnvelope	"Too many wrong codes for this account"
 //	@Router			/invites/accept [post]
 func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	var req AcceptRequest
@@ -255,7 +257,7 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 			response.ValidationError(w, map[string]string{"password": "Password is required"})
 			return
 		}
-		session, err = h.svc.AcceptExisting(r.Context(), l, req.Password, auth.ClientOf(r))
+		session, err = h.svc.AcceptExisting(r.Context(), l, req.Password, req.Code, auth.ClientOf(r))
 	} else {
 		params, fields := req.ValidateNew()
 		if len(fields) > 0 {
@@ -265,6 +267,9 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		session, err = h.svc.AcceptNew(r.Context(), l, params, auth.ClientOf(r))
 	}
 
+	if auth.WriteTwoFactorError(w, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		response.ValidationError(w, map[string]string{"password": "Wrong password"})

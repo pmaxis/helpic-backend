@@ -27,6 +27,10 @@ type Config struct {
 	JWTExpiration     time.Duration
 	RefreshExpiration time.Duration
 
+	// TwoFactorKey seals the secrets of authenticator apps. Without it,
+	// development seals them with a key made from JWTSecret.
+	TwoFactorKey string
+
 	CORSOrigin string
 
 	CookieName     string
@@ -90,6 +94,7 @@ func Load() (Config, error) {
 		DatabaseURL:   os.Getenv("DATABASE_URL"),
 		MigrationsDir: getEnv("MIGRATIONS_DIR", "migrations"),
 		JWTSecret:     os.Getenv("JWT_SECRET"),
+		TwoFactorKey:  os.Getenv("TWO_FACTOR_KEY"),
 		CORSOrigin:    getEnv("CORS_ORIGIN", "http://localhost:5180"),
 		CookieName:    getEnv("COOKIE_NAME", "auth_token"),
 		CookiePath:    getEnv("COOKIE_PATH", "/"),
@@ -167,6 +172,10 @@ func (c Config) validateProduction() error {
 	var problems []string
 	if len(c.JWTSecret) < 32 || strings.EqualFold(c.JWTSecret, "change-me-in-production") {
 		problems = append(problems, "JWT_SECRET must be at least 32 characters and not the placeholder")
+	}
+	// Its own key, so a new JWT_SECRET doesn't lock everyone with two-factor out.
+	if len(c.TwoFactorKey) < 32 || c.TwoFactorKey == c.JWTSecret {
+		problems = append(problems, "TWO_FACTOR_KEY must be at least 32 characters and not the JWT_SECRET")
 	}
 	if !c.CookieSecure {
 		problems = append(problems, "COOKIE_SECURE must be true")

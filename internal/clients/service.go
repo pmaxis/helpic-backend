@@ -171,9 +171,10 @@ func (s *Service) AcceptNew(ctx context.Context, l Lookup, p AcceptParams, c aut
 }
 
 // AcceptExisting signs in the existing client account the invitation was sent
-// to and links it. A wrong password yields auth.ErrInvalidCredentials.
-func (s *Service) AcceptExisting(ctx context.Context, l Lookup, password string, c auth.Client) (Session, error) {
-	u, tokens, err := s.accounts.Login(ctx, auth.LoginParams{Email: l.Invitation.Email, Password: password}, c)
+// to and links it. A wrong password yields auth.ErrInvalidCredentials; an
+// account with two-factor on needs the code too (see auth.Service.Login).
+func (s *Service) AcceptExisting(ctx context.Context, l Lookup, password, code string, c auth.Client) (Session, error) {
+	u, tokens, err := s.accounts.Login(ctx, auth.LoginParams{Email: l.Invitation.Email, Password: password, Code: code}, c)
 	if err != nil {
 		return Session{}, err
 	}

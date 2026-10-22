@@ -258,7 +258,7 @@
         },
         "/auth/login": {
             "post": {
-                "description": "Sets the httpOnly auth cookie that every other endpoint reads.",
+                "description": "Sets the httpOnly auth cookie that every other endpoint reads. An account with two-factor on answers a right password without a code with 403 TWO_FACTOR_REQUIRED; send the same again with the code.",
                 "consumes": [
                     "application/json"
                 ],
@@ -288,7 +288,7 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid input",
+                        "description": "Invalid input, or a wrong code (field code)",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -299,8 +299,14 @@
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
                     },
+                    "403": {
+                        "description": "The password is right; the account also needs a code (TWO_FACTOR_REQUIRED)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
                     "429": {
-                        "description": "Too many attempts from this address, or wrong passwords for this email",
+                        "description": "Too many attempts from this address, wrong passwords for this email, or wrong codes for this account",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -1547,7 +1553,7 @@
         },
         "/invites/accept": {
             "post": {
-                "description": "Public. Creates the client account (name, password, confirmation) or signs in to the existing one (password), links it with the freelancer and sets the auth cookie.",
+                "description": "Public. Creates the client account (name, password, confirmation) or signs in to the existing one (password, and a code when it has two-factor on), links it with the freelancer and sets the auth cookie.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1577,13 +1583,25 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid input",
+                        "description": "Invalid input, or a wrong code (field code)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "The password is right; the account also needs a code (TWO_FACTOR_REQUIRED)",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
                     },
                     "404": {
                         "description": "Invalid, used or expired",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many wrong codes for this account",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -2243,6 +2261,263 @@
                     },
                     "503": {
                         "description": "No bot on this server, or it isn't ready",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/two-factor": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Your two-factor sign-in",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.TwoFactorDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/two-factor/disable": {
+            "post": {
+                "description": "Needs the current password and a code from the app or a recovery code.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Turn off two-factor sign-in",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.TwoFactorChangeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Wrong password or code",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many attempts",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/two-factor/enable": {
+            "post": {
+                "description": "With a code from the app the setup's secret went into. Signs out every other device and returns the recovery codes, shown this once.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Turn on two-factor sign-in",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.TwoFactorCodeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.TwoFactorOnDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Wrong code (field code)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "No setup was started, or it was started again elsewhere",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many wrong codes",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/two-factor/recovery-codes": {
+            "post": {
+                "description": "Needs the current password and a code from the app or a recovery code. The old codes stop working; the new ones are shown this once.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Make new recovery codes",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.TwoFactorChangeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.RecoveryCodesDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Wrong password or code",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many attempts",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/two-factor/setup": {
+            "post": {
+                "description": "Needs the current password. Returns a new secret for an authenticator app, as a QR code and as text; it is used once a code from it confirms it (POST /me/two-factor/enable). Starting again replaces it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Start turning on two-factor sign-in",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/auth.PasswordConfirmRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.TwoFactorSetupDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Wrong password",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Two-factor is on already",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many attempts",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -5044,11 +5319,34 @@
         "auth.LoginRequest": {
             "type": "object",
             "properties": {
+                "code": {
+                    "description": "Code is asked for once the password is right, when the account has\ntwo-factor on: six digits from the app, or a recovery code.",
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 },
                 "password": {
                     "type": "string"
+                }
+            }
+        },
+        "auth.PasswordConfirmRequest": {
+            "type": "object",
+            "properties": {
+                "current_password": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RecoveryCodesDTO": {
+            "type": "object",
+            "properties": {
+                "recovery_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -5113,6 +5411,68 @@
             "type": "object",
             "properties": {
                 "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.TwoFactorChangeRequest": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "current_password": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.TwoFactorCodeRequest": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.TwoFactorDTO": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "recovery_codes_left": {
+                    "description": "RecoveryCodesLeft is how many unused recovery codes there are; 0 while off.",
+                    "type": "integer"
+                }
+            }
+        },
+        "auth.TwoFactorOnDTO": {
+            "type": "object",
+            "properties": {
+                "recovery_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "user": {
+                    "$ref": "#/definitions/user.DTO"
+                }
+            }
+        },
+        "auth.TwoFactorSetupDTO": {
+            "type": "object",
+            "properties": {
+                "qr": {
+                    "description": "QR is an SVG image of URI, as a data: URL.",
+                    "type": "string"
+                },
+                "secret": {
+                    "description": "Secret is for typing in by hand, base32.",
+                    "type": "string"
+                },
+                "uri": {
+                    "description": "URI is the otpauth:// link the QR code carries.",
                     "type": "string"
                 }
             }
@@ -5263,6 +5623,9 @@
         "clients.AcceptRequest": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -6020,6 +6383,10 @@
                 "archived_by": {
                     "$ref": "#/definitions/tasks.ReportDTO"
                 },
+                "billed": {
+                    "description": "Billed is true once the task is on a sent report: its time and an\nhourly price stay as they were billed.",
+                    "type": "boolean"
+                },
                 "billing": {
                     "description": "Billing is \"fixed\" or \"hourly\": then the price is TrackedSeconds at\nHourlyRateCents. Like the price, the time and the rate are null for\nwhoever doesn't see the price.",
                     "type": "string"
@@ -6668,6 +7035,10 @@
                 },
                 "role": {
                     "type": "string"
+                },
+                "two_factor": {
+                    "description": "TwoFactor is on when signing in also takes a code from an authenticator app.",
+                    "type": "boolean"
                 }
             }
         },
