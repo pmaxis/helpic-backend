@@ -60,6 +60,11 @@ type Config struct {
 	TelegramBotToken string
 	TelegramAPIURL   string
 
+	// NBUURL is where the National Bank of Ukraine's official rates are
+	// read, for reports' totals in hryvnias; "" (NBU_API_URL=off) turns
+	// that off.
+	NBUURL string
+
 	// RateLimit slows down password guessing and sign-up spam (on unless
 	// RATE_LIMIT says otherwise). TrustedProxies are the proxies whose
 	// X-Forwarded-For names the client; without any, the peer is the client.
@@ -139,6 +144,9 @@ func Load() (Config, error) {
 	cfg.AppURL = getEnv("APP_URL", cfg.CORSOrigin)
 	cfg.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	cfg.TelegramAPIURL = getEnv("TELEGRAM_API_URL", "https://api.telegram.org")
+	if cfg.NBUURL = strings.TrimRight(getEnv("NBU_API_URL", "https://bank.gov.ua"), "/"); strings.EqualFold(cfg.NBUURL, "off") {
+		cfg.NBUURL = ""
+	}
 	cfg.RateLimit = getEnvBool("RATE_LIMIT", true)
 	cfg.SMTPHost = os.Getenv("SMTP_HOST")
 	if cfg.SMTPPort, err = strconv.Atoi(getEnv("SMTP_PORT", "587")); err != nil || cfg.SMTPPort <= 0 {

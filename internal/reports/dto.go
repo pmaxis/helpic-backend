@@ -162,6 +162,9 @@ type ItemDTO struct {
 	CompletedOn string  `json:"completed_on"`
 	// PriceCents is null for a task without a price.
 	PriceCents *int64 `json:"price_cents"`
+	// PriceInUAHCents is the price in hryvnias at the report's rate (see
+	// in_uah), each rounded on its own; null without a price or a rate.
+	PriceInUAHCents *int64 `json:"price_in_uah_cents"`
 	// Seconds is the time a task billed by the hour took; null for a fixed price.
 	Seconds *int64 `json:"seconds"`
 	// Notes say what was done in the task (shown in a detailed report).
@@ -190,6 +193,9 @@ type DTO struct {
 	// TotalCents sums the items' prices, on a list too; null when none
 	// has a price.
 	TotalCents *int64 `json:"total_cents"`
+	// InUAH is the total in hryvnias at the NBU's official rate, on a single
+	// report in another currency; null otherwise, or when no rate is known.
+	InUAH *InUAHDTO `json:"in_uah"`
 	// CanEdit is true for the freelancer while the report is a draft.
 	CanEdit bool `json:"can_edit"`
 	// CanMarkPaid is true for the client of a sent, unpaid report.
@@ -198,6 +204,17 @@ type DTO struct {
 	CanDelete bool      `json:"can_delete"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// InUAHDTO is a report's total in hryvnias.
+type InUAHDTO struct {
+	// Rate is hryvnias for one unit of the report's currency: "45.0256".
+	Rate string `json:"rate"`
+	// RateOn is the day the National Bank of Ukraine set the rate for: the
+	// day the report was paid, or today while it isn't (or the latest day
+	// before, when the bank can't be reached).
+	RateOn     string `json:"rate_on"`
+	TotalCents int64  `json:"total_cents"`
 }
 
 // ListResponse is the reports the viewer may see.
@@ -231,6 +248,9 @@ func ToDTO(r Report, viewerID string) DTO {
 	if d.Projects == nil {
 		d.Projects = []ProjectRef{}
 	}
+	if r.InUAH != nil {
+		d.InUAH = &InUAHDTO{Rate: r.InUAH.Rate, RateOn: r.InUAH.RateOn.Format(dateLayout), TotalCents: r.InUAH.TotalCents}
+	}
 	if r.Client != nil {
 		c := PartyDTO(*r.Client)
 		d.Client = &c
@@ -239,7 +259,7 @@ func ToDTO(r Report, viewerID string) DTO {
 		d.Items = make([]ItemDTO, 0, len(r.Items))
 		for _, it := range r.Items {
 			item := ItemDTO{ID: it.ID, Title: it.Title, ProjectName: it.ProjectName, StatusName: it.StatusName,
-				CompletedOn: it.CompletedOn.Format(dateLayout), PriceCents: it.PriceCents, Seconds: it.Seconds, Notes: it.Notes}
+				CompletedOn: it.CompletedOn.Format(dateLayout), PriceCents: it.PriceCents, PriceInUAHCents: it.PriceInUAH, Seconds: it.Seconds, Notes: it.Notes}
 			if it.TaskID != "" {
 				id := it.TaskID
 				item.TaskID = &id

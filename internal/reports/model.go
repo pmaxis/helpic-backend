@@ -58,6 +58,9 @@ type Item struct {
 	CompletedOn time.Time
 	// PriceCents is nil for a task without a price.
 	PriceCents *int64
+	// PriceInUAH is the price in hryvnia kopiyky at the report's rate (see
+	// InUAH); nil without a price or a rate.
+	PriceInUAH *int64
 	// Seconds is the time on a task billed by the hour, which its price is
 	// for; nil for a fixed price.
 	Seconds *int64
@@ -98,6 +101,21 @@ type Report struct {
 	ItemCount int
 	ListTotal *int64
 	Items     []Item
+	// InUAH is the total in hryvnias, for a client who pays in them; nil
+	// for a report in hryvnias, without prices, or without a rate. Filled
+	// when loading one report.
+	InUAH *InUAH
+}
+
+// InUAH is a report's total in hryvnias at the National Bank of Ukraine's
+// official rate: the day it was paid, or today while it isn't.
+type InUAH struct {
+	// Rate is hryvnias for one unit of the report's currency, "45.0256".
+	Rate string
+	// RateOn is the day the rate was set for.
+	RateOn time.Time
+	// TotalCents is the total in kopiyky.
+	TotalCents int64
 }
 
 // ProjectNames lists the report's projects: "Website, Branding"; "" for all.

@@ -26,6 +26,7 @@ import (
 	"github.com/pmaxis/helpic/internal/notifications"
 	"github.com/pmaxis/helpic/internal/profile"
 	"github.com/pmaxis/helpic/internal/projects"
+	"github.com/pmaxis/helpic/internal/rates"
 	"github.com/pmaxis/helpic/internal/reminders"
 	"github.com/pmaxis/helpic/internal/reports"
 	"github.com/pmaxis/helpic/internal/response"
@@ -161,7 +162,15 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	if cfg.Location != nil {
 		zone = cfg.Location.String()
 	}
-	reportsHandler := reports.NewHandler(reports.NewService(reports.NewRepository(pool), notifier, tasksSvc, zone))
+	reportsSvc := reports.NewService(reports.NewRepository(pool), notifier, tasksSvc, zone)
+	reportsHandler := reports.NewHandler(reportsSvc)
+
+	// --- reports' totals in hryvnias, at the NBU's official rate ------------
+	var ratesSvc *rates.Service
+	if cfg.NBUURL != "" {
+		ratesSvc = rates.NewService(rates.NewRepository(pool), rates.NewClient(cfg.NBUURL), cfg.Location)
+		reportsSvc.ShowInUAH(ratesSvc)
+	}
 
 	// --- reminders before and after due dates ---------------------------------
 	remindersSvc := reminders.NewService(reminders.NewRepository(pool), notifier, cfg.Location, cfg.ReminderHour)
@@ -256,12 +265,16 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		return errors.Join(authSvc.Cleanup(ctx), profileSvc.Cleanup(ctx), telegramSvc.Cleanup(ctx), remindersSvc.Cleanup(ctx), outbox.Cleanup(ctx))
 	}
 
-	return &App{Handler: r, background: []func(context.Context){
+	background := []func(context.Context){
 		telegramSvc.Run,
 		func(ctx context.Context) { jobs.Every(ctx, "email", 5*time.Second, outbox.Run) },
 		func(ctx context.Context) { jobs.Every(ctx, "notification emails", time.Minute, emailer.Run) },
 		func(ctx context.Context) { jobs.Every(ctx, "deadline reminders", 15*time.Minute, remindersSvc.Run) },
 		func(ctx context.Context) { jobs.Every(ctx, "cleanup", time.Hour, cleanup) },
 		func(ctx context.Context) { jobs.Every(ctx, "rate limit sweep", time.Minute, lim.sweep) },
-	}}, nil
+	}
+	if ratesSvc != nil {
+		background = append(background, func(ctx context.Context) { jobs.Every(ctx, "exchange rates", time.Hour, ratesSvc.Run) })
+	}
+	return &App{Handler: r, background: background}, nil
 }

@@ -132,5 +132,5 @@ func (s *Service) MarkPaid(ctx context.Context, clientID, id string) (Report, er
 		ProjectID: soleProject(r),
 		Subject:   r.Title,
 	})
-	return s.repo.Get(ctx, clientID, id)
+	return s.read(ctx, clientID, id)
 }
