@@ -2,16 +2,24 @@ package reports
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/notifications"
+	"github.com/pmaxis/helpic/internal/rates"
 )
 
 // notifier tells the client a report was sent. Implemented by
 // *notifications.Service.
 type notifier interface {
 	Notify(ctx context.Context, n notifications.Notification)
+}
+
+// rateFinder finds the official rate of a currency on a day. Implemented by
+// *rates.Service.
+type rateFinder interface {
+	On(ctx context.Context, currency string, at time.Time) (rates.Rate, bool, error)
 }
 
 // Service holds the report rules: the freelancer makes, edits and sends a
@@ -22,6 +30,8 @@ type Service struct {
 	tasks  taskRecorder
 	// zone is the IANA name completed days are counted in.
 	zone string
+	// rates puts totals in hryvnias; nil leaves them out.
+	rates rateFinder
 }
 
 // NewService creates a reports Service; tasks records a paid report's moves
@@ -34,6 +44,12 @@ func NewService(repo *Repository, notify notifier, tasks taskRecorder, zone stri
 	return &Service{repo: repo, notify: notify, tasks: tasks, zone: zone}
 }
 
+// ShowInUAH adds the total in hryvnias to a report in another currency, at
+// the official rate from rates.
+func (s *Service) ShowInUAH(finder rateFinder) {
+	s.rates = finder
+}
+
 // List returns the reports the user may see.
 func (s *Service) List(ctx context.Context, userID string) ([]Report, error) {
 	return s.repo.List(ctx, userID)
@@ -41,7 +57,49 @@ func (s *Service) List(ctx context.Context, userID string) ([]Report, error) {
 
 // Get returns a report the user may see.
 func (s *Service) Get(ctx context.Context, userID, id string) (Report, error) {
-	return s.repo.Get(ctx, userID, id)
+	return s.read(ctx, userID, id)
+}
+
+// read loads a report the user may see as it's shown: with its total in
+// hryvnias when it's in another currency.
+func (s *Service) read(ctx context.Context, userID, id string) (Report, error) {
+	r, err := s.repo.Get(ctx, userID, id)
+	if err != nil || s.rates == nil {
+		return r, err
+	}
+	total, ok := r.Total()
+	if !ok {
+		return r, nil
+	}
+	// What was paid stays at that day's rate; what's due is at today's.
+	at := time.Now()
+	if r.PaidAt != nil {
+		at = *r.PaidAt
+	}
+	rate, ok, err := s.rates.On(ctx, r.Currency, at)
+	if err != nil || !ok {
+		// Hryvnias are an extra: the report shows without them.
+		if err != nil {
+			slog.Error("exchange rate for a report", "report_id", r.ID, "error", err)
+		}
+		return r, nil
+	}
+	uah, err := rate.Convert(total)
+	if err != nil {
+		return Report{}, err
+	}
+	r.InUAH = &InUAH{Rate: rate.UAH, RateOn: rate.On, TotalCents: uah}
+	for i, it := range r.Items {
+		if it.PriceCents == nil {
+			continue
+		}
+		price, err := rate.Convert(*it.PriceCents)
+		if err != nil {
+			return Report{}, err
+		}
+		r.Items[i].PriceInUAH = &price
+	}
+	return r, nil
 }
 
 // Create makes a draft report for one of the freelancer's clients — or, with
@@ -79,7 +137,7 @@ func (s *Service) Create(ctx context.Context, freelancerID string, p CreateParam
 		return Report{}, err
 	}
 	s.record(ctx, id, freelancerID, EventCreated, nil)
-	return s.repo.Get(ctx, freelancerID, id)
+	return s.read(ctx, freelancerID, id)
 }
 
 // DefaultTitle names a report after its project (if any) and period, in the
@@ -125,7 +183,7 @@ func (s *Service) Update(ctx context.Context, freelancerID, id string, p UpdateP
 	if err := s.repo.Update(ctx, id, p); err != nil {
 		return Report{}, err
 	}
-	after, err := s.repo.Get(ctx, freelancerID, id)
+	after, err := s.read(ctx, freelancerID, id)
 	if err != nil {
 		return Report{}, err
 	}
@@ -157,7 +215,7 @@ func (s *Service) SetItemNotes(ctx context.Context, freelancerID, id, itemID, no
 	if item.Notes != notes {
 		s.record(ctx, id, freelancerID, EventItemNotes, map[string]any{"task": item.Title})
 	}
-	return s.repo.Get(ctx, freelancerID, id)
+	return s.read(ctx, freelancerID, id)
 }
 
 // RemoveItem drops a task from a draft.
@@ -174,7 +232,7 @@ func (s *Service) RemoveItem(ctx context.Context, freelancerID, id, itemID strin
 		return Report{}, err
 	}
 	s.record(ctx, id, freelancerID, EventItemRemoved, map[string]any{"task": item.Title})
-	return s.repo.Get(ctx, freelancerID, id)
+	return s.read(ctx, freelancerID, id)
 }
 
 // Send sends a draft to its client, who is notified. A personal report has no
@@ -199,7 +257,7 @@ func (s *Service) Send(ctx context.Context, freelancerID, id string) (Report, er
 		ProjectID: soleProject(r),
 		Subject:   r.Title,
 	})
-	return s.repo.Get(ctx, freelancerID, id)
+	return s.read(ctx, freelancerID, id)
 }
 
 func findItem(r Report, itemID string) (Item, bool) {

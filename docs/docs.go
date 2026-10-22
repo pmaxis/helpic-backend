@@ -6174,6 +6174,14 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "in_uah": {
+                    "description": "InUAH is the total in hryvnias at the NBU's official rate, on a single\nreport in another currency; null otherwise, or when no rate is known.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/reports.InUAHDTO"
+                        }
+                    ]
+                },
                 "item_count": {
                     "type": "integer"
                 },
@@ -6241,6 +6249,22 @@ const docTemplate = `{
                 }
             }
         },
+        "reports.InUAHDTO": {
+            "type": "object",
+            "properties": {
+                "rate": {
+                    "description": "Rate is hryvnias for one unit of the report's currency: \"45.0256\".",
+                    "type": "string"
+                },
+                "rate_on": {
+                    "description": "RateOn is the day the National Bank of Ukraine set the rate for: the\nday the report was paid, or today while it isn't (or the latest day\nbefore, when the bank can't be reached).",
+                    "type": "string"
+                },
+                "total_cents": {
+                    "type": "integer"
+                }
+            }
+        },
         "reports.ItemDTO": {
             "type": "object",
             "properties": {
@@ -6256,6 +6280,10 @@ const docTemplate = `{
                 },
                 "price_cents": {
                     "description": "PriceCents is null for a task without a price.",
+                    "type": "integer"
+                },
+                "price_in_uah_cents": {
+                    "description": "PriceInUAHCents is the price in hryvnias at the report's rate (see\nin_uah), each rounded on its own; null without a price or a rate.",
                     "type": "integer"
                 },
                 "project_name": {
