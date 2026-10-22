@@ -19,9 +19,9 @@ var (
 	ErrNotFound = errors.New("column not found")
 	// ErrNoBoard is returned for a board the user isn't part of.
 	ErrNoBoard = errors.New("board not found")
-	// ErrNotManager is returned when someone who neither freelances the board
-	// nor authored a project on it tries to change the columns.
-	ErrNotManager = errors.New("only the freelancer or the project's author manages the board")
+	// ErrNotManager is returned when someone on the board tries to change its
+	// columns without managing it: a project's are its author's, a pair's its freelancer's.
+	ErrNotManager = errors.New("only the project's author, or the freelancer on a pair's board, manages the board")
 	// ErrHasTasks is returned when removing a column whose tasks have no
 	// other column of the same bucket to move to.
 	ErrHasTasks = errors.New("column has tasks and no other column of its bucket")

@@ -83,10 +83,13 @@ func counterpart(p Pair, role string) string {
 	return p.ClientID
 }
 
-// CanManage reports whether the user manages the pair's columns: its
-// freelancer, or the author of the project the board was opened for.
+// CanManage reports whether the user manages the board's columns: a
+// project's are its author's alone, a pair's are its freelancer's.
 func CanManage(p Pair, userID string) bool {
-	return p.FreelancerID == userID || (p.AuthorID != "" && p.AuthorID == userID)
+	if p.ProjectID != "" {
+		return p.AuthorID == userID
+	}
+	return p.FreelancerID == userID
 }
 
 // Columns returns a board's columns without tasks.
@@ -131,8 +134,8 @@ func (s *Service) Board(ctx context.Context, userID, role string, sc Scope) (Pai
 	return p, Arrange(cols, list), false, nil
 }
 
-// CreateColumn adds a column at the end of a board. The freelancer may, and
-// so may the author when the board is a project's.
+// CreateColumn adds a column at the end of a board: a project's author on its
+// board, the freelancer on the pair's.
 func (s *Service) CreateColumn(ctx context.Context, userID, role string, sc Scope, cp ColumnParams) error {
 	p, err := s.Pair(ctx, userID, role, sc)
 	if err != nil {
@@ -213,8 +216,8 @@ func (s *Service) DeleteColumn(ctx context.Context, userID, id string) error {
 	return s.repo.Delete(ctx, id, same)
 }
 
-// Reorder sets the order of a board's columns. The freelancer may, and so may
-// the author of a project on that board.
+// Reorder sets the order of a board's columns: a project's author on its
+// board, the freelancer on the pair's.
 func (s *Service) Reorder(ctx context.Context, userID string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
@@ -226,8 +229,8 @@ func (s *Service) Reorder(ctx context.Context, userID string, ids []string) erro
 	return s.repo.Reorder(ctx, c.Pair, ids)
 }
 
-// managed loads a column the user manages. The pair's client who authored no
-// project on the board gets ErrNotManager; anyone else gets ErrNotFound.
+// managed loads a column the user manages. Someone on the board who doesn't
+// manage it gets ErrNotManager; anyone else gets ErrNotFound.
 func (s *Service) managed(ctx context.Context, userID, id string) (Column, error) {
 	c, err := s.repo.Column(ctx, id)
 	if err != nil {
@@ -239,13 +242,10 @@ func (s *Service) managed(ctx context.Context, userID, id string) (Column, error
 	return c, nil
 }
 
-// managesPair reports whether the user may change this workflow. The
-// freelancer may, and so may the author of the project it belongs to. The
-// pair's client gets ErrNotManager; anyone else gets ErrNotFound.
+// managesPair reports whether the user may change this workflow: a project's
+// is its author's alone, a pair's is its freelancer's. The pair's other side
+// gets ErrNotManager; anyone else gets ErrNotFound.
 func (s *Service) managesPair(ctx context.Context, userID string, p Pair) error {
-	if userID == p.FreelancerID {
-		return nil
-	}
 	if p.ProjectID != "" {
 		author, err := s.repo.ProjectAuthor(ctx, p.ProjectID)
 		if err != nil {
@@ -254,8 +254,10 @@ func (s *Service) managesPair(ctx context.Context, userID string, p Pair) error 
 		if author == userID {
 			return nil
 		}
+	} else if userID == p.FreelancerID {
+		return nil
 	}
-	if userID == p.ClientID {
+	if userID == p.FreelancerID || userID == p.ClientID {
 		return ErrNotManager
 	}
 	return ErrNotFound
