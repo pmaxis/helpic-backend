@@ -268,7 +268,7 @@ func writeErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrNotFound):
 		response.Error(w, http.StatusNotFound, response.CodeNotFound, "Column not found")
 	case errors.Is(err, ErrNotManager):
-		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the freelancer or the project's author can change the board's columns")
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the project's author, or on a pair's board its freelancer, can change the columns")
 	case errors.Is(err, ErrHasTasks):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "This column has tasks. Move them to another column first, or add another column that counts the same way")
 	case errors.Is(err, ErrLastColumn):

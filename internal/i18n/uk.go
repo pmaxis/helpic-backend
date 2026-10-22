@@ -214,7 +214,7 @@ var uk = map[string]string{
 	"This status is on another board":                                                                          "Цей статус на іншій дошці",
 	"You can't move this task to that column":                                                                  "Цю задачу не можна перемістити в ту колонку",
 	"A board needs at least one column":                                                                        "На дошці має бути хоча б одна колонка",
-	"Only the freelancer or the project's author can change the board's columns":                               "Колонки дошки змінює лише фрилансер або автор проєкту",
+	"Only the project's author, or on a pair's board its freelancer, can change the columns":                   "Колонки проєкту змінює лише його автор, а колонки спільної дошки — фрилансер",
 	"This column has tasks. Move them to another column first, or add another column that counts the same way": "У колонці є задачі. Спершу перенесіть їх в іншу колонку або додайте ще одну, що рахується так само",
 	"There's already a label with this name":                                                                   "Мітка з такою назвою вже існує",
 	"That's too many labels for one task":                                                                      "Забагато міток для однієї задачі",

@@ -243,6 +243,20 @@ func TestBoard_ProjectAuthor(t *testing.T) {
 	if column(getBoard(t, srv, freelancer, "?with="+clientID), "Review").ID == "" {
 		t.Fatal("freelancer doesn't see the author's column")
 	}
+	// The freelancer works on it but didn't start it, so its columns aren't theirs to change.
+	if getBoard(t, srv, freelancer, "?project="+ownedID).CanManage {
+		t.Fatal("the freelancer manages a project the client started")
+	}
+	resp = post(t, freelancer, srv.URL+"/api/v1/board/columns", map[string]string{"project_id": ownedID, "name": "Mine"})
+	wantStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/board/columns/"+review.ID, map[string]string{"name": "Mine"})
+	wantStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+	resp = do(t, freelancer, http.MethodDelete, srv.URL+"/api/v1/board/columns/"+review.ID, nil)
+	wantStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+
 	resp = do(t, client, http.MethodPut, srv.URL+"/api/v1/board/columns/"+review.ID, map[string]string{"name": "QA"})
 	wantStatus(t, resp, http.StatusNoContent)
 	resp.Body.Close()

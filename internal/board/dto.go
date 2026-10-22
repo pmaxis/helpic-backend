@@ -72,8 +72,8 @@ type ColumnDTO struct {
 
 // BoardDTO is a board as the viewer sees it.
 type BoardDTO struct {
-	// CanManage is true for the freelancer, and for the author of the project
-	// the board was opened for.
+	// CanManage is true for the author of the project the board was opened
+	// for, and on a pair's board for its freelancer.
 	CanManage bool        `json:"can_manage"`
 	Columns   []ColumnDTO `json:"columns"`
 	// Merged is true for the all board: its columns are lanes merging the
