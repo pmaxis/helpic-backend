@@ -216,14 +216,20 @@ func scanSession(row pgx.Row, extra ...any) (Session, error) {
 }
 
 // CreateSession stores a new session, clearing the user's expired ones.
+// ErrAccountBlocked when an admin has blocked the user: every way of signing
+// in comes through here.
 func (r *Repository) CreateSession(ctx context.Context, userID string, refreshHash []byte, c Client, expiresAt time.Time) (Session, error) {
 	if _, err := r.db.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1 AND expires_at <= now()`, userID); err != nil {
 		return Session{}, fmt.Errorf("clear expired sessions: %w", err)
 	}
 	sess, err := scanSession(r.db.QueryRow(ctx, `
 		INSERT INTO sessions AS s (user_id, refresh_hash, user_agent, ip, expires_at)
-		VALUES ($1, $2, $3, $4, $5)
+		SELECT $1, $2, $3, $4, $5
+		WHERE EXISTS (SELECT 1 FROM users WHERE id = $1 AND blocked_at IS NULL)
 		RETURNING `+sessionColumns, userID, refreshHash, c.UserAgent, c.IP, expiresAt))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Session{}, ErrAccountBlocked
+	}
 	if err != nil {
 		return Session{}, fmt.Errorf("create session: %w", err)
 	}
@@ -239,6 +245,7 @@ func (r *Repository) Rotate(ctx context.Context, old, next []byte, expiresAt tim
 		SET prev_refresh_hash = s.refresh_hash, refresh_hash = $2, rotated_at = now(),
 		    last_used_at = now(), expires_at = $3
 		WHERE s.refresh_hash = $1 AND s.expires_at > now()
+		  AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = s.user_id AND u.blocked_at IS NOT NULL)
 		RETURNING `+sessionColumns, old, next, expiresAt))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, ErrSessionNotFound
@@ -267,13 +274,13 @@ func (r *Repository) Replaced(ctx context.Context, hash []byte) (Session, time.T
 }
 
 // SessionRole returns the role of the user owning this live session.
-// ErrSessionNotFound when the user has no such live session.
+// ErrSessionNotFound when the user has no such live session, or is blocked.
 func (r *Repository) SessionRole(ctx context.Context, userID, sessionID string) (string, error) {
 	var role string
 	err := r.db.QueryRow(ctx, `
 		SELECT u.role
 		FROM sessions s JOIN users u ON u.id = s.user_id
-		WHERE s.id = $1 AND s.user_id = $2 AND s.expires_at > now()`, sessionID, userID).Scan(&role)
+		WHERE s.id = $1 AND s.user_id = $2 AND s.expires_at > now() AND u.blocked_at IS NULL`, sessionID, userID).Scan(&role)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrSessionNotFound
 	}

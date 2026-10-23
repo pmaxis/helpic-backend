@@ -15,6 +15,7 @@ import (
 type Service struct {
 	repo *Repository
 	loc  *time.Location
+	mail Mailer
 }
 
 // NewService creates an admin Service. loc is the app's time zone, whose days

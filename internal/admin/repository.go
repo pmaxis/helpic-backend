@@ -160,7 +160,7 @@ func escapeLike(s string) string {
 
 // accountColumns are an account's list columns, in Account's order, for a
 // query over users u; $1 is today.
-const accountColumns = `u.id, u.email, u.name, u.role, u.two_factor_secret IS NOT NULL AS two_factor,
+const accountColumns = `u.id, u.email, u.name, u.role, u.two_factor_secret IS NOT NULL AS two_factor, u.blocked_at,
 	(SELECT count(*) FROM tasks t WHERE t.freelancer_id = u.id OR t.client_id = u.id) AS tasks,
 	(SELECT count(*) FROM projects p WHERE p.freelancer_id = u.id OR p.client_id = u.id) AS projects,
 	(SELECT count(*) FROM user_activity a WHERE a.user_id = u.id AND a.day > $1::date - 30) AS active_days,
@@ -170,7 +170,7 @@ const accountColumns = `u.id, u.email, u.name, u.role, u.two_factor_secret IS NO
 func scanAccount(row pgx.Row, extra ...any) (Account, error) {
 	var a Account
 	var last *time.Time
-	dest := append([]any{&a.ID, &a.Email, &a.Name, &a.Role, &a.TwoFactor, &a.Tasks, &a.Projects, &a.ActiveDays, &last, &a.CreatedAt}, extra...)
+	dest := append([]any{&a.ID, &a.Email, &a.Name, &a.Role, &a.TwoFactor, &a.BlockedAt, &a.Tasks, &a.Projects, &a.ActiveDays, &last, &a.CreatedAt}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return Account{}, err
 	}
@@ -207,6 +207,7 @@ func (r *Repository) Accounts(ctx context.Context, f AccountFilter, today time.T
 			WHEN 'active' THEN last_active > $1::date - 7
 			WHEN 'idle' THEN last_active <= $1::date - 30
 			WHEN 'never' THEN last_active IS NULL
+			WHEN 'blocked' THEN blocked_at IS NOT NULL
 			ELSE true END`
 	args := []any{date(today), escapeLike(strings.TrimSpace(f.Query)), f.Role, f.Activity}
 

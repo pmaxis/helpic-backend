@@ -17,6 +17,7 @@ const (
 	CodeInvalidCredential = "INVALID_CREDENTIALS"
 	CodeEmailExists       = "EMAIL_ALREADY_EXISTS"
 	CodeTwoFactorRequired = "TWO_FACTOR_REQUIRED"
+	CodeAccountBlocked    = "ACCOUNT_BLOCKED"
 	CodeUnauthorized      = "UNAUTHORIZED"
 	CodeForbidden         = "FORBIDDEN"
 	CodeNotFound          = "NOT_FOUND"

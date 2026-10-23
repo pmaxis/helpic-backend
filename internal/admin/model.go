@@ -77,6 +77,8 @@ type Account struct {
 	Name      string
 	Role      string
 	TwoFactor bool
+	// BlockedAt is when an admin blocked them; nil when they aren't.
+	BlockedAt *time.Time
 	// Tasks they work on, on either side.
 	Tasks    int
 	Projects int
@@ -101,6 +103,8 @@ const (
 	ActivityIdle = "idle"
 	// ActivityNever never used it signed in.
 	ActivityNever = "never"
+	// ActivityBlocked are blocked by an admin.
+	ActivityBlocked = "blocked"
 )
 
 // AccountFilter picks a page of accounts.

@@ -11,6 +11,10 @@ var (
 
 	// ErrEmailExists is returned when registering an already-registered email.
 	ErrEmailExists = errors.New("email already registered")
+
+	// ErrAccountBlocked is returned when an admin has blocked the account:
+	// it can't start a session. Said only once the password is right.
+	ErrAccountBlocked = errors.New("account blocked")
 )
 
 // RegisterParams is the validated, normalized input to Service.Register.

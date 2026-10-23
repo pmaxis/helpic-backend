@@ -4,7 +4,9 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
@@ -35,6 +37,11 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Get("/users", h.Users)
 		r.Get("/users/{id}", h.User)
 		r.Get("/logs", h.Logs)
+		r.Get("/actions", h.Actions)
+		r.Post("/users/{id}/block", h.act(ActionBlock))
+		r.Post("/users/{id}/unblock", h.act(ActionUnblock))
+		r.Post("/users/{id}/end-sessions", h.act(ActionEndSessions))
+		r.Post("/users/{id}/reset-two-factor", h.act(ActionResetTwoFactor))
 	})
 }
 
@@ -173,8 +180,10 @@ type AccountDTO struct {
 	Name      string `json:"name"`
 	Role      string `json:"role"`
 	TwoFactor bool   `json:"two_factor"`
-	Tasks     int    `json:"tasks"`
-	Projects  int    `json:"projects"`
+	// BlockedAt is when an admin blocked them; null when they aren't.
+	BlockedAt *time.Time `json:"blocked_at"`
+	Tasks     int        `json:"tasks"`
+	Projects  int        `json:"projects"`
 	// ActiveDays is on how many of the last 30 days they used Helpic.
 	ActiveDays int `json:"active_days"`
 	// LastActive is the last day they used Helpic, YYYY-MM-DD; null if never.
@@ -183,7 +192,7 @@ type AccountDTO struct {
 }
 
 func toAccountDTO(a Account) AccountDTO {
-	d := AccountDTO{ID: a.ID, Email: a.Email, Name: a.Name, Role: a.Role, TwoFactor: a.TwoFactor, Tasks: a.Tasks, Projects: a.Projects, ActiveDays: a.ActiveDays, CreatedAt: a.CreatedAt}
+	d := AccountDTO{ID: a.ID, Email: a.Email, Name: a.Name, Role: a.Role, TwoFactor: a.TwoFactor, BlockedAt: a.BlockedAt, Tasks: a.Tasks, Projects: a.Projects, ActiveDays: a.ActiveDays, CreatedAt: a.CreatedAt}
 	if a.LastActive != nil {
 		day := date(*a.LastActive)
 		d.LastActive = &day
@@ -213,7 +222,7 @@ const (
 //	@Produce		json
 //	@Param			q			query		string					false	"Part of the email or the name"
 //	@Param			role		query		string					false	"freelancer or client"
-//	@Param			activity	query		string					false	"active (in the last 7 days), idle (not in the last 30) or never"
+//	@Param			activity	query		string					false	"active (in the last 7 days), idle (not in the last 30), never or blocked"
 //	@Param			sort		query		string					false	"created (newest first, the default), last_active or tasks"
 //	@Param			page		query		int						false	"The page, from 1"
 //	@Param			limit		query		int						false	"Accounts per page, 25 by default, at most 100"
@@ -229,8 +238,8 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 		response.ValidationError(w, map[string]string{"role": "Choose freelancer or client"})
 		return
 	}
-	if f.Activity != "" && f.Activity != ActivityActive && f.Activity != ActivityIdle && f.Activity != ActivityNever {
-		response.ValidationError(w, map[string]string{"activity": "Choose active, idle or never"})
+	if f.Activity != "" && f.Activity != ActivityActive && f.Activity != ActivityIdle && f.Activity != ActivityNever && f.Activity != ActivityBlocked {
+		response.ValidationError(w, map[string]string{"activity": "Choose active, idle, never or blocked"})
 		return
 	}
 	if f.Sort == "" {
@@ -320,6 +329,10 @@ func (h *Handler) User(w http.ResponseWriter, r *http.Request) {
 		response.Internal(w, err)
 		return
 	}
+	response.JSON(w, http.StatusOK, map[string]AccountDetailDTO{"user": toAccountDetailDTO(d)})
+}
+
+func toAccountDetailDTO(d AccountDetail) AccountDetailDTO {
 	out := AccountDetailDTO{
 		AccountDTO: toAccountDTO(d.Account), Locale: d.Locale, Currency: d.Currency, Partners: d.Partners,
 		ReportsSent: d.ReportsSent, ReportsPaid: d.ReportsPaid, SecondsLogged: d.SecondsLogged, Comments: d.Comments,
@@ -332,7 +345,7 @@ func (h *Handler) User(w http.ResponseWriter, r *http.Request) {
 	for _, day := range d.ActiveOn {
 		out.ActiveOn = append(out.ActiveOn, date(day))
 	}
-	response.JSON(w, http.StatusOK, map[string]AccountDetailDTO{"user": out})
+	return out
 }
 
 // LogDTO is one of the server's warnings or errors.
@@ -421,6 +434,127 @@ func (h *Handler) Logs(w http.ResponseWriter, r *http.Request) {
 	out := LogsResponse{Logs: make([]LogDTO, 0, len(list)), Page: f.Page, Limit: f.Limit, Total: total, Warnings: sum.Warnings, Errors: sum.Errors}
 	for _, e := range list {
 		out.Logs = append(out.Logs, LogDTO{ID: e.ID, At: e.At, Level: e.Level, Message: e.Message, Attrs: e.Attrs})
+	}
+	response.JSON(w, http.StatusOK, out)
+}
+
+// ActionRequest is the JSON body of an action on an account.
+type ActionRequest struct {
+	// Reason says why, for the record; optional, at most 500 characters.
+	Reason string `json:"reason"`
+}
+
+// act handles POST /api/v1/admin/users/{id}/{action}: block, unblock,
+// end-sessions and reset-two-factor.
+//
+//	@Summary		Act on an account
+//	@Description	block stops the account signing in and signs it out; unblock lets it in again; end-sessions signs it out everywhere; reset-two-factor turns its two-factor sign-in off, signs it out and emails it. Each is recorded with the reason when it changes something; doing it again changes nothing. Admins' accounts can't be acted on.
+//	@Tags			admin
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string						true	"User ID"
+//	@Param			action	path		string						true	"block, unblock, end-sessions or reset-two-factor"
+//	@Param			body	body		ActionRequest				true	"Request body"
+//	@Success		200		{object}	map[string]AccountDetailDTO	"user, as it is now"
+//	@Failure		400		{object}	response.ErrorEnvelope		"Reason too long"
+//	@Failure		401		{object}	response.ErrorEnvelope		"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope		"Not an admin, or two-factor is off"
+//	@Failure		404		{object}	response.ErrorEnvelope		"No such account"
+//	@Router			/admin/users/{id}/{action} [post]
+func (h *Handler) act(action string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		adminID, ok := request.User(w, r)
+		if !ok {
+			return
+		}
+		var req ActionRequest
+		if !request.Decode(w, r, &req) {
+			return
+		}
+		reason := strings.TrimSpace(req.Reason)
+		if utf8.RuneCountInString(reason) > MaxReason {
+			response.ValidationError(w, map[string]string{"reason": "Keep the reason under 500 characters"})
+			return
+		}
+		d, err := h.svc.Act(r.Context(), adminID, chi.URLParam(r, "id"), action, reason)
+		if errors.Is(err, ErrNotFound) {
+			response.Error(w, http.StatusNotFound, response.CodeNotFound, "Resource not found")
+			return
+		}
+		if err != nil {
+			response.Internal(w, err)
+			return
+		}
+		response.JSON(w, http.StatusOK, map[string]AccountDetailDTO{"user": toAccountDetailDTO(d)})
+	}
+}
+
+// ActionDTO is one thing an admin did to an account.
+type ActionDTO struct {
+	ID int64     `json:"id"`
+	At time.Time `json:"at"`
+	// AdminID and TargetID are null once the account is gone; the emails stay.
+	AdminID    *string `json:"admin_id"`
+	AdminEmail string  `json:"admin_email"`
+	// Action is block, unblock, end_sessions or reset_two_factor.
+	Action      string  `json:"action"`
+	TargetID    *string `json:"target_id"`
+	TargetEmail string  `json:"target_email"`
+	Reason      string  `json:"reason"`
+}
+
+// ActionsResponse is a page of actions and how many match in all.
+type ActionsResponse struct {
+	Actions []ActionDTO `json:"actions"`
+	Page    int         `json:"page"`
+	Limit   int         `json:"limit"`
+	Total   int         `json:"total"`
+}
+
+// Actions handles GET /api/v1/admin/actions?target={id}&page={n}&limit={n}.
+//
+//	@Summary		What admins did
+//	@Description	Every action admins took on accounts, the newest first, a page at a time. Nothing is ever taken out of it.
+//	@Tags			admin
+//	@Produce		json
+//	@Param			target	query		string					false	"Only the actions on this account"
+//	@Param			page	query		int						false	"The page, from 1"
+//	@Param			limit	query		int						false	"Actions per page, 25 by default, at most 100"
+//	@Success		200		{object}	ActionsResponse			"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid page or limit"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not an admin, or two-factor is off"
+//	@Router			/admin/actions [get]
+func (h *Handler) Actions(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	f := ActionFilter{TargetID: q.Get("target"), Page: 1, Limit: accountsPage}
+	if raw := q.Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > maxAccountsPage {
+			response.ValidationError(w, map[string]string{"limit": "Ask for 1 to 100 actions"})
+			return
+		}
+		f.Limit = n
+	}
+	if raw := q.Get("page"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			response.ValidationError(w, map[string]string{"page": "This page link is broken. Start from the first page."})
+			return
+		}
+		f.Page = n
+	}
+	list, total, err := h.svc.Actions(r.Context(), f)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	out := ActionsResponse{Actions: make([]ActionDTO, 0, len(list)), Page: f.Page, Limit: f.Limit, Total: total}
+	for _, a := range list {
+		out.Actions = append(out.Actions, ActionDTO{
+			ID: a.ID, At: a.At, AdminID: a.AdminID, AdminEmail: a.AdminEmail, Action: a.Action,
+			TargetID: a.TargetID, TargetEmail: a.TargetEmail, Reason: a.Reason,
+		})
 	}
 	response.JSON(w, http.StatusOK, out)
 }
