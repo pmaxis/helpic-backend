@@ -1,62 +1,50 @@
 # Helpic — backend
 
-Go API for Helpic: freelancers and their clients on the same page — tasks, projects, boards and reports. The frontend lives in [`../frontend`](../frontend).
+Go API for Helpic, a workspace for freelancers and their clients: tasks, projects, boards, time tracking and reports. Frontend: [helpic-frontend](https://github.com/pmaxis/helpic-frontend).
 
-**Stack:** Go 1.26, chi, pgx, golang-migrate, PostgreSQL 16, sessions with a short-lived JWT and a rotating refresh token, both in httpOnly cookies. Integration tests run against Testcontainers.
+**Stack:** Go 1.26, chi, pgx, PostgreSQL 16, golang-migrate. Auth is a short-lived JWT plus a rotating refresh token, both in httpOnly cookies, with optional two-factor sign-in.
 
-## Getting started
+## Run
 
 Requires Docker.
 
 ```sh
-cp .env.example .env      # then set your own JWT_SECRET
-make up                   # or: docker compose up -d --build
+cp .env.example .env    # set your own JWT_SECRET
+make up
 ```
 
-| Service | URL |
+| | |
 |---|---|
 | API | http://localhost:8090/api/v1 |
-| API docs (Swagger) | http://localhost:8090/api/docs |
-| Health | http://localhost:8090/health |
+| Swagger | http://localhost:8090/api/docs |
+| Mailpit (dev email) | http://localhost:8025 |
 | PostgreSQL | `localhost:5435` |
-| Mailpit (every email sent in development) | http://localhost:8025 |
 
-Migrations run when the server starts.
+Migrations run on start.
 
-## API
+## Configuration
 
-Versioned in the path: everything lives under `/api/v1` (`/health` stays unversioned).
+Every variable is documented in [`.env.example`](.env.example). `CORS_ORIGIN` must match the frontend's origin. `ADMIN_EMAILS` opens the admin panel to those accounts; they also need two-factor sign-in on.
 
-Endpoints, parameters, bodies and errors are in **Swagger** at `/api/docs`, generated from the handlers' comments — run `make swagger` after changing them. Sign in with `POST /auth/login` first; the cookie goes along with the next requests. The UI is off in production unless `SWAGGER_ENABLED` is set.
+With `APP_ENV=production` the server refuses to start on unsafe settings: weak secrets, insecure cookies, a database without TLS verification, Mailpit, or Swagger left on.
 
 ## Commands
 
 ```sh
-make help              # list all commands
-make up / down         # start / stop postgres + backend
-make logs              # follow container logs
-make test              # all tests (needs Docker)
-make test-unit         # unit tests only
-make test-integration  # integration tests only (needs Docker)
-make swagger           # regenerate the API docs (docs/)
-make psql              # database shell
-make fmt               # go fmt
+make up / down          # start / stop the stack
+make test               # all tests (integration tests use Testcontainers)
+make swagger            # regenerate docs/ after changing handler comments
+make psql               # database shell
+make help               # everything else
 ```
-
-## Configuration
-
-All variables are documented in [`.env.example`](.env.example). Always set your own `JWT_SECRET`; `CORS_ORIGIN` must match the frontend's origin.
 
 ## Layout
 
 ```
-cmd/server/          entrypoint (server, migrate up|down)
-cmd/cli/             operator commands, one file each in commands/
-docs/                generated Swagger spec
-internal/            one package per feature, plus shared infrastructure
-migrations/          SQL migrations
-tests/unit/          unit tests, laid out like internal/
-tests/integration/   integration tests (Testcontainers)
+cmd/server/         API server; `server migrate up|down`
+cmd/cli/            operator commands, one file each in commands/
+internal/           a package per feature (model, repository, service, handler), wired in internal/server
+migrations/         SQL migrations
+tests/              unit and integration tests
+docs/               generated Swagger spec
 ```
-
-A feature is a package under `internal/` (model, repository, service, handler with `Routes`), wired in `internal/server/server.go`.
