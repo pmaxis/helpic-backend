@@ -183,6 +183,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	// --- the admin panel: how Helpic is used, for admin accounts -----------
 	adminRepo := admin.NewRepository(pool)
 	adminSvc := admin.NewService(adminRepo, cfg.Location)
+	adminSvc.UseMail(outbox)
 	appLogs := applog.NewRepository(pool)
 	adminHandler := admin.NewHandler(adminSvc, appLogs)
 	activity := admin.NewActivity(adminRepo, adminSvc)

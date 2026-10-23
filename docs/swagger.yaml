@@ -5,6 +5,9 @@ definitions:
       active_days:
         description: ActiveDays is on how many of the last 30 days they used Helpic.
         type: integer
+      blocked_at:
+        description: BlockedAt is when an admin blocked them; null when they aren't.
+        type: string
       created_at:
         type: string
       email:
@@ -39,6 +42,9 @@ definitions:
         description: |-
           ActiveSince is the Monday 26 weeks back; ActiveOn the days since then
           they used Helpic, YYYY-MM-DD, oldest first.
+        type: string
+      blocked_at:
+        description: BlockedAt is when an admin blocked them; null when they aren't.
         type: string
       comments:
         type: integer
@@ -84,6 +90,47 @@ definitions:
         type: boolean
       two_factor:
         type: boolean
+    type: object
+  admin.ActionDTO:
+    properties:
+      action:
+        description: Action is block, unblock, end_sessions or reset_two_factor.
+        type: string
+      admin_email:
+        type: string
+      admin_id:
+        description: AdminID and TargetID are null once the account is gone; the emails
+          stay.
+        type: string
+      at:
+        type: string
+      id:
+        type: integer
+      reason:
+        type: string
+      target_email:
+        type: string
+      target_id:
+        type: string
+    type: object
+  admin.ActionRequest:
+    properties:
+      reason:
+        description: Reason says why, for the record; optional, at most 500 characters.
+        type: string
+    type: object
+  admin.ActionsResponse:
+    properties:
+      actions:
+        items:
+          $ref: '#/definitions/admin.ActionDTO'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
     type: object
   admin.DayDTO:
     properties:
@@ -1503,6 +1550,45 @@ info:
   title: Helpic API
   version: "1.0"
 paths:
+  /admin/actions:
+    get:
+      description: Every action admins took on accounts, the newest first, a page
+        at a time. Nothing is ever taken out of it.
+      parameters:
+      - description: Only the actions on this account
+        in: query
+        name: target
+        type: string
+      - description: The page, from 1
+        in: query
+        name: page
+        type: integer
+      - description: Actions per page, 25 by default, at most 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/admin.ActionsResponse'
+        "400":
+          description: Invalid page or limit
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: What admins did
+      tags:
+      - admin
   /admin/logs:
     get:
       description: 'The last 30 days, the newest first: failed requests, panics, background
@@ -1592,7 +1678,8 @@ paths:
         in: query
         name: role
         type: string
-      - description: active (in the last 7 days), idle (not in the last 30) or never
+      - description: active (in the last 7 days), idle (not in the last 30), never
+          or blocked
         in: query
         name: activity
         type: string
@@ -1662,6 +1749,60 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: An account
+      tags:
+      - admin
+  /admin/users/{id}/{action}:
+    post:
+      consumes:
+      - application/json
+      description: block stops the account signing in and signs it out; unblock lets
+        it in again; end-sessions signs it out everywhere; reset-two-factor turns
+        its two-factor sign-in off, signs it out and emails it. Each is recorded with
+        the reason when it changes something; doing it again changes nothing. Admins'
+        accounts can't be acted on.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: block, unblock, end-sessions or reset-two-factor
+        in: path
+        name: action
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/admin.ActionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: user, as it is now
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/admin.AccountDetailDTO'
+            type: object
+        "400":
+          description: Reason too long
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: No such account
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Act on an account
       tags:
       - admin
   /archive:

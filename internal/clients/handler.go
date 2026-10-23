@@ -267,7 +267,7 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		session, err = h.svc.AcceptNew(r.Context(), l, params, auth.ClientOf(r))
 	}
 
-	if auth.WriteTwoFactorError(w, err) {
+	if auth.WriteSignInError(w, err) {
 		return
 	}
 	switch {

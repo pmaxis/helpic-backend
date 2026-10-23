@@ -281,8 +281,16 @@ var uk = map[string]string{
 	"Ask for 7 to 365 days":                              "Можна попросити від 7 до 365 днів",
 	"Choose freelancer or client":                        "Оберіть: фрилансер чи клієнт",
 	"Ask for 1 to 100 accounts":                          "Можна попросити від 1 до 100 акаунтів",
-	"Choose active, idle or never":                       "Оберіть: активні, неактивні чи ніколи",
+	"Choose active, idle, never or blocked":              "Оберіть: активні, неактивні, ніколи чи заблоковані",
 	"Sort by created, last_active or tasks":              "Сортування: created, last_active або tasks",
 	"Choose warn or error":                               "Оберіть: попередження чи помилки",
 	"Ask for 1 to 200 entries":                           "Можна попросити від 1 до 200 записів",
+	"Ask for 1 to 100 actions":                           "Можна попросити від 1 до 100 дій",
+	"Keep the reason under 500 characters":               "Причина має бути коротшою за 500 символів",
+	"This account is blocked. If you think it's a mistake, write to Helpic's support.": "Цей акаунт заблоковано. Якщо це помилка, напишіть у підтримку Helpic.",
+
+	// --- emails: an admin reset two-factor sign-in ---------------------------------------
+	"Two-factor sign-in was reset": "Двофакторний вхід скинуто",
+	"Helpic's support turned off two-factor sign-in for your account, %s, and signed it out on every device. Signing in takes only the password now; turn two-factor on again under Settings → Security.": "Підтримка Helpic вимкнула двофакторний вхід для вашого акаунта %s і вийшла з нього на всіх пристроях. Тепер для входу потрібен лише пароль; увімкніть двофакторний вхід знову в Налаштування → Безпека.",
+	"If you didn't ask for this, change your password right away and write to Helpic's support.":                                                                                                          "Якщо ви про це не просили, одразу змініть пароль і напишіть у підтримку Helpic.",
 }

@@ -217,7 +217,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusUnauthorized, response.CodeInvalidCredential, "Invalid email or password")
 		return
 	}
-	if WriteTwoFactorError(w, err) {
+	if WriteSignInError(w, err) {
 		return
 	}
 	if err != nil {
@@ -425,6 +425,17 @@ func (h *Handler) EndOtherSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// WriteSignInError answers for a sign-in that the account can't make: it is
+// blocked (403 ACCOUNT_BLOCKED), or its second factor is missing or wrong
+// (see WriteTwoFactorError). It reports whether err was one.
+func WriteSignInError(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, ErrAccountBlocked) {
+		response.Error(w, http.StatusForbidden, response.CodeAccountBlocked, "This account is blocked. If you think it's a mistake, write to Helpic's support.")
+		return true
+	}
+	return WriteTwoFactorError(w, err)
 }
 
 // WriteTwoFactorError answers for a second factor that is missing or wrong,
