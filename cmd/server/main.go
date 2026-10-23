@@ -6,6 +6,8 @@
 //	server migrate up    apply all pending migrations and exit
 //	server migrate down   roll back all migrations and exit
 //
+// One-off operator jobs are in cmd/cli.
+//
 // The API description below feeds Swagger (make swagger); the UI is served at
 // /api/docs.
 //

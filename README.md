@@ -51,6 +51,7 @@ All variables are documented in [`.env.example`](.env.example). Always set your 
 
 ```
 cmd/server/          entrypoint (server, migrate up|down)
+cmd/cli/             operator commands, one file each in commands/
 docs/                generated Swagger spec
 internal/            one package per feature, plus shared infrastructure
 migrations/          SQL migrations

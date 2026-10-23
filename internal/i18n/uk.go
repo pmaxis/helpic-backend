@@ -275,4 +275,12 @@ var uk = map[string]string{
 	"Telegram is not connected":                            "Telegram не підключено",
 	"Telegram is not set up on this server":                "Telegram не налаштовано на цьому сервері",
 	"The Telegram bot is starting. Try again in a moment.": "Telegram-бот запускається. Спробуйте за мить.",
+
+	// --- API errors: admin panel --------------------------------------------------------
+	"Turn on two-factor sign-in to open the admin panel": "Увімкніть двофакторний вхід, щоб відкрити адмінку",
+	"Ask for 7 to 365 days":                              "Можна попросити від 7 до 365 днів",
+	"Choose freelancer or client":                        "Оберіть: фрилансер чи клієнт",
+	"Ask for 1 to 100 accounts":                          "Можна попросити від 1 до 100 акаунтів",
+	"Choose active, idle or never":                       "Оберіть: активні, неактивні чи ніколи",
+	"Sort by created, last_active or tasks":              "Сортування: created, last_active або tasks",
 }

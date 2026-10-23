@@ -15,6 +15,204 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/admin/access": {
+            "get": {
+                "description": "Anyone signed in may ask. The panel opens to admins who sign in with two-factor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Whether you're an admin",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/admin.AccessResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/stats": {
+            "get": {
+                "description": "Totals now; the last days (today included) against the days before them, also day by day. Days are the app's time zone's. Counts only, never anyone's content.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "How Helpic is used",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "The period, 7 to 365 days; 30 by default",
+                        "name": "days",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/admin.StatsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid period",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/users": {
+            "get": {
+                "description": "Every account, the newest first: who they are and how much they use Helpic. A page at a time, with how many match in all.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Accounts",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Part of the email or the name",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "freelancer or client",
+                        "name": "role",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "active (in the last 7 days), idle (not in the last 30) or never",
+                        "name": "activity",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "created (newest first, the default), last_active or tasks",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "The page, from 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Accounts per page, 25 by default, at most 100",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/admin.UsersResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid role, activity, sort, page or limit",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/users/{id}": {
+            "get": {
+                "description": "One account in full: its team, how much it has done (counts only) and the days it used Helpic over the last 26 weeks.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "An account",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "user",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/admin.AccountDetailDTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "No such account",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/archive": {
             "get": {
                 "description": "Tasks closed for good, the most recently archived first: shared work whose report was paid, and personal tasks put away by hand. A page at a time, with how many there are in all; a page past the last is empty.",
@@ -5253,6 +5451,281 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "admin.AccessResponse": {
+            "type": "object",
+            "properties": {
+                "admin": {
+                    "description": "Admin is on when their email is one of ADMIN_EMAILS.",
+                    "type": "boolean"
+                },
+                "two_factor": {
+                    "description": "TwoFactor is on when they sign in with two-factor; the panel needs it.",
+                    "type": "boolean"
+                }
+            }
+        },
+        "admin.AccountDTO": {
+            "type": "object",
+            "properties": {
+                "active_days": {
+                    "description": "ActiveDays is on how many of the last 30 days they used Helpic.",
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_active": {
+                    "description": "LastActive is the last day they used Helpic, YYYY-MM-DD; null if never.",
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "projects": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "tasks": {
+                    "type": "integer"
+                },
+                "two_factor": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "admin.AccountDetailDTO": {
+            "type": "object",
+            "properties": {
+                "active_days": {
+                    "description": "ActiveDays is on how many of the last 30 days they used Helpic.",
+                    "type": "integer"
+                },
+                "active_on": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "active_since": {
+                    "description": "ActiveSince is the Monday 26 weeks back; ActiveOn the days since then\nthey used Helpic, YYYY-MM-DD, oldest first.",
+                    "type": "string"
+                },
+                "comments": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_active": {
+                    "description": "LastActive is the last day they used Helpic, YYYY-MM-DD; null if never.",
+                    "type": "string"
+                },
+                "last_sign_in": {
+                    "type": "string"
+                },
+                "locale": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "partners": {
+                    "description": "Partners are a freelancer's clients, or a client's freelancers.",
+                    "type": "integer"
+                },
+                "projects": {
+                    "type": "integer"
+                },
+                "reports_paid": {
+                    "type": "integer"
+                },
+                "reports_sent": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "seconds_logged": {
+                    "type": "integer"
+                },
+                "sessions": {
+                    "description": "Sessions are their signed-in devices now.",
+                    "type": "integer"
+                },
+                "tasks": {
+                    "type": "integer"
+                },
+                "team": {
+                    "$ref": "#/definitions/admin.TeamDTO"
+                },
+                "telegram": {
+                    "type": "boolean"
+                },
+                "two_factor": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "admin.DayDTO": {
+            "type": "object",
+            "properties": {
+                "active": {
+                    "type": "integer"
+                },
+                "day": {
+                    "description": "Day is YYYY-MM-DD in the app's time zone.",
+                    "type": "string"
+                },
+                "signups": {
+                    "type": "integer"
+                },
+                "tasks_completed": {
+                    "type": "integer"
+                },
+                "tasks_created": {
+                    "type": "integer"
+                }
+            }
+        },
+        "admin.PeriodDTO": {
+            "type": "object",
+            "properties": {
+                "active": {
+                    "description": "Active is how many people used Helpic on any of the days.",
+                    "type": "integer"
+                },
+                "new_users": {
+                    "type": "integer"
+                },
+                "tasks_completed": {
+                    "type": "integer"
+                },
+                "tasks_created": {
+                    "type": "integer"
+                }
+            }
+        },
+        "admin.StatsResponse": {
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/admin.DayDTO"
+                    }
+                },
+                "from": {
+                    "description": "From and To are the period's first and last day, YYYY-MM-DD.",
+                    "type": "string"
+                },
+                "period": {
+                    "$ref": "#/definitions/admin.PeriodDTO"
+                },
+                "previous": {
+                    "$ref": "#/definitions/admin.PeriodDTO"
+                },
+                "previous_days": {
+                    "description": "PreviousDays is the period before, as long, to compare with.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/admin.DayDTO"
+                    }
+                },
+                "to": {
+                    "type": "string"
+                },
+                "totals": {
+                    "$ref": "#/definitions/admin.TotalsDTO"
+                }
+            }
+        },
+        "admin.TeamDTO": {
+            "type": "object",
+            "properties": {
+                "members": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "role": {
+                    "description": "Role is owner, member or contractor.",
+                    "type": "string"
+                }
+            }
+        },
+        "admin.TotalsDTO": {
+            "type": "object",
+            "properties": {
+                "active_day": {
+                    "type": "integer"
+                },
+                "active_month": {
+                    "type": "integer"
+                },
+                "active_week": {
+                    "type": "integer"
+                },
+                "clients": {
+                    "type": "integer"
+                },
+                "freelancers": {
+                    "type": "integer"
+                },
+                "pending_signups": {
+                    "type": "integer"
+                },
+                "projects": {
+                    "type": "integer"
+                },
+                "tasks": {
+                    "type": "integer"
+                },
+                "two_factor": {
+                    "type": "integer"
+                },
+                "users": {
+                    "type": "integer"
+                }
+            }
+        },
+        "admin.UsersResponse": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "users": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/admin.AccountDTO"
+                    }
+                }
+            }
+        },
         "attachments.DTO": {
             "type": "object",
             "properties": {
@@ -5488,7 +5961,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "can_manage": {
-                    "description": "CanManage is true for the freelancer, and for the author of the project\nthe board was opened for.",
+                    "description": "CanManage is true for the author of the project the board was opened\nfor, and on a pair's board for its freelancer.",
                     "type": "boolean"
                 },
                 "columns": {
