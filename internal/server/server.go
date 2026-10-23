@@ -15,6 +15,7 @@ import (
 
 	_ "github.com/pmaxis/helpic/docs" // the generated Swagger spec (make swagger)
 	"github.com/pmaxis/helpic/internal/admin"
+	"github.com/pmaxis/helpic/internal/alerts"
 	"github.com/pmaxis/helpic/internal/applog"
 	"github.com/pmaxis/helpic/internal/attachments"
 	"github.com/pmaxis/helpic/internal/auth"
@@ -204,6 +205,23 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			return err
 		}
 	}
+
+	// --- alerts to the admins, through a bot of their own -------------------
+	var watcher *alerts.Watcher
+	var alertCheck func(context.Context) error
+	if cfg.AlertBotToken != "" {
+		alertBot := alerts.NewTelegram(cfg.TelegramAPIURL, cfg.AlertBotToken, cfg.AlertChatID)
+		alertCheck = alertBot.Check
+		checks := []alerts.Check{alerts.Database(pool.Ping), alerts.Jobs(background), alerts.Email(outbox), alerts.Errors(appLogs)}
+		if mailCheck != nil {
+			checks = append(checks, alerts.MailServer(mailCheck))
+		}
+		if botCheck != nil {
+			checks = append(checks, alerts.Bot(botCheck))
+		}
+		watcher = alerts.NewWatcher(alertBot, cfg.AlertLocale, checks...)
+		adminHandler.UseAlerts(watcher)
+	}
 	adminHandler.UseSystem(admin.System{
 		Version: Version,
 		Started: time.Now(),
@@ -211,6 +229,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			{Name: "database", Check: pool.Ping},
 			{Name: "mail", Check: mailCheck},
 			{Name: "telegram", Check: botCheck},
+			{Name: "alerts", Check: alertCheck},
 		},
 		Jobs: background,
 	})
@@ -314,9 +333,14 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		telegramSvc.Run,
 		func(ctx context.Context) { background.Every(ctx, "email", 5*time.Second, outbox.Run) },
 		func(ctx context.Context) { background.Every(ctx, "notification emails", time.Minute, emailer.Run) },
-		func(ctx context.Context) { background.Every(ctx, "deadline reminders", 15*time.Minute, remindersSvc.Run) },
+		func(ctx context.Context) {
+			background.Every(ctx, "deadline reminders", 15*time.Minute, remindersSvc.Run)
+		},
 		func(ctx context.Context) { background.Every(ctx, "cleanup", time.Hour, cleanup) },
 		func(ctx context.Context) { background.Every(ctx, "rate limit sweep", time.Minute, lim.sweep) },
+	}
+	if watcher != nil {
+		run = append(run, func(ctx context.Context) { background.Every(ctx, "alerts", 2*time.Minute, watcher.Run) })
 	}
 	if ratesSvc != nil {
 		run = append(run, func(ctx context.Context) { background.Every(ctx, "exchange rates", time.Hour, ratesSvc.Run) })

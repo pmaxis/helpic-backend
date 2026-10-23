@@ -469,6 +469,44 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/system/test-alert": {
+            "post": {
+                "description": "Posts a test message to the admins' alert chat, saying which admin asked, to see alerts arrive.",
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Send a test alert",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Alerts are off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "422": {
+                        "description": "Telegram didn't take it",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/users": {
             "get": {
                 "description": "Every account, the newest first: who they are and how much they use Helpic. A page at a time, with how many match in all.",
@@ -6105,7 +6143,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "name": {
-                    "description": "Name is database, mail or telegram.",
+                    "description": "Name is database, mail, telegram or alerts.",
                     "type": "string"
                 },
                 "state": {

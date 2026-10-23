@@ -1,8 +1,12 @@
 package admin
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/pmaxis/helpic/internal/request"
 
 	"github.com/pmaxis/helpic/internal/response"
 )
@@ -12,9 +16,52 @@ func (h *Handler) UseSystem(s System) {
 	h.system = s
 }
 
+// AlertTester sends a test alert to the admins' chat.
+type AlertTester interface {
+	Test(ctx context.Context, by string) error
+}
+
+// UseAlerts lets the panel send a test alert; without it, alerts are off.
+func (h *Handler) UseAlerts(a AlertTester) {
+	h.alerts = a
+}
+
+// TestAlert handles POST /api/v1/admin/system/test-alert.
+//
+//	@Summary		Send a test alert
+//	@Description	Posts a test message to the admins' alert chat, saying which admin asked, to see alerts arrive.
+//	@Tags			admin
+//	@Success		204
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not an admin, or two-factor is off"
+//	@Failure		409	{object}	response.ErrorEnvelope	"Alerts are off"
+//	@Failure		422	{object}	response.ErrorEnvelope	"Telegram didn't take it"
+//	@Router			/admin/system/test-alert [post]
+func (h *Handler) TestAlert(w http.ResponseWriter, r *http.Request) {
+	adminID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	if h.alerts == nil {
+		response.Error(w, http.StatusConflict, response.CodeConflict, "Alerts are off: set ALERT_TELEGRAM_BOT_TOKEN and ALERT_TELEGRAM_CHAT_ID")
+		return
+	}
+	email, err := h.svc.repo.Email(r.Context(), adminID)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	if err := h.alerts.Test(r.Context(), email); err != nil {
+		slog.Warn("test alert failed", "error", err)
+		response.Error(w, http.StatusUnprocessableEntity, response.CodeUnprocessable, "Telegram didn't take the test alert: check the bot's token, the chat ID and that the bot is in the chat")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // CheckDTO is how one service Helpic depends on answered.
 type CheckDTO struct {
-	// Name is database, mail or telegram.
+	// Name is database, mail, telegram or alerts.
 	Name string `json:"name"`
 	// State is ok, failing or off (left out of the config).
 	State     string `json:"state"`

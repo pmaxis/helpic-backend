@@ -86,8 +86,10 @@ func (o *Outbox) Run(ctx context.Context) error {
 			if attempts >= MaxAttempts {
 				slog.Error("email abandoned", "id", q.id, "attempts", attempts, "error", sendErr)
 			}
-			if _, err := tx.Exec(ctx, `UPDATE emails SET attempts = $2, last_error = $3, next_attempt_at = now() + make_interval(secs => $4) WHERE id = $1`,
-				q.id, attempts, sendErr.Error(), retryAfter(attempts).Seconds()); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE emails SET attempts = $2, last_error = $3, next_attempt_at = now() + make_interval(secs => $4),
+					failed_at = CASE WHEN $5 THEN now() END
+				WHERE id = $1`,
+				q.id, attempts, sendErr.Error(), retryAfter(attempts).Seconds(), attempts >= MaxAttempts); err != nil {
 				return fmt.Errorf("record failed email: %w", err)
 			}
 			continue

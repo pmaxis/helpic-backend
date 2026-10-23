@@ -139,7 +139,7 @@ definitions:
       latency_ms:
         type: integer
       name:
-        description: Name is database, mail or telegram.
+        description: Name is database, mail, telegram or alerts.
         type: string
       state:
         description: State is ok, failing or off (left out of the config).
@@ -1999,6 +1999,32 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: System status
+      tags:
+      - admin
+  /admin/system/test-alert:
+    post:
+      description: Posts a test message to the admins' alert chat, saying which admin
+        asked, to see alerts arrive.
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Alerts are off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "422":
+          description: Telegram didn't take it
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Send a test alert
       tags:
       - admin
   /admin/users:

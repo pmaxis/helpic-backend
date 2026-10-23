@@ -284,3 +284,12 @@ func (r *Repository) AccountDetail(ctx context.Context, id string, today, since 
 	}
 	return d, nil
 }
+
+// Email is the email of the account id.
+func (r *Repository) Email(ctx context.Context, id string) (string, error) {
+	var email string
+	if err := r.db.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, id).Scan(&email); err != nil {
+		return "", fmt.Errorf("find email: %w", err)
+	}
+	return email, nil
+}
