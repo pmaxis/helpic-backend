@@ -44,6 +44,10 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Post("/users/{id}/unblock", h.act(ActionUnblock))
 		r.Post("/users/{id}/end-sessions", h.act(ActionEndSessions))
 		r.Post("/users/{id}/reset-two-factor", h.act(ActionResetTwoFactor))
+		r.Get("/users/{id}/sessions", h.Sessions)
+		r.Post("/users/{id}/sessions/{session}/end", h.EndSession)
+		r.Get("/limits", h.Limits)
+		r.Post("/limits/clear", h.ClearLimit)
 		r.Get("/emails", h.Emails)
 		r.Post("/emails/{id}/retry", h.RetryEmail)
 		r.Get("/signups", h.Signups)
@@ -453,6 +457,21 @@ type ActionRequest struct {
 	Reason string `json:"reason"`
 }
 
+// readReason reads an ActionRequest's reason, answering 400 itself when it
+// is too long.
+func readReason(w http.ResponseWriter, r *http.Request) (string, bool) {
+	var req ActionRequest
+	if !request.Decode(w, r, &req) {
+		return "", false
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if utf8.RuneCountInString(reason) > MaxReason {
+		response.ValidationError(w, map[string]string{"reason": "Keep the reason under 500 characters"})
+		return "", false
+	}
+	return reason, true
+}
+
 // act handles POST /api/v1/admin/users/{id}/{action}: block, unblock,
 // end-sessions and reset-two-factor.
 //
@@ -476,13 +495,8 @@ func (h *Handler) act(action string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		var req ActionRequest
-		if !request.Decode(w, r, &req) {
-			return
-		}
-		reason := strings.TrimSpace(req.Reason)
-		if utf8.RuneCountInString(reason) > MaxReason {
-			response.ValidationError(w, map[string]string{"reason": "Keep the reason under 500 characters"})
+		reason, ok := readReason(w, r)
+		if !ok {
 			return
 		}
 		d, err := h.svc.Act(r.Context(), adminID, chi.URLParam(r, "id"), action, reason)

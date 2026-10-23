@@ -187,6 +187,104 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/limits": {
+            "get": {
+                "description": "The rate limits refusing attempts right now, the longest first, with the account each holds back and when it lets the next attempt through.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Rate limits holding someone back",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Part of the email, the address or the account's email",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Only the limits on this account",
+                        "name": "account",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "limits",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/admin.LimitDTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/limits/clear": {
+            "post": {
+                "description": "Lets the attempts through again at once, as if the limit had filled up, and records it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Lift a rate limit",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/admin.ClearLimitRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "The limit has lifted already",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/logs": {
             "get": {
                 "description": "The last 30 days, the newest first: failed requests, panics, background jobs. A page at a time, with how many match in all. Requests show their route, never the path.",
@@ -626,6 +724,134 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "No such account",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/users/{id}/sessions": {
+            "get": {
+                "description": "The devices the account is signed in on, the most recently used first: the browser, the address and when.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "An account's devices",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "sessions",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/admin.SessionDTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "No such account",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/users/{id}/sessions/{session}/end": {
+            "post": {
+                "description": "Ends one of the account's sessions at once and records it with the reason; the other devices stay signed in.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Sign an account out of one device",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "session",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/admin.ActionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "user, as it is now",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/admin.AccountDetailDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Reason too long",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "No such account, or no such session of it",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -6152,6 +6378,17 @@ const docTemplate = `{
                 }
             }
         },
+        "admin.ClearLimitRequest": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "scope": {
+                    "type": "string"
+                }
+            }
+        },
         "admin.DayDTO": {
             "type": "object",
             "properties": {
@@ -6281,6 +6518,45 @@ const docTemplate = `{
                 }
             }
         },
+        "admin.LimitDTO": {
+            "type": "object",
+            "properties": {
+                "account_email": {
+                    "type": "string"
+                },
+                "account_id": {
+                    "description": "AccountID and AccountEmail are the account it holds back; null and\nempty when there is none.",
+                    "type": "string"
+                },
+                "burst": {
+                    "description": "Burst attempts are let through at once, then one every EverySeconds.",
+                    "type": "integer"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "every_seconds": {
+                    "type": "number"
+                },
+                "ip": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "kind": {
+                    "description": "Kind is what the key is: ip, email, email_ip or user.",
+                    "type": "string"
+                },
+                "opens_at": {
+                    "type": "string"
+                },
+                "scope": {
+                    "description": "Scope is the limit: sign-in, sign-up, refresh, login-failures,\nlogin-failures-email, password-checks, two-factor-codes, reset,\nreset-email or invites.",
+                    "type": "string"
+                }
+            }
+        },
         "admin.LogDTO": {
             "type": "object",
             "properties": {
@@ -6345,6 +6621,26 @@ const docTemplate = `{
                 },
                 "tasks_created": {
                     "type": "integer"
+                }
+            }
+        },
+        "admin.SessionDTO": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "ip": {
+                    "type": "string"
+                },
+                "last_used_at": {
+                    "type": "string"
+                },
+                "user_agent": {
+                    "type": "string"
                 }
             }
         },

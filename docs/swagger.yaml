@@ -145,6 +145,13 @@ definitions:
         description: State is ok, failing or off (left out of the config).
         type: string
     type: object
+  admin.ClearLimitRequest:
+    properties:
+      key:
+        type: string
+      scope:
+        type: string
+    type: object
   admin.DayDTO:
     properties:
       active:
@@ -233,6 +240,38 @@ definitions:
           in time) or waiting (not run yet).
         type: string
     type: object
+  admin.LimitDTO:
+    properties:
+      account_email:
+        type: string
+      account_id:
+        description: |-
+          AccountID and AccountEmail are the account it holds back; null and
+          empty when there is none.
+        type: string
+      burst:
+        description: Burst attempts are let through at once, then one every EverySeconds.
+        type: integer
+      email:
+        type: string
+      every_seconds:
+        type: number
+      ip:
+        type: string
+      key:
+        type: string
+      kind:
+        description: 'Kind is what the key is: ip, email, email_ip or user.'
+        type: string
+      opens_at:
+        type: string
+      scope:
+        description: |-
+          Scope is the limit: sign-in, sign-up, refresh, login-failures,
+          login-failures-email, password-checks, two-factor-codes, reset,
+          reset-email or invites.
+        type: string
+    type: object
   admin.LogDTO:
     properties:
       at:
@@ -280,6 +319,19 @@ definitions:
         type: integer
       tasks_created:
         type: integer
+    type: object
+  admin.SessionDTO:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      ip:
+        type: string
+      last_used_at:
+        type: string
+      user_agent:
+        type: string
     type: object
   admin.SignupDTO:
     properties:
@@ -1806,6 +1858,72 @@ paths:
       summary: Send an email again
       tags:
       - admin
+  /admin/limits:
+    get:
+      description: The rate limits refusing attempts right now, the longest first,
+        with the account each holds back and when it lets the next attempt through.
+      parameters:
+      - description: Part of the email, the address or the account's email
+        in: query
+        name: q
+        type: string
+      - description: Only the limits on this account
+        in: query
+        name: account
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: limits
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/admin.LimitDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Rate limits holding someone back
+      tags:
+      - admin
+  /admin/limits/clear:
+    post:
+      consumes:
+      - application/json
+      description: Lets the attempts through again at once, as if the limit had filled
+        up, and records it.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/admin.ClearLimitRequest'
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: The limit has lifted already
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Lift a rate limit
+      tags:
+      - admin
   /admin/logs:
     get:
       description: 'The last 30 days, the newest first: failed requests, panics, background
@@ -2165,6 +2283,93 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Act on an account
+      tags:
+      - admin
+  /admin/users/{id}/sessions:
+    get:
+      description: 'The devices the account is signed in on, the most recently used
+        first: the browser, the address and when.'
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: sessions
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/admin.SessionDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: No such account
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: An account's devices
+      tags:
+      - admin
+  /admin/users/{id}/sessions/{session}/end:
+    post:
+      consumes:
+      - application/json
+      description: Ends one of the account's sessions at once and records it with
+        the reason; the other devices stay signed in.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: session
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/admin.ActionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: user, as it is now
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/admin.AccountDetailDTO'
+            type: object
+        "400":
+          description: Reason too long
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: No such account, or no such session of it
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Sign an account out of one device
       tags:
       - admin
   /archive:

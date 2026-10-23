@@ -43,16 +43,16 @@ func newLimits(pool *pgxpool.Pool, on bool) limits {
 		return limits{}
 	}
 	return limits{
-		signIn:         ratelimit.NewStore(pool, "sign-in", 20, 30*time.Second),
-		signUp:         ratelimit.NewStore(pool, "sign-up", 5, 10*time.Minute),
-		refresh:        ratelimit.NewStore(pool, "refresh", 120, 5*time.Second),
-		loginFailures:  ratelimit.NewStore(pool, "login-failures", 10, 3*time.Minute),
-		emailFailures:  ratelimit.NewStore(pool, "login-failures-email", 100, time.Minute),
-		passwordChecks: ratelimit.NewStore(pool, "password-checks", 5, time.Minute),
-		twoFactorCodes: ratelimit.NewStore(pool, "two-factor-codes", 10, 10*time.Minute),
-		resetRequests:  ratelimit.NewStore(pool, "reset", 3, 10*time.Minute),
-		emailResets:    ratelimit.NewStore(pool, "reset-email", 10, 30*time.Minute),
-		invites:        ratelimit.NewStore(pool, "invites", 20, 15*time.Minute),
+		signIn:         ratelimit.NewStore(pool, ratelimit.ScopeSignIn, 20, 30*time.Second),
+		signUp:         ratelimit.NewStore(pool, ratelimit.ScopeSignUp, 5, 10*time.Minute),
+		refresh:        ratelimit.NewStore(pool, ratelimit.ScopeRefresh, 120, 5*time.Second),
+		loginFailures:  ratelimit.NewStore(pool, ratelimit.ScopeLoginFailures, 10, 3*time.Minute),
+		emailFailures:  ratelimit.NewStore(pool, ratelimit.ScopeLoginFailuresEmail, 100, time.Minute),
+		passwordChecks: ratelimit.NewStore(pool, ratelimit.ScopePasswordChecks, 5, time.Minute),
+		twoFactorCodes: ratelimit.NewStore(pool, ratelimit.ScopeTwoFactorCodes, 10, 10*time.Minute),
+		resetRequests:  ratelimit.NewStore(pool, ratelimit.ScopeReset, 3, 10*time.Minute),
+		emailResets:    ratelimit.NewStore(pool, ratelimit.ScopeResetEmail, 10, 30*time.Minute),
+		invites:        ratelimit.NewStore(pool, ratelimit.ScopeInvites, 20, 15*time.Minute),
 	}
 }
 
