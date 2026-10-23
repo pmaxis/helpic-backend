@@ -283,4 +283,6 @@ var uk = map[string]string{
 	"Ask for 1 to 100 accounts":                          "Можна попросити від 1 до 100 акаунтів",
 	"Choose active, idle or never":                       "Оберіть: активні, неактивні чи ніколи",
 	"Sort by created, last_active or tasks":              "Сортування: created, last_active або tasks",
+	"Choose warn or error":                               "Оберіть: попередження чи помилки",
+	"Ask for 1 to 200 entries":                           "Можна попросити від 1 до 200 записів",
 }

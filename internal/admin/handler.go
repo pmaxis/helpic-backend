@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/pmaxis/helpic/internal/applog"
 	"github.com/pmaxis/helpic/internal/request"
 	"github.com/pmaxis/helpic/internal/response"
 	"github.com/pmaxis/helpic/internal/user"
@@ -15,12 +16,14 @@ import (
 
 // Handler exposes the admin panel over HTTP.
 type Handler struct {
-	svc *Service
+	svc  *Service
+	logs *applog.Repository
 }
 
-// NewHandler creates an admin Handler.
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+// NewHandler creates an admin Handler; logs are the server's warnings and
+// errors.
+func NewHandler(svc *Service, logs *applog.Repository) *Handler {
+	return &Handler{svc: svc, logs: logs}
 }
 
 // Routes mounts the endpoints. Must be called inside an authenticated group;
@@ -31,6 +34,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Get("/stats", h.Stats)
 		r.Get("/users", h.Users)
 		r.Get("/users/{id}", h.User)
+		r.Get("/logs", h.Logs)
 	})
 }
 
@@ -329,4 +333,94 @@ func (h *Handler) User(w http.ResponseWriter, r *http.Request) {
 		out.ActiveOn = append(out.ActiveOn, date(day))
 	}
 	response.JSON(w, http.StatusOK, map[string]AccountDetailDTO{"user": out})
+}
+
+// LogDTO is one of the server's warnings or errors.
+type LogDTO struct {
+	ID      int64     `json:"id"`
+	At      time.Time `json:"at"`
+	Level   string    `json:"level"`
+	Message string    `json:"message"`
+	// Attrs are what was logged with it: for a request the method, route,
+	// status, duration, IP and who made it; for a failure the error.
+	Attrs map[string]any `json:"attrs"`
+}
+
+// LogsResponse is a page of entries, how many match in all, and the last
+// day's counts.
+type LogsResponse struct {
+	Logs  []LogDTO `json:"logs"`
+	Page  int      `json:"page"`
+	Limit int      `json:"limit"`
+	Total int      `json:"total"`
+	// Warnings and Errors are counted over the last 24 hours, whatever the filter.
+	Warnings int `json:"warnings"`
+	Errors   int `json:"errors"`
+}
+
+// logsPage is a page's size; maxLogsPage the most one may ask for.
+const (
+	logsPage    = 50
+	maxLogsPage = 200
+)
+
+// Logs handles GET /api/v1/admin/logs?level={level}&q={text}&page={n}&limit={n}.
+//
+//	@Summary		The server's warnings and errors
+//	@Description	The last 30 days, the newest first: failed requests, panics, background jobs. A page at a time, with how many match in all. Requests show their route, never the path.
+//	@Tags			admin
+//	@Produce		json
+//	@Param			level	query		string					false	"warn or error"
+//	@Param			q		query		string					false	"Part of the message or of any attribute"
+//	@Param			page	query		int						false	"The page, from 1"
+//	@Param			limit	query		int						false	"Entries per page, 50 by default, at most 200"
+//	@Success		200		{object}	LogsResponse			"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid level, page or limit"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not an admin, or two-factor is off"
+//	@Router			/admin/logs [get]
+func (h *Handler) Logs(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	f := applog.Filter{Query: q.Get("q"), Page: 1, Limit: logsPage}
+	switch q.Get("level") {
+	case "":
+	case "warn":
+		f.Level = applog.LevelWarn
+	case "error":
+		f.Level = applog.LevelError
+	default:
+		response.ValidationError(w, map[string]string{"level": "Choose warn or error"})
+		return
+	}
+	if raw := q.Get("page"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			response.ValidationError(w, map[string]string{"page": "This page link is broken. Start from the first page."})
+			return
+		}
+		f.Page = n
+	}
+	if raw := q.Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > maxLogsPage {
+			response.ValidationError(w, map[string]string{"limit": "Ask for 1 to 200 entries"})
+			return
+		}
+		f.Limit = n
+	}
+	list, total, err := h.logs.List(r.Context(), f)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	sum, err := h.logs.Summary(r.Context(), time.Now().Add(-24*time.Hour))
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	out := LogsResponse{Logs: make([]LogDTO, 0, len(list)), Page: f.Page, Limit: f.Limit, Total: total, Warnings: sum.Warnings, Errors: sum.Errors}
+	for _, e := range list {
+		out.Logs = append(out.Logs, LogDTO{ID: e.ID, At: e.At, Level: e.Level, Message: e.Message, Attrs: e.Attrs})
+	}
+	response.JSON(w, http.StatusOK, out)
 }

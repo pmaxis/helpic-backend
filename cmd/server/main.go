@@ -32,6 +32,7 @@ import (
 	"time"
 	_ "time/tzdata" // APP_TIMEZONE works on images without zoneinfo
 
+	"github.com/pmaxis/helpic/internal/applog"
 	"github.com/pmaxis/helpic/internal/config"
 	"github.com/pmaxis/helpic/internal/database"
 	"github.com/pmaxis/helpic/internal/server"
@@ -83,6 +84,11 @@ func run(cfg config.Config) error {
 		return err
 	}
 	defer pool.Close()
+
+	// Warnings and errors also go to the database, for the admin panel.
+	logs := applog.NewSink(applog.NewRepository(pool), slog.Default())
+	slog.SetDefault(slog.New(applog.NewHandler(slog.Default().Handler(), logs)))
+	go logs.Run(ctx)
 
 	app, err := server.New(cfg, pool)
 	if err != nil {
