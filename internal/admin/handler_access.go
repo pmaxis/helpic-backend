@@ -52,7 +52,7 @@ func (h *Handler) Sessions(w http.ResponseWriter, r *http.Request) {
 // EndSession handles POST /api/v1/admin/users/{id}/sessions/{session}/end.
 //
 //	@Summary		Sign an account out of one device
-//	@Description	Ends one of the account's sessions at once and records it with the reason; the other devices stay signed in.
+//	@Description	Ends one of the account's sessions at once and records it with the reason; the other devices stay signed in. Asks for the admin's two-factor code again.
 //	@Tags			admin
 //	@Accept			json
 //	@Produce		json
@@ -60,17 +60,18 @@ func (h *Handler) Sessions(w http.ResponseWriter, r *http.Request) {
 //	@Param			session	path		string						true	"Session ID"
 //	@Param			body	body		ActionRequest				true	"Request body"
 //	@Success		200		{object}	map[string]AccountDetailDTO	"user, as it is now"
-//	@Failure		400		{object}	response.ErrorEnvelope		"Reason too long"
+//	@Failure		400		{object}	response.ErrorEnvelope		"Reason too long, or the code missing or wrong (field code)"
 //	@Failure		401		{object}	response.ErrorEnvelope		"Not signed in"
 //	@Failure		403		{object}	response.ErrorEnvelope		"Not an admin, or two-factor is off"
 //	@Failure		404		{object}	response.ErrorEnvelope		"No such account, or no such session of it"
+//	@Failure		429		{object}	response.ErrorEnvelope		"Too many wrong codes"
 //	@Router			/admin/users/{id}/sessions/{session}/end [post]
 func (h *Handler) EndSession(w http.ResponseWriter, r *http.Request) {
 	adminID, ok := request.User(w, r)
 	if !ok {
 		return
 	}
-	reason, ok := readReason(w, r)
+	reason, ok := h.readAction(w, r, adminID)
 	if !ok {
 		return
 	}
@@ -174,4 +175,97 @@ func (h *Handler) ClearLimit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// AdminDTO is an admin account and its devices.
+type AdminDTO struct {
+	ID         string       `json:"id"`
+	Email      string       `json:"email"`
+	Name       string       `json:"name"`
+	TwoFactor  bool         `json:"two_factor"`
+	CreatedAt  time.Time    `json:"created_at"`
+	LastSignIn *time.Time   `json:"last_sign_in"`
+	Sessions   []SessionDTO `json:"sessions"`
+}
+
+// Admins handles GET /api/v1/admin/admins.
+//
+//	@Summary		Admins
+//	@Description	Every admin account, the oldest first, with its last sign-in and the devices it is signed in on. Admins are made with cli create-admin only.
+//	@Tags			admin
+//	@Produce		json
+//	@Success		200	{object}	map[string][]AdminDTO	"admins"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not an admin, or two-factor is off"
+//	@Router			/admin/admins [get]
+func (h *Handler) Admins(w http.ResponseWriter, r *http.Request) {
+	list, err := h.svc.Admins(r.Context())
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	out := make([]AdminDTO, 0, len(list))
+	for _, a := range list {
+		d := AdminDTO{ID: a.ID, Email: a.Email, Name: a.Name, TwoFactor: a.TwoFactor, CreatedAt: a.CreatedAt, LastSignIn: a.LastSignIn, Sessions: make([]SessionDTO, 0, len(a.Sessions))}
+		for _, s := range a.Sessions {
+			d.Sessions = append(d.Sessions, SessionDTO{ID: s.ID, UserAgent: s.UserAgent, IP: s.IP, CreatedAt: s.CreatedAt, LastUsedAt: s.LastUsedAt})
+		}
+		out = append(out, d)
+	}
+	response.JSON(w, http.StatusOK, map[string][]AdminDTO{"admins": out})
+}
+
+// SignInDTO is one sign-in to an admin account.
+type SignInDTO struct {
+	ID int64     `json:"id"`
+	At time.Time `json:"at"`
+	// AdminID is null once the account is gone; the email stays.
+	AdminID    *string `json:"admin_id"`
+	AdminEmail string  `json:"admin_email"`
+	// Outcome is ok, wrong_password, wrong_code or limited (too many wrong
+	// codes before).
+	Outcome   string `json:"outcome"`
+	IP        string `json:"ip"`
+	UserAgent string `json:"user_agent"`
+}
+
+// SignInsResponse is a page of sign-ins and how many match in all.
+type SignInsResponse struct {
+	SignIns []SignInDTO `json:"sign_ins"`
+	Page    int         `json:"page"`
+	Limit   int         `json:"limit"`
+	Total   int         `json:"total"`
+}
+
+// SignIns handles GET /api/v1/admin/sign-ins?failed={bool}&page={n}&limit={n}.
+//
+//	@Summary		Sign-ins to admin accounts
+//	@Description	Every sign-in to an admin account, and every attempt that got the password or the code wrong, the newest first: when, from which address and browser.
+//	@Tags			admin
+//	@Produce		json
+//	@Param			failed	query		bool					false	"Only the attempts that didn't go through"
+//	@Param			page	query		int						false	"The page, from 1"
+//	@Param			limit	query		int						false	"Sign-ins per page, 25 by default, at most 100"
+//	@Success		200		{object}	SignInsResponse			"OK"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid page or limit"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not an admin, or two-factor is off"
+//	@Router			/admin/sign-ins [get]
+func (h *Handler) SignIns(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	f := SignInFilter{Failed: q.Get("failed") == "true"}
+	var ok bool
+	if f.Page, f.Limit, ok = paging(w, q, mailPage, maxMailPage, "Ask for 1 to 100 entries"); !ok {
+		return
+	}
+	list, total, err := h.svc.SignIns(r.Context(), f)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	out := SignInsResponse{SignIns: make([]SignInDTO, 0, len(list)), Page: f.Page, Limit: f.Limit, Total: total}
+	for _, s := range list {
+		out.SignIns = append(out.SignIns, SignInDTO{ID: s.ID, At: s.At, AdminID: s.AdminID, AdminEmail: s.AdminEmail, Outcome: s.Outcome, IP: s.IP, UserAgent: s.UserAgent})
+	}
+	response.JSON(w, http.StatusOK, out)
 }

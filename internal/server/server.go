@@ -196,6 +196,8 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	adminSvc.UseSignupLinks(authSvc)
 	appLogs := applog.NewRepository(pool)
 	adminHandler := admin.NewHandler(adminSvc, appLogs)
+	adminHandler.UseCodes(authSvc)
+	authSvc.OnSignIn(adminSvc.RecordSignIn)
 	activity := admin.NewActivity(adminRepo, adminSvc)
 	background := jobs.NewRegistry()
 	var botCheck func(context.Context) error

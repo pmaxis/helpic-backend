@@ -51,8 +51,7 @@ func TestAdmin_ClearLimit(t *testing.T) {
 
 func TestAdmin_EndOneSession(t *testing.T) {
 	srv, _ := newAPI(t)
-	boss := signInAdmin(t, srv, "boss@example.com")
-	turnOnTwoFactor(t, srv, boss)
+	boss, codes := stepUpAdmin(t, srv, "boss@example.com")
 	laptop := signUpFreelancer(t, srv, "dev@example.com")
 	id := myID(t, srv, laptop)
 	phone := signInAgain(t, srv, "dev@example.com")
@@ -69,7 +68,11 @@ func TestAdmin_EndOneSession(t *testing.T) {
 		t.Fatalf("session = %v", newest)
 	}
 
-	resp = post(t, boss, srv.URL+"/api/v1/admin/users/"+id+"/sessions/"+newest["id"].(string)+"/end", map[string]string{"reason": "Lost phone"})
+	end := srv.URL + "/api/v1/admin/users/" + id + "/sessions/" + newest["id"].(string) + "/end"
+	// Without the code, or with a wrong one, nothing ends.
+	wantStatus(t, post(t, boss, end, map[string]string{"reason": "Lost phone"}), http.StatusBadRequest)
+	wantStatus(t, post(t, boss, end, map[string]string{"reason": "Lost phone", "code": "000000"}), http.StatusBadRequest)
+	resp = post(t, boss, end, map[string]string{"reason": "Lost phone", "code": codes.next(t)})
 	wantStatus(t, resp, http.StatusOK)
 	if u := field(decode(t, resp), "user"); u["sessions"] != 1.0 {
 		t.Fatalf("after ending one = %v", u)
@@ -78,10 +81,52 @@ func TestAdmin_EndOneSession(t *testing.T) {
 	wantStatus(t, get(t, laptop, srv.URL+"/api/v1/me"), http.StatusOK)
 
 	// Gone, or another account's: not found.
-	wantStatus(t, post(t, boss, srv.URL+"/api/v1/admin/users/"+id+"/sessions/"+newest["id"].(string)+"/end", map[string]string{}), http.StatusNotFound)
+	wantStatus(t, post(t, boss, end, map[string]string{"code": codes.next(t)}), http.StatusNotFound)
 	wantStatus(t, get(t, boss, srv.URL+"/api/v1/admin/users/not-an-id/sessions"), http.StatusNotFound)
 
 	if got := fmt.Sprint(actionNames(adminActions(t, srv, boss, "?target="+id))); got != "[end_session]" {
 		t.Fatalf("actions = %v", got)
+	}
+}
+
+func TestAdmin_ListAndSignIns(t *testing.T) {
+	srv, _ := newAPI(t)
+	boss := signInAdmin(t, srv, "boss@example.com")
+	turnOnTwoFactor(t, srv, boss)
+	signInAdmin(t, srv, "second@example.com")
+
+	// A wrong password and a wrong code to the boss's account are noted; a
+	// freelancer's sign-in isn't.
+	wantStatus(t, login(t, srv, newClient(), "boss@example.com", "wrong-password"), http.StatusUnauthorized)
+	wantStatus(t, loginWithCode(t, newClient(), srv, "boss@example.com", "000000"), http.StatusBadRequest)
+	signUpFreelancer(t, srv, "dev@example.com")
+
+	resp := get(t, boss, srv.URL+"/api/v1/admin/admins")
+	wantStatus(t, resp, http.StatusOK)
+	admins := decode(t, resp)["admins"].([]any)
+	if len(admins) != 2 {
+		t.Fatalf("admins = %v", admins)
+	}
+	first := admins[0].(map[string]any)
+	if first["email"] != "boss@example.com" || first["two_factor"] != true || first["last_sign_in"] == nil || len(first["sessions"].([]any)) != 1 {
+		t.Fatalf("boss = %v", first)
+	}
+
+	resp = get(t, boss, srv.URL+"/api/v1/admin/sign-ins")
+	wantStatus(t, resp, http.StatusOK)
+	page := decode(t, resp)
+	var got []string
+	for _, s := range page["sign_ins"].([]any) {
+		s := s.(map[string]any)
+		got = append(got, s["admin_email"].(string)+" "+s["outcome"].(string))
+	}
+	if fmt.Sprint(got) != "[boss@example.com wrong_code boss@example.com wrong_password second@example.com ok boss@example.com ok]" {
+		t.Fatalf("sign-ins = %v", got)
+	}
+
+	resp = get(t, boss, srv.URL+"/api/v1/admin/sign-ins?failed=true")
+	wantStatus(t, resp, http.StatusOK)
+	if n := decode(t, resp)["total"]; n != 2.0 {
+		t.Fatalf("failed sign-ins = %v", n)
 	}
 }
