@@ -2,39 +2,57 @@ package admin
 
 import (
 	"context"
-	"slices"
+	"crypto/rand"
+	"encoding/base64"
+	"fmt"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
-// Service decides who is an admin and gathers the statistics.
+// Service makes admins and gathers the statistics.
 type Service struct {
-	repo   *Repository
-	admins []string
-	loc    *time.Location
+	repo *Repository
+	loc  *time.Location
 }
 
-// NewService creates an admin Service. admins are the lowercased emails
-// that may open the panel; loc is the app's time zone, whose days the
-// statistics count.
-func NewService(repo *Repository, admins []string, loc *time.Location) *Service {
+// NewService creates an admin Service. loc is the app's time zone, whose days
+// the statistics count.
+func NewService(repo *Repository, loc *time.Location) *Service {
 	if loc == nil {
 		loc = time.UTC
 	}
-	return &Service{repo: repo, admins: admins, loc: loc}
+	return &Service{repo: repo, loc: loc}
 }
 
-// Access tells whether the user is an admin, and whether they sign in with
-// two-factor, which the panel requires.
-func (s *Service) Access(ctx context.Context, userID string) (admin, twoFactor bool, err error) {
-	if len(s.admins) == 0 {
-		return false, false, nil
+// TwoFactor tells whether the user signs in with two-factor, which the panel
+// requires.
+func (s *Service) TwoFactor(ctx context.Context, userID string) (bool, error) {
+	return s.repo.TwoFactor(ctx, userID)
+}
+
+// CreateAdmin makes an admin account and returns the password it was given,
+// to be changed in the settings on the first sign-in. ErrInvalidEmail or
+// ErrEmailExists when the email won't do.
+func (s *Service) CreateAdmin(ctx context.Context, email, name, locale string) (password string, err error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if at := strings.Index(email, "@"); at <= 0 || at == len(email)-1 || strings.Count(email, "@") > 1 || strings.ContainsAny(email, " \t;,") {
+		return "", ErrInvalidEmail
 	}
-	email, twoFactor, found, err := s.repo.Account(ctx, userID)
-	if err != nil || !found {
-		return false, false, err
+	b := make([]byte, 18)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate password: %w", err)
 	}
-	return slices.Contains(s.admins, strings.ToLower(email)), twoFactor, nil
+	password = base64.RawURLEncoding.EncodeToString(b)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", fmt.Errorf("hash password: %w", err)
+	}
+	if err := s.repo.CreateAdmin(ctx, email, strings.TrimSpace(name), string(hash), locale); err != nil {
+		return "", err
+	}
+	return password, nil
 }
 
 // Today is the current day in the app's time zone, at midnight UTC so it

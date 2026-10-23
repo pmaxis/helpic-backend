@@ -23,17 +23,14 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// Routes mounts the endpoints. Must be called inside an authenticated group:
-// /admin/access answers everyone, the rest only admins with two-factor on.
+// Routes mounts the endpoints. Must be called inside an authenticated group;
+// they answer only admins with two-factor on.
 func (h *Handler) Routes(r chi.Router) {
 	r.Route("/admin", func(r chi.Router) {
-		r.Get("/access", h.Access)
-		r.Group(func(r chi.Router) {
-			r.Use(h.RequireAdmin)
-			r.Get("/stats", h.Stats)
-			r.Get("/users", h.Users)
-			r.Get("/users/{id}", h.User)
-		})
+		r.Use(h.RequireAdmin)
+		r.Get("/stats", h.Stats)
+		r.Get("/users", h.Users)
+		r.Get("/users/{id}", h.User)
 	})
 }
 
@@ -41,17 +38,17 @@ func (h *Handler) Routes(r chi.Router) {
 // get a 403.
 func (h *Handler) RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID, ok := request.User(w, r)
+		userID, role, ok := request.UserRole(w, r)
 		if !ok {
 			return
 		}
-		admin, twoFactor, err := h.svc.Access(r.Context(), userID)
-		if err != nil {
-			response.Internal(w, err)
+		if role != user.RoleAdmin {
+			response.Error(w, http.StatusForbidden, response.CodeForbidden, "You don't have access to this resource")
 			return
 		}
-		if !admin {
-			response.Error(w, http.StatusForbidden, response.CodeForbidden, "You don't have access to this resource")
+		twoFactor, err := h.svc.TwoFactor(r.Context(), userID)
+		if err != nil {
+			response.Internal(w, err)
 			return
 		}
 		if !twoFactor {
@@ -60,36 +57,6 @@ func (h *Handler) RequireAdmin(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-// AccessResponse tells the signed-in user whether the admin panel is theirs.
-type AccessResponse struct {
-	// Admin is on when their email is one of ADMIN_EMAILS.
-	Admin bool `json:"admin"`
-	// TwoFactor is on when they sign in with two-factor; the panel needs it.
-	TwoFactor bool `json:"two_factor"`
-}
-
-// Access handles GET /api/v1/admin/access.
-//
-//	@Summary		Whether you're an admin
-//	@Description	Anyone signed in may ask. The panel opens to admins who sign in with two-factor.
-//	@Tags			admin
-//	@Produce		json
-//	@Success		200	{object}	AccessResponse			"OK"
-//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
-//	@Router			/admin/access [get]
-func (h *Handler) Access(w http.ResponseWriter, r *http.Request) {
-	userID, ok := request.User(w, r)
-	if !ok {
-		return
-	}
-	admin, twoFactor, err := h.svc.Access(r.Context(), userID)
-	if err != nil {
-		response.Internal(w, err)
-		return
-	}
-	response.JSON(w, http.StatusOK, AccessResponse{Admin: admin, TwoFactor: admin && twoFactor})
 }
 
 // TotalsDTO is the app as it stands.

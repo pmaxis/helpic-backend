@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Repository reads across every account; it never writes anything but
-// activity.
+// Repository reads across every account; it writes only activity and new
+// admins.
 type Repository struct {
 	db *pgxpool.Pool
 }
@@ -29,17 +30,33 @@ func date(t time.Time) string { return t.Format(dateLayout) }
 
 func parseDate(s string) (time.Time, error) { return time.Parse(dateLayout, s) }
 
-// Account returns the user's email and whether they sign in with
-// two-factor; found=false when there is no such user.
-func (r *Repository) Account(ctx context.Context, userID string) (email string, twoFactor, found bool, err error) {
-	err = r.db.QueryRow(ctx, `SELECT email, two_factor_secret IS NOT NULL FROM users WHERE id = $1`, userID).Scan(&email, &twoFactor)
+// TwoFactor tells whether the user signs in with two-factor; false when
+// there is no such user.
+func (r *Repository) TwoFactor(ctx context.Context, userID string) (bool, error) {
+	var on bool
+	err := r.db.QueryRow(ctx, `SELECT two_factor_secret IS NOT NULL FROM users WHERE id = $1`, userID).Scan(&on)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, false, nil
+		return false, nil
 	}
 	if err != nil {
-		return "", false, false, fmt.Errorf("admin account: %w", err)
+		return false, fmt.Errorf("admin two-factor: %w", err)
 	}
-	return email, twoFactor, true, nil
+	return on, nil
+}
+
+// CreateAdmin inserts an admin account; ErrEmailExists when the email is
+// taken.
+func (r *Repository) CreateAdmin(ctx context.Context, email, name, passwordHash, locale string) error {
+	_, err := r.db.Exec(ctx, `INSERT INTO users (email, first_name, role, password_hash, locale) VALUES ($1, $2, 'admin', $3, $4)`,
+		email, name, passwordHash, locale)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return ErrEmailExists
+	}
+	if err != nil {
+		return fmt.Errorf("create admin: %w", err)
+	}
+	return nil
 }
 
 // MarkActive records that the user used Helpic on the day.
@@ -51,15 +68,19 @@ func (r *Repository) MarkActive(ctx context.Context, userID string, day time.Tim
 	return nil
 }
 
+// Admins are left out of the statistics: they are not users of Helpic. Their
+// activity is never recorded (Track skips them), so only the counts of
+// accounts need to.
+
 // Totals counts the app as it stands; today is the current day.
 func (r *Repository) Totals(ctx context.Context, today time.Time) (Totals, error) {
 	var t Totals
 	err := r.db.QueryRow(ctx, `SELECT
-			(SELECT count(*) FROM users),
+			(SELECT count(*) FROM users WHERE role <> 'admin'),
 			(SELECT count(*) FROM users WHERE role = 'freelancer'),
 			(SELECT count(*) FROM users WHERE role = 'client'),
 			(SELECT count(*) FROM pending_signups WHERE expires_at > now()),
-			(SELECT count(*) FROM users WHERE two_factor_secret IS NOT NULL),
+			(SELECT count(*) FROM users WHERE two_factor_secret IS NOT NULL AND role <> 'admin'),
 			(SELECT count(*) FROM user_activity WHERE day = $1::date),
 			(SELECT count(DISTINCT user_id) FROM user_activity WHERE day > $1::date - 7),
 			(SELECT count(DISTINCT user_id) FROM user_activity WHERE day > $1::date - 30),
@@ -80,7 +101,7 @@ func (r *Repository) Period(ctx context.Context, from, until, start, end time.Ti
 	var p Period
 	err := r.db.QueryRow(ctx, `SELECT
 			(SELECT count(DISTINCT user_id) FROM user_activity WHERE day >= $1::date AND day < $2::date),
-			(SELECT count(*) FROM users WHERE created_at >= $3 AND created_at < $4),
+			(SELECT count(*) FROM users WHERE created_at >= $3 AND created_at < $4 AND role <> 'admin'),
 			(SELECT count(*) FROM tasks WHERE created_at >= $3 AND created_at < $4),
 			(SELECT count(*) FROM tasks WHERE completed_at >= $3 AND completed_at < $4)`,
 		date(from), date(until), start, end,
@@ -97,7 +118,7 @@ func (r *Repository) Days(ctx context.Context, from, to, start time.Time, zone s
 	rows, err := r.db.Query(ctx, `WITH days AS (
 			SELECT generate_series($1::date, $2::date, interval '1 day')::date AS day
 		), signups AS (
-			SELECT (created_at AT TIME ZONE $3)::date AS day, count(*) AS n FROM users WHERE created_at >= $4 GROUP BY 1
+			SELECT (created_at AT TIME ZONE $3)::date AS day, count(*) AS n FROM users WHERE created_at >= $4 AND role <> 'admin' GROUP BY 1
 		), active AS (
 			SELECT day, count(*) AS n FROM user_activity WHERE day BETWEEN $1::date AND $2::date GROUP BY 1
 		), created AS (
@@ -177,7 +198,8 @@ func (r *Repository) Accounts(ctx context.Context, f AccountFilter, today time.T
 	const list = `WITH list AS (
 			SELECT ` + accountColumns + `
 			FROM users u
-			WHERE ($2 = '' OR u.email ILIKE '%' || $2 || '%' OR u.name ILIKE '%' || $2 || '%')
+			WHERE u.role <> 'admin'
+			  AND ($2 = '' OR u.email ILIKE '%' || $2 || '%' OR u.name ILIKE '%' || $2 || '%')
 			  AND ($3 = '' OR u.role = $3)
 		)
 		SELECT * FROM list
@@ -234,7 +256,7 @@ func (r *Repository) AccountDetail(ctx context.Context, id string, today, since 
 		LEFT JOIN companies own ON own.owner_id = u.id
 		LEFT JOIN company_members m ON m.user_id = u.id
 		LEFT JOIN companies mc ON mc.id = m.company_id
-		WHERE u.id = $2`, date(today), id, date(since)),
+		WHERE u.id = $2 AND u.role <> 'admin'`, date(today), id, date(since)),
 		&d.Locale, &d.Currency, &teamName, &teamRole, &teamMembers, &d.Partners, &d.ReportsSent, &d.ReportsPaid,
 		&d.SecondsLogged, &d.Comments, &d.Telegram, &d.Sessions, &d.LastSignIn, &days)
 	if errors.Is(err, pgx.ErrNoRows) {

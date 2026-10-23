@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/pmaxis/helpic/internal/middleware"
+	"github.com/pmaxis/helpic/internal/user"
 )
 
 // Activity records the days people use Helpic: the first signed-in request
@@ -26,11 +27,12 @@ func NewActivity(repo *Repository, svc *Service) *Activity {
 	return &Activity{repo: repo, svc: svc, seen: map[string]bool{}}
 }
 
-// Track is middleware that marks the signed-in user active today. It never
-// fails the request: activity is for statistics only. Must run after Auth.
+// Track is middleware that marks the signed-in user active today; admins
+// aren't counted. It never fails the request: activity is for statistics
+// only. Must run after Auth.
 func (a *Activity) Track(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if userID, ok := middleware.UserID(r.Context()); ok {
+		if userID, ok := middleware.UserID(r.Context()); ok && middleware.Role(r.Context()) != user.RoleAdmin {
 			a.mark(r, userID)
 		}
 		next.ServeHTTP(w, r)

@@ -1,15 +1,5 @@
 basePath: /api/v1
 definitions:
-  admin.AccessResponse:
-    properties:
-      admin:
-        description: Admin is on when their email is one of ADMIN_EMAILS.
-        type: boolean
-      two_factor:
-        description: TwoFactor is on when they sign in with two-factor; the panel
-          needs it.
-        type: boolean
-    type: object
   admin.AccountDTO:
     properties:
       active_days:
@@ -1477,24 +1467,6 @@ info:
   title: Helpic API
   version: "1.0"
 paths:
-  /admin/access:
-    get:
-      description: Anyone signed in may ask. The panel opens to admins who sign in
-        with two-factor.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/admin.AccessResponse'
-        "401":
-          description: Not signed in
-          schema:
-            $ref: '#/definitions/response.ErrorEnvelope'
-      summary: Whether you're an admin
-      tags:
-      - admin
   /admin/stats:
     get:
       description: Totals now; the last days (today included) against the days before
