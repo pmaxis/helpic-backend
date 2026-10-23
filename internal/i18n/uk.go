@@ -286,6 +286,8 @@ var uk = map[string]string{
 	"Choose warn or error":                               "Оберіть: попередження чи помилки",
 	"Ask for 1 to 200 entries":                           "Можна попросити від 1 до 200 записів",
 	"Ask for 1 to 100 actions":                           "Можна попросити від 1 до 100 дій",
+	"Ask for 1 to 100 entries":                           "Можна попросити від 1 до 100 записів",
+	"Choose queued, failed or sent":                      "Оберіть: у черзі, не надіслані чи надіслані",
 	"Keep the reason under 500 characters":               "Причина має бути коротшою за 500 символів",
 	"This account is blocked. If you think it's a mistake, write to Helpic's support.": "Цей акаунт заблоковано. Якщо це помилка, напишіть у підтримку Helpic.",
 

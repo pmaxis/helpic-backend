@@ -131,11 +131,8 @@ func (r *Repository) Act(ctx context.Context, adminID, id, action, reason string
 	if !changed {
 		return false, nil
 	}
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO admin_actions (admin_id, admin_email, action, target_id, target_email, reason)
-		SELECT id, email, $2, $3, $4, $5 FROM users WHERE id = $1`,
-		adminID, action, id, target, reason); err != nil {
-		return false, fmt.Errorf("record admin action: %w", err)
+	if err := record(ctx, tx, adminID, action, target, reason); err != nil {
+		return false, err
 	}
 	return true, tx.Commit(ctx)
 }

@@ -7,7 +7,9 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server \
+# The build the admin panel shows, e.g. a git tag or commit.
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X github.com/pmaxis/helpic/internal/server.Version=${VERSION}" -o /out/server ./cmd/server \
     && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/cli ./cmd/cli
 
 # --- API ---------------------------------------------------------------------
