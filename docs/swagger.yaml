@@ -99,6 +99,42 @@ definitions:
       tasks_created:
         type: integer
     type: object
+  admin.LogDTO:
+    properties:
+      at:
+        type: string
+      attrs:
+        additionalProperties: {}
+        description: |-
+          Attrs are what was logged with it: for a request the method, route,
+          status, duration, IP and who made it; for a failure the error.
+        type: object
+      id:
+        type: integer
+      level:
+        type: string
+      message:
+        type: string
+    type: object
+  admin.LogsResponse:
+    properties:
+      errors:
+        type: integer
+      limit:
+        type: integer
+      logs:
+        items:
+          $ref: '#/definitions/admin.LogDTO'
+        type: array
+      page:
+        type: integer
+      total:
+        type: integer
+      warnings:
+        description: Warnings and Errors are counted over the last 24 hours, whatever
+          the filter.
+        type: integer
+    type: object
   admin.PeriodDTO:
     properties:
       active:
@@ -1467,6 +1503,50 @@ info:
   title: Helpic API
   version: "1.0"
 paths:
+  /admin/logs:
+    get:
+      description: 'The last 30 days, the newest first: failed requests, panics, background
+        jobs. A page at a time, with how many match in all. Requests show their route,
+        never the path.'
+      parameters:
+      - description: warn or error
+        in: query
+        name: level
+        type: string
+      - description: Part of the message or of any attribute
+        in: query
+        name: q
+        type: string
+      - description: The page, from 1
+        in: query
+        name: page
+        type: integer
+      - description: Entries per page, 50 by default, at most 200
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/admin.LogsResponse'
+        "400":
+          description: Invalid level, page or limit
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: The server's warnings and errors
+      tags:
+      - admin
   /admin/stats:
     get:
       description: Totals now; the last days (today included) against the days before

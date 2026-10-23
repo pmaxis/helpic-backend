@@ -8,6 +8,70 @@
     },
     "basePath": "/api/v1",
     "paths": {
+        "/admin/logs": {
+            "get": {
+                "description": "The last 30 days, the newest first: failed requests, panics, background jobs. A page at a time, with how many match in all. Requests show their route, never the path.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "The server's warnings and errors",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "warn or error",
+                        "name": "level",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Part of the message or of any attribute",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "The page, from 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Entries per page, 50 by default, at most 200",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/admin.LogsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid level, page or limit",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/stats": {
             "get": {
                 "description": "Totals now; the last days (today included) against the days before them, also day by day. Days are the app's time zone's. Counts only, never anyone's content.",
@@ -5554,6 +5618,55 @@
                     "type": "integer"
                 },
                 "tasks_created": {
+                    "type": "integer"
+                }
+            }
+        },
+        "admin.LogDTO": {
+            "type": "object",
+            "properties": {
+                "at": {
+                    "type": "string"
+                },
+                "attrs": {
+                    "description": "Attrs are what was logged with it: for a request the method, route,\nstatus, duration, IP and who made it; for a failure the error.",
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "level": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "admin.LogsResponse": {
+            "type": "object",
+            "properties": {
+                "errors": {
+                    "type": "integer"
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "logs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/admin.LogDTO"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "warnings": {
+                    "description": "Warnings and Errors are counted over the last 24 hours, whatever the filter.",
                     "type": "integer"
                 }
             }

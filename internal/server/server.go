@@ -15,6 +15,7 @@ import (
 
 	_ "github.com/pmaxis/helpic/docs" // the generated Swagger spec (make swagger)
 	"github.com/pmaxis/helpic/internal/admin"
+	"github.com/pmaxis/helpic/internal/applog"
 	"github.com/pmaxis/helpic/internal/attachments"
 	"github.com/pmaxis/helpic/internal/auth"
 	"github.com/pmaxis/helpic/internal/board"
@@ -182,7 +183,8 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	// --- the admin panel: how Helpic is used, for admin accounts -----------
 	adminRepo := admin.NewRepository(pool)
 	adminSvc := admin.NewService(adminRepo, cfg.Location)
-	adminHandler := admin.NewHandler(adminSvc)
+	appLogs := applog.NewRepository(pool)
+	adminHandler := admin.NewHandler(adminSvc, appLogs)
 	activity := admin.NewActivity(adminRepo, adminSvc)
 
 	// --- router --------------------------------------------------------------
@@ -275,9 +277,9 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		response.Error(w, http.StatusMethodNotAllowed, response.CodeMethodNotAllowed, "Method not allowed")
 	})
 
-	// Expired sessions, connect links nobody opened and old reminders.
+	// Expired sessions, connect links nobody opened, old reminders and old app logs.
 	cleanup := func(ctx context.Context) error {
-		return errors.Join(authSvc.Cleanup(ctx), profileSvc.Cleanup(ctx), telegramSvc.Cleanup(ctx), remindersSvc.Cleanup(ctx), outbox.Cleanup(ctx))
+		return errors.Join(authSvc.Cleanup(ctx), profileSvc.Cleanup(ctx), telegramSvc.Cleanup(ctx), remindersSvc.Cleanup(ctx), outbox.Cleanup(ctx), appLogs.Cleanup(ctx))
 	}
 
 	background := []func(context.Context){
