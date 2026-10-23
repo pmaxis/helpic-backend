@@ -237,13 +237,14 @@ type SignInsResponse struct {
 	Total   int         `json:"total"`
 }
 
-// SignIns handles GET /api/v1/admin/sign-ins?failed={bool}&page={n}&limit={n}.
+// SignIns handles GET /api/v1/admin/sign-ins?failed={bool}&admin={id}&page={n}&limit={n}.
 //
 //	@Summary		Sign-ins to admin accounts
 //	@Description	Every sign-in to an admin account, and every attempt that got the password or the code wrong, the newest first: when, from which address and browser.
 //	@Tags			admin
 //	@Produce		json
 //	@Param			failed	query		bool					false	"Only the attempts that didn't go through"
+//	@Param			admin	query		string					false	"Only this admin's"
 //	@Param			page	query		int						false	"The page, from 1"
 //	@Param			limit	query		int						false	"Sign-ins per page, 25 by default, at most 100"
 //	@Success		200		{object}	SignInsResponse			"OK"
@@ -253,7 +254,7 @@ type SignInsResponse struct {
 //	@Router			/admin/sign-ins [get]
 func (h *Handler) SignIns(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	f := SignInFilter{Failed: q.Get("failed") == "true"}
+	f := SignInFilter{Failed: q.Get("failed") == "true", AdminID: q.Get("admin")}
 	var ok bool
 	if f.Page, f.Limit, ok = paging(w, q, mailPage, maxMailPage, "Ask for 1 to 100 entries"); !ok {
 		return
@@ -268,4 +269,41 @@ func (h *Handler) SignIns(w http.ResponseWriter, r *http.Request) {
 		out.SignIns = append(out.SignIns, SignInDTO{ID: s.ID, At: s.At, AdminID: s.AdminID, AdminEmail: s.AdminEmail, Outcome: s.Outcome, IP: s.IP, UserAgent: s.UserAgent})
 	}
 	response.JSON(w, http.StatusOK, out)
+}
+
+// EndAdminSession handles POST /api/v1/admin/admins/{id}/sessions/{session}/end.
+//
+//	@Summary		Sign an admin out of one device
+//	@Description	Ends one of an admin's sessions, a stolen laptop's say, and records it with the reason; the admin gets an email and the admins' alert chat hears of it. Asks for the admin's own two-factor code again. Locking an admin out is the server's cli's, not the panel's.
+//	@Tags			admin
+//	@Accept			json
+//	@Param			id		path	string			true	"The admin's user ID"
+//	@Param			session	path	string			true	"Session ID"
+//	@Param			body	body	ActionRequest	true	"Request body"
+//	@Success		204
+//	@Failure		400	{object}	response.ErrorEnvelope	"Reason too long, or the code missing or wrong (field code)"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not an admin, or two-factor is off"
+//	@Failure		404	{object}	response.ErrorEnvelope	"No such admin, or no such session of theirs"
+//	@Failure		429	{object}	response.ErrorEnvelope	"Too many wrong codes"
+//	@Router			/admin/admins/{id}/sessions/{session}/end [post]
+func (h *Handler) EndAdminSession(w http.ResponseWriter, r *http.Request) {
+	adminID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	reason, ok := h.readAction(w, r, adminID)
+	if !ok {
+		return
+	}
+	err := h.svc.EndAdminSession(r.Context(), adminID, chi.URLParam(r, "id"), chi.URLParam(r, "session"), reason)
+	if errors.Is(err, ErrAdminNotFound) || errors.Is(err, ErrSessionNotFound) {
+		response.Error(w, http.StatusNotFound, response.CodeNotFound, "Resource not found")
+		return
+	}
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

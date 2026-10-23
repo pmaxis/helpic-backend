@@ -94,6 +94,8 @@ type SignInRecord struct {
 type SignInFilter struct {
 	// Failed keeps only the attempts that didn't go through.
 	Failed bool
+	// AdminID keeps one admin's; empty for all.
+	AdminID string
 	Page   int
 	Limit  int
 }
@@ -127,15 +129,15 @@ func (r *Repository) RecordSignIn(ctx context.Context, in auth.SignIn) error {
 
 // SignIns lists a page of sign-ins, the newest first.
 func (r *Repository) SignIns(ctx context.Context, f SignInFilter) ([]SignInRecord, int, error) {
-	const where = `WHERE (NOT $1 OR outcome <> 'ok')`
+	const where = `WHERE (NOT $1 OR outcome <> 'ok') AND ($4 = '' OR admin_id::text = $4)`
 	var total int
-	if err := r.db.QueryRow(ctx, `SELECT count(*) FROM admin_sign_ins `+where, f.Failed).Scan(&total); err != nil {
+	if err := r.db.QueryRow(ctx, `SELECT count(*) FROM admin_sign_ins WHERE (NOT $1 OR outcome <> 'ok') AND ($2 = '' OR admin_id::text = $2)`, f.Failed, f.AdminID).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count admin sign-ins: %w", err)
 	}
 	rows, err := r.db.Query(ctx, `SELECT id, at, admin_id, admin_email, outcome, ip, user_agent
 		FROM admin_sign_ins `+where+`
 		ORDER BY id DESC
-		LIMIT $2 OFFSET $3`, f.Failed, f.Limit, (f.Page-1)*f.Limit)
+		LIMIT $2 OFFSET $3`, f.Failed, f.Limit, (f.Page-1)*f.Limit, f.AdminID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list admin sign-ins: %w", err)
 	}

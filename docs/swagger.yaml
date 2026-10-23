@@ -1864,6 +1864,57 @@ paths:
       summary: Admins
       tags:
       - admin
+  /admin/admins/{id}/sessions/{session}/end:
+    post:
+      consumes:
+      - application/json
+      description: Ends one of an admin's sessions, a stolen laptop's say, and records
+        it with the reason; the admin gets an email and the admins' alert chat hears
+        of it. Asks for the admin's own two-factor code again. Locking an admin out
+        is the server's cli's, not the panel's.
+      parameters:
+      - description: The admin's user ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: session
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/admin.ActionRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Reason too long, or the code missing or wrong (field code)
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: No such admin, or no such session of theirs
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many wrong codes
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Sign an admin out of one device
+      tags:
+      - admin
   /admin/emails:
     get:
       description: 'The emails Helpic sent or is sending, the newest first, kept for
@@ -2062,6 +2113,10 @@ paths:
         in: query
         name: failed
         type: boolean
+      - description: Only this admin's
+        in: query
+        name: admin
+        type: string
       - description: The page, from 1
         in: query
         name: page

@@ -111,6 +111,78 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/admins/{id}/sessions/{session}/end": {
+            "post": {
+                "description": "Ends one of an admin's sessions, a stolen laptop's say, and records it with the reason; the admin gets an email and the admins' alert chat hears of it. Asks for the admin's own two-factor code again. Locking an admin out is the server's cli's, not the panel's.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Sign an admin out of one device",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The admin's user ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "session",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/admin.ActionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Reason too long, or the code missing or wrong (field code)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "No such admin, or no such session of theirs",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many wrong codes",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/emails": {
             "get": {
                 "description": "The emails Helpic sent or is sending, the newest first, kept for a week: whom to, the subject and how sending went. Never the body, which can hold one-time links.",
@@ -402,6 +474,12 @@ const docTemplate = `{
                         "type": "boolean",
                         "description": "Only the attempts that didn't go through",
                         "name": "failed",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Only this admin's",
+                        "name": "admin",
                         "in": "query"
                     },
                     {

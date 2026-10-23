@@ -196,6 +196,12 @@ func (w *Watcher) fromUnsure(key string, unsure map[int]bool) bool {
 	return false
 }
 
+// Tell sends a message at once, for what the admins should hear about as it
+// happens rather than on the next check.
+func (w *Watcher) Tell(ctx context.Context, title, detail string) error {
+	return w.send(ctx, w.format("🔐", title, detail))
+}
+
 // Test sends a message saying who asked for it, to see alerts arrive.
 func (w *Watcher) Test(ctx context.Context, by string) error {
 	return w.send(ctx, w.format("✅", w.t("Alerts work"), w.t("A test alert, sent by %s.", by)))
