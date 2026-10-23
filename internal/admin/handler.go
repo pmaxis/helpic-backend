@@ -61,6 +61,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Get("/users/{id}/sessions", h.Sessions)
 		r.Post("/users/{id}/sessions/{session}/end", h.EndSession)
 		r.Get("/admins", h.Admins)
+		r.Post("/admins/{id}/sessions/{session}/end", h.EndAdminSession)
 		r.Get("/sign-ins", h.SignIns)
 		r.Get("/limits", h.Limits)
 		r.Post("/limits/clear", h.ClearLimit)

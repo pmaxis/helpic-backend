@@ -129,4 +129,9 @@ func TestAdmin_ListAndSignIns(t *testing.T) {
 	if n := decode(t, resp)["total"]; n != 2.0 {
 		t.Fatalf("failed sign-ins = %v", n)
 	}
+	resp = get(t, boss, srv.URL+"/api/v1/admin/sign-ins?admin="+admins[1].(map[string]any)["id"].(string))
+	wantStatus(t, resp, http.StatusOK)
+	if n := decode(t, resp)["total"]; n != 1.0 {
+		t.Fatalf("the second admin's sign-ins = %v", n)
+	}
 }

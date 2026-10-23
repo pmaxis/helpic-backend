@@ -19,6 +19,9 @@ type Service struct {
 	// emails and signupLinks are the outbox and sign-ups, for the panel.
 	emails      EmailQueue
 	signupLinks SignupLinks
+	// alerts tell the admins' chat, in alertLocale; nil when alerts are off.
+	alerts      Notifier
+	alertLocale string
 }
 
 // NewService creates an admin Service. loc is the app's time zone, whose days

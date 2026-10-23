@@ -223,6 +223,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		}
 		watcher = alerts.NewWatcher(alertBot, cfg.AlertLocale, checks...)
 		adminHandler.UseAlerts(watcher)
+		adminSvc.UseAlerts(watcher, cfg.AlertLocale)
 	}
 	adminHandler.UseSystem(admin.System{
 		Version: Version,
