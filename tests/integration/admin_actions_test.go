@@ -8,11 +8,35 @@ import (
 	"testing"
 )
 
+// adminCodes hands out an admin's recovery codes, one for each change that
+// asks for the code again: an app code can't be used twice in 30 seconds.
+type adminCodes []string
+
+func (c *adminCodes) next(t *testing.T) string {
+	t.Helper()
+	if len(*c) == 0 {
+		t.Fatal("out of recovery codes")
+	}
+	code := (*c)[0]
+	*c = (*c)[1:]
+	return code
+}
+
+// stepUpAdmin signs in a new admin with two-factor on and returns its
+// recovery codes for the changes that ask again.
+func stepUpAdmin(t *testing.T, srv *httptest.Server, email string) (*http.Client, *adminCodes) {
+	t.Helper()
+	admin := signInAdmin(t, srv, email)
+	_, codes := turnOnTwoFactor(t, srv, admin)
+	c := adminCodes(codes)
+	return admin, &c
+}
+
 // adminAct does an action on an account and returns the account as it is
 // after.
-func adminAct(t *testing.T, srv *httptest.Server, admin *http.Client, id, action, reason string) map[string]any {
+func adminAct(t *testing.T, srv *httptest.Server, admin *http.Client, codes *adminCodes, id, action, reason string) map[string]any {
 	t.Helper()
-	resp := post(t, admin, srv.URL+"/api/v1/admin/users/"+id+"/"+action, map[string]string{"reason": reason})
+	resp := post(t, admin, srv.URL+"/api/v1/admin/users/"+id+"/"+action, map[string]string{"reason": reason, "code": codes.next(t)})
 	wantStatus(t, resp, http.StatusOK)
 	return field(decode(t, resp), "user")
 }
@@ -26,12 +50,11 @@ func adminActions(t *testing.T, srv *httptest.Server, admin *http.Client, query 
 
 func TestAdmin_BlockAndUnblock(t *testing.T) {
 	srv, _ := newAPI(t)
-	boss := signInAdmin(t, srv, "boss@example.com")
-	turnOnTwoFactor(t, srv, boss)
+	boss, codes := stepUpAdmin(t, srv, "boss@example.com")
 	dev := signUpFreelancer(t, srv, "dev@example.com")
 	id := myID(t, srv, dev)
 
-	u := adminAct(t, srv, boss, id, "block", "  Spam  ")
+	u := adminAct(t, srv, boss, codes, id, "block", "  Spam  ")
 	if u["blocked_at"] == nil || u["sessions"] != 0.0 {
 		t.Fatalf("blocked = %v", u)
 	}
@@ -52,12 +75,12 @@ func TestAdmin_BlockAndUnblock(t *testing.T) {
 	}
 
 	// Blocking again changes nothing and isn't recorded twice.
-	adminAct(t, srv, boss, id, "block", "")
+	adminAct(t, srv, boss, codes, id, "block", "")
 	if n := adminActions(t, srv, boss, "")["total"]; n != 1.0 {
 		t.Fatalf("actions after blocking twice = %v", n)
 	}
 
-	if u := adminAct(t, srv, boss, id, "unblock", "Appealed"); u["blocked_at"] != nil {
+	if u := adminAct(t, srv, boss, codes, id, "unblock", "Appealed"); u["blocked_at"] != nil {
 		t.Fatalf("unblocked = %v", u)
 	}
 	wantStatus(t, login(t, srv, newClient(), "dev@example.com", "supersecret1"), http.StatusOK)
@@ -78,21 +101,20 @@ func TestAdmin_BlockAndUnblock(t *testing.T) {
 
 func TestAdmin_EndSessionsAndResetTwoFactor(t *testing.T) {
 	srv, _ := newAPI(t)
-	boss := signInAdmin(t, srv, "boss@example.com")
-	turnOnTwoFactor(t, srv, boss)
+	boss, codes := stepUpAdmin(t, srv, "boss@example.com")
 	dev := signUpFreelancer(t, srv, "dev@example.com")
 	id := myID(t, srv, dev)
 
-	if u := adminAct(t, srv, boss, id, "end-sessions", ""); u["sessions"] != 0.0 {
+	if u := adminAct(t, srv, boss, codes, id, "end-sessions", ""); u["sessions"] != 0.0 {
 		t.Fatalf("after ending sessions = %v", u)
 	}
 	wantStatus(t, get(t, dev, srv.URL+"/api/v1/me"), http.StatusUnauthorized)
 	// No sessions left: nothing to end, nothing recorded.
-	adminAct(t, srv, boss, id, "end-sessions", "")
+	adminAct(t, srv, boss, codes, id, "end-sessions", "")
 
 	dev = signInAgain(t, srv, "dev@example.com")
 	turnOnTwoFactor(t, srv, dev)
-	u := adminAct(t, srv, boss, id, "reset-two-factor", "Lost the phone and the codes")
+	u := adminAct(t, srv, boss, codes, id, "reset-two-factor", "Lost the phone and the codes")
 	if u["two_factor"] != false || u["sessions"] != 0.0 {
 		t.Fatalf("after the reset = %v", u)
 	}
@@ -103,7 +125,7 @@ func TestAdmin_EndSessionsAndResetTwoFactor(t *testing.T) {
 		t.Fatalf("last email = %q", e.Subject)
 	}
 	// Two-factor is off now: resetting it again changes nothing.
-	adminAct(t, srv, boss, id, "reset-two-factor", "")
+	adminAct(t, srv, boss, codes, id, "reset-two-factor", "")
 
 	got := fmt.Sprint(actionNames(adminActions(t, srv, boss, "")))
 	if got != "[reset_two_factor end_sessions]" {
@@ -121,8 +143,7 @@ func actionNames(page map[string]any) []string {
 
 func TestAdmin_ActionsAreTheAdminsOnly(t *testing.T) {
 	srv, _ := newAPI(t)
-	boss := signInAdmin(t, srv, "boss@example.com")
-	turnOnTwoFactor(t, srv, boss)
+	boss, codes := stepUpAdmin(t, srv, "boss@example.com")
 	other := signInAdmin(t, srv, "other@example.com")
 	dev := signUpFreelancer(t, srv, "dev@example.com")
 	id := myID(t, srv, dev)
@@ -135,13 +156,22 @@ func TestAdmin_ActionsAreTheAdminsOnly(t *testing.T) {
 	}
 	// Admins' accounts and ones that don't exist can't be acted on.
 	for _, target := range []string{myID(t, srv, other), "00000000-0000-0000-0000-000000000000", "nope"} {
-		resp := post(t, boss, srv.URL+"/api/v1/admin/users/"+target+"/block", map[string]string{})
+		resp := post(t, boss, srv.URL+"/api/v1/admin/users/"+target+"/block", map[string]string{"code": codes.next(t)})
 		wantStatus(t, resp, http.StatusNotFound)
 		resp.Body.Close()
 	}
 	resp := post(t, boss, srv.URL+"/api/v1/admin/users/"+id+"/block", map[string]string{"reason": strings.Repeat("я", 501)})
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
+	// Every change asks for the code again: none, or a wrong one, changes nothing.
+	for _, code := range []string{"", "000000"} {
+		resp := post(t, boss, srv.URL+"/api/v1/admin/users/"+id+"/block", map[string]string{"code": code})
+		wantStatus(t, resp, http.StatusBadRequest)
+		if _, ok := field(field(decode(t, resp), "error"), "fields")["code"]; !ok {
+			t.Fatalf("code %q: no error on the field code", code)
+		}
+	}
+	wantStatus(t, get(t, dev, srv.URL+"/api/v1/me"), http.StatusOK)
 	wantStatus(t, get(t, dev, srv.URL+"/api/v1/admin/actions"), http.StatusForbidden)
 	if n := adminActions(t, srv, boss, "")["total"]; n != 0.0 {
 		t.Fatalf("actions = %v", n)

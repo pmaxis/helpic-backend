@@ -115,6 +115,11 @@ definitions:
     type: object
   admin.ActionRequest:
     properties:
+      code:
+        description: |-
+          Code is the admin's two-factor code, asked again for every change to
+          an account: a session someone else got hold of can't make one.
+        type: string
       reason:
         description: Reason says why, for the record; optional, at most 500 characters.
         type: string
@@ -131,6 +136,25 @@ definitions:
         type: integer
       total:
         type: integer
+    type: object
+  admin.AdminDTO:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      last_sign_in:
+        type: string
+      name:
+        type: string
+      sessions:
+        items:
+          $ref: '#/definitions/admin.SessionDTO'
+        type: array
+      two_factor:
+        type: boolean
     type: object
   admin.CheckDTO:
     properties:
@@ -332,6 +356,40 @@ definitions:
         type: string
       user_agent:
         type: string
+    type: object
+  admin.SignInDTO:
+    properties:
+      admin_email:
+        type: string
+      admin_id:
+        description: AdminID is null once the account is gone; the email stays.
+        type: string
+      at:
+        type: string
+      id:
+        type: integer
+      ip:
+        type: string
+      outcome:
+        description: |-
+          Outcome is ok, wrong_password, wrong_code or limited (too many wrong
+          codes before).
+        type: string
+      user_agent:
+        type: string
+    type: object
+  admin.SignInsResponse:
+    properties:
+      limit:
+        type: integer
+      page:
+        type: integer
+      sign_ins:
+        items:
+          $ref: '#/definitions/admin.SignInDTO'
+        type: array
+      total:
+        type: integer
     type: object
   admin.SignupDTO:
     properties:
@@ -1780,6 +1838,32 @@ paths:
       summary: What admins did
       tags:
       - admin
+  /admin/admins:
+    get:
+      description: Every admin account, the oldest first, with its last sign-in and
+        the devices it is signed in on. Admins are made with cli create-admin only.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: admins
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/admin.AdminDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Admins
+      tags:
+      - admin
   /admin/emails:
     get:
       description: 'The emails Helpic sent or is sending, the newest first, kept for
@@ -1966,6 +2050,46 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: The server's warnings and errors
+      tags:
+      - admin
+  /admin/sign-ins:
+    get:
+      description: 'Every sign-in to an admin account, and every attempt that got
+        the password or the code wrong, the newest first: when, from which address
+        and browser.'
+      parameters:
+      - description: Only the attempts that didn't go through
+        in: query
+        name: failed
+        type: boolean
+      - description: The page, from 1
+        in: query
+        name: page
+        type: integer
+      - description: Sign-ins per page, 25 by default, at most 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/admin.SignInsResponse'
+        "400":
+          description: Invalid page or limit
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Sign-ins to admin accounts
       tags:
       - admin
   /admin/signups:
@@ -2237,9 +2361,10 @@ paths:
       - application/json
       description: block stops the account signing in and signs it out; unblock lets
         it in again; end-sessions signs it out everywhere; reset-two-factor turns
-        its two-factor sign-in off, signs it out and emails it. Each is recorded with
-        the reason when it changes something; doing it again changes nothing. Admins'
-        accounts can't be acted on.
+        its two-factor sign-in off, signs it out and emails it. Each asks for the
+        admin's two-factor code again, and is recorded with the reason when it changes
+        something; doing it again changes nothing. Admins' accounts can't be acted
+        on.
       parameters:
       - description: User ID
         in: path
@@ -2267,7 +2392,7 @@ paths:
               $ref: '#/definitions/admin.AccountDetailDTO'
             type: object
         "400":
-          description: Reason too long
+          description: Reason too long, or the code missing or wrong (field code)
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
         "401":
@@ -2280,6 +2405,10 @@ paths:
             $ref: '#/definitions/response.ErrorEnvelope'
         "404":
           description: No such account
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many wrong codes
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Act on an account
@@ -2326,7 +2455,8 @@ paths:
       consumes:
       - application/json
       description: Ends one of the account's sessions at once and records it with
-        the reason; the other devices stay signed in.
+        the reason; the other devices stay signed in. Asks for the admin's two-factor
+        code again.
       parameters:
       - description: User ID
         in: path
@@ -2354,7 +2484,7 @@ paths:
               $ref: '#/definitions/admin.AccountDetailDTO'
             type: object
         "400":
-          description: Reason too long
+          description: Reason too long, or the code missing or wrong (field code)
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
         "401":
@@ -2367,6 +2497,10 @@ paths:
             $ref: '#/definitions/response.ErrorEnvelope'
         "404":
           description: No such account, or no such session of it
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many wrong codes
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Sign an account out of one device

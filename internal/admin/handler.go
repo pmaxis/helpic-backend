@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/pmaxis/helpic/internal/applog"
+	"github.com/pmaxis/helpic/internal/auth"
 	"github.com/pmaxis/helpic/internal/request"
 	"github.com/pmaxis/helpic/internal/response"
 	"github.com/pmaxis/helpic/internal/user"
@@ -19,6 +21,7 @@ import (
 // Handler exposes the admin panel over HTTP.
 type Handler struct {
 	svc    *Service
+	codes  CodeChecker
 	logs   *applog.Repository
 	system System
 	alerts AlertTester
@@ -28,6 +31,17 @@ type Handler struct {
 // errors.
 func NewHandler(svc *Service, logs *applog.Repository) *Handler {
 	return &Handler{svc: svc, logs: logs}
+}
+
+// CodeChecker checks an admin's two-factor code.
+type CodeChecker interface {
+	ConfirmCode(ctx context.Context, userID, code string) error
+}
+
+// UseCodes lets the panel ask for a two-factor code before it changes an
+// account. Without it, every such change is refused.
+func (h *Handler) UseCodes(c CodeChecker) {
+	h.codes = c
 }
 
 // Routes mounts the endpoints. Must be called inside an authenticated group;
@@ -46,6 +60,8 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Post("/users/{id}/reset-two-factor", h.act(ActionResetTwoFactor))
 		r.Get("/users/{id}/sessions", h.Sessions)
 		r.Post("/users/{id}/sessions/{session}/end", h.EndSession)
+		r.Get("/admins", h.Admins)
+		r.Get("/sign-ins", h.SignIns)
 		r.Get("/limits", h.Limits)
 		r.Post("/limits/clear", h.ClearLimit)
 		r.Get("/emails", h.Emails)
@@ -455,11 +471,15 @@ func (h *Handler) Logs(w http.ResponseWriter, r *http.Request) {
 type ActionRequest struct {
 	// Reason says why, for the record; optional, at most 500 characters.
 	Reason string `json:"reason"`
+	// Code is the admin's two-factor code, asked again for every change to
+	// an account: a session someone else got hold of can't make one.
+	Code string `json:"code"`
 }
 
-// readReason reads an ActionRequest's reason, answering 400 itself when it
-// is too long.
-func readReason(w http.ResponseWriter, r *http.Request) (string, bool) {
+// readAction reads an ActionRequest and checks its code against the admin
+// adminID, answering itself when the reason is too long or the code is
+// missing or wrong, and returns the reason.
+func (h *Handler) readAction(w http.ResponseWriter, r *http.Request, adminID string) (string, bool) {
 	var req ActionRequest
 	if !request.Decode(w, r, &req) {
 		return "", false
@@ -469,6 +489,18 @@ func readReason(w http.ResponseWriter, r *http.Request) (string, bool) {
 		response.ValidationError(w, map[string]string{"reason": "Keep the reason under 500 characters"})
 		return "", false
 	}
+	if strings.TrimSpace(req.Code) == "" {
+		response.ValidationError(w, map[string]string{"code": "Enter the code from your authenticator app"})
+		return "", false
+	}
+	err := h.codes.ConfirmCode(r.Context(), adminID, req.Code)
+	if auth.WriteTwoFactorError(w, err) {
+		return "", false
+	}
+	if err != nil {
+		response.Internal(w, err)
+		return "", false
+	}
 	return reason, true
 }
 
@@ -476,7 +508,7 @@ func readReason(w http.ResponseWriter, r *http.Request) (string, bool) {
 // end-sessions and reset-two-factor.
 //
 //	@Summary		Act on an account
-//	@Description	block stops the account signing in and signs it out; unblock lets it in again; end-sessions signs it out everywhere; reset-two-factor turns its two-factor sign-in off, signs it out and emails it. Each is recorded with the reason when it changes something; doing it again changes nothing. Admins' accounts can't be acted on.
+//	@Description	block stops the account signing in and signs it out; unblock lets it in again; end-sessions signs it out everywhere; reset-two-factor turns its two-factor sign-in off, signs it out and emails it. Each asks for the admin's two-factor code again, and is recorded with the reason when it changes something; doing it again changes nothing. Admins' accounts can't be acted on.
 //	@Tags			admin
 //	@Accept			json
 //	@Produce		json
@@ -484,10 +516,11 @@ func readReason(w http.ResponseWriter, r *http.Request) (string, bool) {
 //	@Param			action	path		string						true	"block, unblock, end-sessions or reset-two-factor"
 //	@Param			body	body		ActionRequest				true	"Request body"
 //	@Success		200		{object}	map[string]AccountDetailDTO	"user, as it is now"
-//	@Failure		400		{object}	response.ErrorEnvelope		"Reason too long"
+//	@Failure		400		{object}	response.ErrorEnvelope		"Reason too long, or the code missing or wrong (field code)"
 //	@Failure		401		{object}	response.ErrorEnvelope		"Not signed in"
 //	@Failure		403		{object}	response.ErrorEnvelope		"Not an admin, or two-factor is off"
 //	@Failure		404		{object}	response.ErrorEnvelope		"No such account"
+//	@Failure		429		{object}	response.ErrorEnvelope		"Too many wrong codes"
 //	@Router			/admin/users/{id}/{action} [post]
 func (h *Handler) act(action string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -495,7 +528,7 @@ func (h *Handler) act(action string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		reason, ok := readReason(w, r)
+		reason, ok := h.readAction(w, r, adminID)
 		if !ok {
 			return
 		}

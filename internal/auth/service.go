@@ -79,6 +79,8 @@ type Service struct {
 	// per account, nil doesn't limit them (see UseTwoFactor).
 	sealer      *Sealer
 	codeGuesses ratelimit.Gate
+	// signIns hear about sign-ins (see OnSignIn).
+	signIns []func(context.Context, SignIn)
 }
 
 // NewService creates an auth Service.
@@ -130,10 +132,18 @@ func (s *Service) Login(ctx context.Context, p LoginParams, c Client) (user.User
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(p.Password)); err != nil {
+		s.signedIn(ctx, u, c, SignInWrongPassword)
 		return user.User{}, Tokens{}, ErrInvalidCredentials
 	}
 	if u.TwoFactor {
 		if err := s.secondFactor(ctx, u.ID, p.Code); err != nil {
+			var limit *CodeLimitError
+			switch {
+			case errors.Is(err, ErrTwoFactorCode):
+				s.signedIn(ctx, u, c, SignInWrongCode)
+			case errors.As(err, &limit):
+				s.signedIn(ctx, u, c, SignInLimited)
+			}
 			return user.User{}, Tokens{}, err
 		}
 	}
@@ -142,5 +152,42 @@ func (s *Service) Login(ctx context.Context, p LoginParams, c Client) (user.User
 	if err != nil {
 		return user.User{}, Tokens{}, err
 	}
+	s.signedIn(ctx, u, c, SignInOK)
 	return u, tokens, nil
+}
+
+// How a sign-in with a password went, as OnSignIn hears it. Asking for the
+// code after a right password is a step, not an outcome.
+const (
+	SignInOK            = "ok"
+	SignInWrongPassword = "wrong_password"
+	SignInWrongCode     = "wrong_code"
+	// SignInLimited is a code refused for too many wrong ones before it.
+	SignInLimited = "limited"
+)
+
+// SignIn is a sign-in with a password to an account that exists.
+type SignIn struct {
+	User    user.User
+	Client  Client
+	Outcome string
+}
+
+// OnSignIn calls fn after every sign-in to an account that exists, and
+// every attempt that got its password or code wrong.
+func (s *Service) OnSignIn(fn func(context.Context, SignIn)) {
+	s.signIns = append(s.signIns, fn)
+}
+
+func (s *Service) signedIn(ctx context.Context, u user.User, c Client, outcome string) {
+	for _, fn := range s.signIns {
+		fn(ctx, SignIn{User: u, Client: c, Outcome: outcome})
+	}
+}
+
+// ConfirmCode checks a code of the user, who has two-factor on, the way
+// signing in does: an app code not used before or an unused recovery code,
+// with wrong ones counted. For actions that ask for proof again.
+func (s *Service) ConfirmCode(ctx context.Context, userID, code string) error {
+	return s.secondFactor(ctx, userID, code)
 }

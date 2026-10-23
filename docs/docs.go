@@ -73,6 +73,44 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/admins": {
+            "get": {
+                "description": "Every admin account, the oldest first, with its last sign-in and the devices it is signed in on. Admins are made with cli create-admin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Admins",
+                "responses": {
+                    "200": {
+                        "description": "admins",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/admin.AdminDTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/emails": {
             "get": {
                 "description": "The emails Helpic sent or is sending, the newest first, kept for a week: whom to, the subject and how sending went. Never the body, which can hold one-time links.",
@@ -330,6 +368,64 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Invalid level, page or limit",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/sign-ins": {
+            "get": {
+                "description": "Every sign-in to an admin account, and every attempt that got the password or the code wrong, the newest first: when, from which address and browser.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Sign-ins to admin accounts",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Only the attempts that didn't go through",
+                        "name": "failed",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "The page, from 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Sign-ins per page, 25 by default, at most 100",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/admin.SignInsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid page or limit",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -786,7 +882,7 @@ const docTemplate = `{
         },
         "/admin/users/{id}/sessions/{session}/end": {
             "post": {
-                "description": "Ends one of the account's sessions at once and records it with the reason; the other devices stay signed in.",
+                "description": "Ends one of the account's sessions at once and records it with the reason; the other devices stay signed in. Asks for the admin's two-factor code again.",
                 "consumes": [
                     "application/json"
                 ],
@@ -833,7 +929,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Reason too long",
+                        "description": "Reason too long, or the code missing or wrong (field code)",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -855,13 +951,19 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
+                    },
+                    "429": {
+                        "description": "Too many wrong codes",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/admin/users/{id}/{action}": {
             "post": {
-                "description": "block stops the account signing in and signs it out; unblock lets it in again; end-sessions signs it out everywhere; reset-two-factor turns its two-factor sign-in off, signs it out and emails it. Each is recorded with the reason when it changes something; doing it again changes nothing. Admins' accounts can't be acted on.",
+                "description": "block stops the account signing in and signs it out; unblock lets it in again; end-sessions signs it out everywhere; reset-two-factor turns its two-factor sign-in off, signs it out and emails it. Each asks for the admin's two-factor code again, and is recorded with the reason when it changes something; doing it again changes nothing. Admins' accounts can't be acted on.",
                 "consumes": [
                     "application/json"
                 ],
@@ -908,7 +1010,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Reason too long",
+                        "description": "Reason too long, or the code missing or wrong (field code)",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -927,6 +1029,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "No such account",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many wrong codes",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -6333,6 +6441,10 @@ const docTemplate = `{
         "admin.ActionRequest": {
             "type": "object",
             "properties": {
+                "code": {
+                    "description": "Code is the admin's two-factor code, asked again for every change to\nan account: a session someone else got hold of can't make one.",
+                    "type": "string"
+                },
                 "reason": {
                     "description": "Reason says why, for the record; optional, at most 500 characters.",
                     "type": "string"
@@ -6356,6 +6468,35 @@ const docTemplate = `{
                 },
                 "total": {
                     "type": "integer"
+                }
+            }
+        },
+        "admin.AdminDTO": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_sign_in": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "sessions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/admin.SessionDTO"
+                    }
+                },
+                "two_factor": {
+                    "type": "boolean"
                 }
             }
         },
@@ -6641,6 +6782,54 @@ const docTemplate = `{
                 },
                 "user_agent": {
                     "type": "string"
+                }
+            }
+        },
+        "admin.SignInDTO": {
+            "type": "object",
+            "properties": {
+                "admin_email": {
+                    "type": "string"
+                },
+                "admin_id": {
+                    "description": "AdminID is null once the account is gone; the email stays.",
+                    "type": "string"
+                },
+                "at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "ip": {
+                    "type": "string"
+                },
+                "outcome": {
+                    "description": "Outcome is ok, wrong_password, wrong_code or limited (too many wrong\ncodes before).",
+                    "type": "string"
+                },
+                "user_agent": {
+                    "type": "string"
+                }
+            }
+        },
+        "admin.SignInsResponse": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "sign_ins": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/admin.SignInDTO"
+                    }
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },
