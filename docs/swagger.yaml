@@ -1,5 +1,195 @@
 basePath: /api/v1
 definitions:
+  admin.AccessResponse:
+    properties:
+      admin:
+        description: Admin is on when their email is one of ADMIN_EMAILS.
+        type: boolean
+      two_factor:
+        description: TwoFactor is on when they sign in with two-factor; the panel
+          needs it.
+        type: boolean
+    type: object
+  admin.AccountDTO:
+    properties:
+      active_days:
+        description: ActiveDays is on how many of the last 30 days they used Helpic.
+        type: integer
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      last_active:
+        description: LastActive is the last day they used Helpic, YYYY-MM-DD; null
+          if never.
+        type: string
+      name:
+        type: string
+      projects:
+        type: integer
+      role:
+        type: string
+      tasks:
+        type: integer
+      two_factor:
+        type: boolean
+    type: object
+  admin.AccountDetailDTO:
+    properties:
+      active_days:
+        description: ActiveDays is on how many of the last 30 days they used Helpic.
+        type: integer
+      active_on:
+        items:
+          type: string
+        type: array
+      active_since:
+        description: |-
+          ActiveSince is the Monday 26 weeks back; ActiveOn the days since then
+          they used Helpic, YYYY-MM-DD, oldest first.
+        type: string
+      comments:
+        type: integer
+      created_at:
+        type: string
+      currency:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      last_active:
+        description: LastActive is the last day they used Helpic, YYYY-MM-DD; null
+          if never.
+        type: string
+      last_sign_in:
+        type: string
+      locale:
+        type: string
+      name:
+        type: string
+      partners:
+        description: Partners are a freelancer's clients, or a client's freelancers.
+        type: integer
+      projects:
+        type: integer
+      reports_paid:
+        type: integer
+      reports_sent:
+        type: integer
+      role:
+        type: string
+      seconds_logged:
+        type: integer
+      sessions:
+        description: Sessions are their signed-in devices now.
+        type: integer
+      tasks:
+        type: integer
+      team:
+        $ref: '#/definitions/admin.TeamDTO'
+      telegram:
+        type: boolean
+      two_factor:
+        type: boolean
+    type: object
+  admin.DayDTO:
+    properties:
+      active:
+        type: integer
+      day:
+        description: Day is YYYY-MM-DD in the app's time zone.
+        type: string
+      signups:
+        type: integer
+      tasks_completed:
+        type: integer
+      tasks_created:
+        type: integer
+    type: object
+  admin.PeriodDTO:
+    properties:
+      active:
+        description: Active is how many people used Helpic on any of the days.
+        type: integer
+      new_users:
+        type: integer
+      tasks_completed:
+        type: integer
+      tasks_created:
+        type: integer
+    type: object
+  admin.StatsResponse:
+    properties:
+      days:
+        items:
+          $ref: '#/definitions/admin.DayDTO'
+        type: array
+      from:
+        description: From and To are the period's first and last day, YYYY-MM-DD.
+        type: string
+      period:
+        $ref: '#/definitions/admin.PeriodDTO'
+      previous:
+        $ref: '#/definitions/admin.PeriodDTO'
+      previous_days:
+        description: PreviousDays is the period before, as long, to compare with.
+        items:
+          $ref: '#/definitions/admin.DayDTO'
+        type: array
+      to:
+        type: string
+      totals:
+        $ref: '#/definitions/admin.TotalsDTO'
+    type: object
+  admin.TeamDTO:
+    properties:
+      members:
+        type: integer
+      name:
+        type: string
+      role:
+        description: Role is owner, member or contractor.
+        type: string
+    type: object
+  admin.TotalsDTO:
+    properties:
+      active_day:
+        type: integer
+      active_month:
+        type: integer
+      active_week:
+        type: integer
+      clients:
+        type: integer
+      freelancers:
+        type: integer
+      pending_signups:
+        type: integer
+      projects:
+        type: integer
+      tasks:
+        type: integer
+      two_factor:
+        type: integer
+      users:
+        type: integer
+    type: object
+  admin.UsersResponse:
+    properties:
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+      users:
+        items:
+          $ref: '#/definitions/admin.AccountDTO'
+        type: array
+    type: object
   attachments.DTO:
     properties:
       can_delete:
@@ -158,8 +348,8 @@ definitions:
     properties:
       can_manage:
         description: |-
-          CanManage is true for the freelancer, and for the author of the project
-          the board was opened for.
+          CanManage is true for the author of the project the board was opened
+          for, and on a pair's board for its freelancer.
         type: boolean
       columns:
         items:
@@ -1287,6 +1477,141 @@ info:
   title: Helpic API
   version: "1.0"
 paths:
+  /admin/access:
+    get:
+      description: Anyone signed in may ask. The panel opens to admins who sign in
+        with two-factor.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/admin.AccessResponse'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Whether you're an admin
+      tags:
+      - admin
+  /admin/stats:
+    get:
+      description: Totals now; the last days (today included) against the days before
+        them, also day by day. Days are the app's time zone's. Counts only, never
+        anyone's content.
+      parameters:
+      - description: The period, 7 to 365 days; 30 by default
+        in: query
+        name: days
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/admin.StatsResponse'
+        "400":
+          description: Invalid period
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: How Helpic is used
+      tags:
+      - admin
+  /admin/users:
+    get:
+      description: 'Every account, the newest first: who they are and how much they
+        use Helpic. A page at a time, with how many match in all.'
+      parameters:
+      - description: Part of the email or the name
+        in: query
+        name: q
+        type: string
+      - description: freelancer or client
+        in: query
+        name: role
+        type: string
+      - description: active (in the last 7 days), idle (not in the last 30) or never
+        in: query
+        name: activity
+        type: string
+      - description: created (newest first, the default), last_active or tasks
+        in: query
+        name: sort
+        type: string
+      - description: The page, from 1
+        in: query
+        name: page
+        type: integer
+      - description: Accounts per page, 25 by default, at most 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/admin.UsersResponse'
+        "400":
+          description: Invalid role, activity, sort, page or limit
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Accounts
+      tags:
+      - admin
+  /admin/users/{id}:
+    get:
+      description: 'One account in full: its team, how much it has done (counts only)
+        and the days it used Helpic over the last 26 weeks.'
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: user
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/admin.AccountDetailDTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: No such account
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: An account
+      tags:
+      - admin
   /archive:
     get:
       description: 'Tasks closed for good, the most recently archived first: shared

@@ -14,6 +14,7 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 
 	_ "github.com/pmaxis/helpic/docs" // the generated Swagger spec (make swagger)
+	"github.com/pmaxis/helpic/internal/admin"
 	"github.com/pmaxis/helpic/internal/attachments"
 	"github.com/pmaxis/helpic/internal/auth"
 	"github.com/pmaxis/helpic/internal/board"
@@ -178,6 +179,12 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	// --- each user's kanban board over their tasks ----------------------------
 	boardHandler := board.NewHandler(board.NewService(board.NewRepository(pool), tasksSvc))
 
+	// --- the admin panel: how Helpic is used, for ADMIN_EMAILS --------------
+	adminRepo := admin.NewRepository(pool)
+	adminSvc := admin.NewService(adminRepo, cfg.AdminEmails, cfg.Location)
+	adminHandler := admin.NewHandler(adminSvc)
+	activity := admin.NewActivity(adminRepo, adminSvc)
+
 	// --- router --------------------------------------------------------------
 	authMiddleware := middleware.Auth(tokens, authSvc, cfg.CookieName)
 
@@ -226,6 +233,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware)
+			r.Use(activity.Track)
 			r.Get("/me", userHandler.Me)
 			profileHandler.Routes(r, byUser(lim.passwordChecks))
 			authHandler.SessionRoutes(r)
@@ -240,6 +248,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			emailPrefsHandler.Routes(r)
 			telegramHandler.Routes(r)
 			reportsHandler.Routes(r)
+			adminHandler.Routes(r)
 
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireRole(user.RoleFreelancer))

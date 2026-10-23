@@ -5,8 +5,9 @@
 # Local task attachments (UPLOADS_DIR)
 uploads/
 
-# Build (the binary at the root; not cmd/server or internal/server)
+# Build (the binaries at the root; not cmd/server, cmd/cli or internal/server)
 /server
+/cli
 bin/
 *.out
 

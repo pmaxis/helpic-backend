@@ -83,6 +83,10 @@ type Config struct {
 	// deadline reminders go out from ReminderHour on.
 	Location     *time.Location
 	ReminderHour int
+
+	// AdminEmails are the accounts that may open the admin panel, lowercased.
+	// Empty leaves the panel closed to everyone.
+	AdminEmails []string
 }
 
 // IsProduction reports whether the app runs in a production environment.
@@ -163,6 +167,9 @@ func Load() (Config, error) {
 	}
 	if cfg.TrustedProxies, err = parsePrefixes(os.Getenv("TRUSTED_PROXIES")); err != nil {
 		return Config{}, fmt.Errorf("invalid TRUSTED_PROXIES: %w", err)
+	}
+	if cfg.AdminEmails, err = parseEmails(os.Getenv("ADMIN_EMAILS")); err != nil {
+		return Config{}, fmt.Errorf("invalid ADMIN_EMAILS: %w", err)
 	}
 	if err := cfg.validateProduction(); err != nil {
 		return Config{}, err
@@ -312,6 +319,22 @@ func parsePrefixes(list string) ([]netip.Prefix, error) {
 			return nil, err
 		}
 		out = append(out, p.Masked())
+	}
+	return out, nil
+}
+
+// parseEmails reads a comma-separated list of email addresses, lowercased.
+func parseEmails(list string) ([]string, error) {
+	var out []string
+	for _, item := range strings.Split(list, ",") {
+		item = strings.ToLower(strings.TrimSpace(item))
+		if item == "" {
+			continue
+		}
+		if at := strings.Index(item, "@"); at <= 0 || at == len(item)-1 || strings.Count(item, "@") > 1 || strings.ContainsAny(item, " \t;") {
+			return nil, fmt.Errorf("%q is not an email address", item)
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }

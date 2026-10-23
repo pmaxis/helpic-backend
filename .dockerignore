@@ -1,5 +1,6 @@
 bin/
 server
+cli
 *.out
 .git
 .env
