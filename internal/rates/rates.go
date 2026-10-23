@@ -106,7 +106,7 @@ func (s *Service) On(ctx context.Context, currency string, at time.Time) (Rate, 
 }
 
 // Run keeps today's rates, so the first report opened in a day doesn't wait
-// for the bank. For jobs.Every.
+// for the bank. For jobs.Registry.Every.
 func (s *Service) Run(ctx context.Context) error {
 	_, _, err := s.On(ctx, "USD", s.now())
 	return err

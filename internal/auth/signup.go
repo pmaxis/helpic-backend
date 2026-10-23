@@ -53,24 +53,44 @@ func (s *Service) RequestSignup(ctx context.Context, p RegisterParams) error {
 		return err
 	}
 
-	t := func(text string, args ...any) string { return i18n.T(locale, text, args...) }
-	if err := s.mail.Send(ctx, mail.Email{
-		To:      p.Email,
-		Locale:  locale,
-		Subject: t("Confirm your Helpic email"),
-		Heading: t("Confirm your email"),
-		Paragraphs: []string{
-			t("Confirm %s to create your Helpic account.", p.Email),
-		},
-		Button: &mail.Button{Text: t("Confirm email"), URL: s.appURL + "/confirm-signup/" + raw},
-		Note:   t("The link works for 24 hours. If you didn't ask to sign up, ignore this email: no account is created."),
-	}); err != nil {
+	if err := s.mail.Send(ctx, signupEmail(p.Email, locale, s.appURL+"/confirm-signup/"+raw)); err != nil {
 		if delErr := s.repo.DeletePendingSignup(ctx, p.Email, hash); delErr != nil {
 			slog.Error("failed to roll back sign-up", "error", delErr)
 		}
 		return err
 	}
 	return nil
+}
+
+// ResendSignup emails a sign-up that hasn't been confirmed a new link, good
+// for another 24 hours, in the language it signed up in. The old link stops
+// working. ErrSignupInvalid when the address has no sign-up waiting.
+func (s *Service) ResendSignup(ctx context.Context, email string) error {
+	raw, hash, err := NewToken()
+	if err != nil {
+		return err
+	}
+	locale, err := s.repo.RenewPendingSignup(ctx, email, hash, time.Now().Add(signupTTL))
+	if err != nil {
+		return err
+	}
+	return s.mail.Send(ctx, signupEmail(email, locale, s.appURL+"/confirm-signup/"+raw))
+}
+
+// signupEmail carries the link that confirms a sign-up.
+func signupEmail(email, locale, link string) mail.Email {
+	t := func(text string, args ...any) string { return i18n.T(locale, text, args...) }
+	return mail.Email{
+		To:      email,
+		Locale:  locale,
+		Subject: t("Confirm your Helpic email"),
+		Heading: t("Confirm your email"),
+		Paragraphs: []string{
+			t("Confirm %s to create your Helpic account.", email),
+		},
+		Button: &mail.Button{Text: t("Confirm email"), URL: link},
+		Note:   t("The link works for 24 hours. If you didn't ask to sign up, ignore this email: no account is created."),
+	}
 }
 
 // accountExistsEmail answers a sign-up for an address that already has an
@@ -126,6 +146,23 @@ func (r *Repository) SavePendingSignup(ctx context.Context, email, name, passwor
 		return fmt.Errorf("save sign-up: %w", err)
 	}
 	return nil
+}
+
+// RenewPendingSignup gives the sign-up for email a new link and returns its
+// language. ErrSignupInvalid when there is none.
+func (r *Repository) RenewPendingSignup(ctx context.Context, email string, hash []byte, expiresAt time.Time) (string, error) {
+	var locale string
+	err := r.db.QueryRow(ctx, `
+		UPDATE pending_signups SET token_hash = $2, expires_at = $3
+		WHERE email = $1
+		RETURNING locale`, email, hash, expiresAt).Scan(&locale)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrSignupInvalid
+	}
+	if err != nil {
+		return "", fmt.Errorf("renew sign-up: %w", err)
+	}
+	return locale, nil
 }
 
 // TakePendingSignup uses up a confirmation link. ErrSignupInvalid when it

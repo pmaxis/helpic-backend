@@ -132,6 +132,19 @@ definitions:
       total:
         type: integer
     type: object
+  admin.CheckDTO:
+    properties:
+      error:
+        type: string
+      latency_ms:
+        type: integer
+      name:
+        description: Name is database, mail or telegram.
+        type: string
+      state:
+        description: State is ok, failing or off (left out of the config).
+        type: string
+    type: object
   admin.DayDTO:
     properties:
       active:
@@ -145,6 +158,80 @@ definitions:
         type: integer
       tasks_created:
         type: integer
+    type: object
+  admin.EmailCountsDTO:
+    properties:
+      failed:
+        type: integer
+      last_sent:
+        description: LastSent is when an email last went out; null when none has lately.
+        type: string
+      queued:
+        type: integer
+      sent:
+        type: integer
+    type: object
+  admin.EmailDTO:
+    properties:
+      attempts:
+        type: integer
+      created_at:
+        type: string
+      id:
+        type: string
+      last_error:
+        type: string
+      next_attempt_at:
+        description: NextAttemptAt is when a queued email is tried next.
+        type: string
+      sent_at:
+        type: string
+      status:
+        description: Status is queued, failed or sent.
+        type: string
+      subject:
+        type: string
+      to:
+        type: string
+    type: object
+  admin.EmailsResponse:
+    properties:
+      counts:
+        $ref: '#/definitions/admin.EmailCountsDTO'
+      emails:
+        items:
+          $ref: '#/definitions/admin.EmailDTO'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  admin.JobDTO:
+    properties:
+      failures:
+        type: integer
+      interval_seconds:
+        type: integer
+      last_error:
+        type: string
+      last_run:
+        type: string
+      last_success:
+        type: string
+      name:
+        type: string
+      running:
+        type: boolean
+      runs:
+        type: integer
+      state:
+        description: |-
+          State is ok, failing (the last run failed), late (it hasn't run again
+          in time) or waiting (not run yet).
+        type: string
     type: object
   admin.LogDTO:
     properties:
@@ -194,6 +281,39 @@ definitions:
       tasks_created:
         type: integer
     type: object
+  admin.SignupDTO:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      email_error:
+        type: string
+      email_status:
+        description: |-
+          EmailStatus is how the newest email to the address went: queued,
+          failed or sent; empty once it is no longer kept.
+        type: string
+      expires_at:
+        type: string
+      locale:
+        type: string
+      name:
+        type: string
+    type: object
+  admin.SignupsResponse:
+    properties:
+      limit:
+        type: integer
+      page:
+        type: integer
+      signups:
+        items:
+          $ref: '#/definitions/admin.SignupDTO'
+        type: array
+      total:
+        type: integer
+    type: object
   admin.StatsResponse:
     properties:
       days:
@@ -216,6 +336,25 @@ definitions:
         type: string
       totals:
         $ref: '#/definitions/admin.TotalsDTO'
+    type: object
+  admin.SystemResponse:
+    properties:
+      checks:
+        items:
+          $ref: '#/definitions/admin.CheckDTO'
+        type: array
+      emails:
+        $ref: '#/definitions/admin.EmailCountsDTO'
+      go_version:
+        type: string
+      jobs:
+        items:
+          $ref: '#/definitions/admin.JobDTO'
+        type: array
+      started_at:
+        type: string
+      version:
+        type: string
     type: object
   admin.TeamDTO:
     properties:
@@ -1589,6 +1728,84 @@ paths:
       summary: What admins did
       tags:
       - admin
+  /admin/emails:
+    get:
+      description: 'The emails Helpic sent or is sending, the newest first, kept for
+        a week: whom to, the subject and how sending went. Never the body, which can
+        hold one-time links.'
+      parameters:
+      - description: queued, failed or sent
+        in: query
+        name: status
+        type: string
+      - description: Part of the address or the subject
+        in: query
+        name: q
+        type: string
+      - description: The page, from 1
+        in: query
+        name: page
+        type: integer
+      - description: Emails per page, 25 by default, at most 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/admin.EmailsResponse'
+        "400":
+          description: Invalid status, page or limit
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Outgoing email
+      tags:
+      - admin
+  /admin/emails/{id}/retry:
+    post:
+      description: 'Sends an email that wasn''t sent on the next run, with a fresh
+        set of tries, and records it. A sent email can''t be: its body is gone.'
+      parameters:
+      - description: Email ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: email, as it is now
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/admin.EmailDTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: No such email, or it was sent
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Send an email again
+      tags:
+      - admin
   /admin/logs:
     get:
       description: 'The last 30 days, the newest first: failed requests, panics, background
@@ -1633,6 +1850,102 @@ paths:
       summary: The server's warnings and errors
       tags:
       - admin
+  /admin/signups:
+    get:
+      description: Public sign-ups that haven't opened their confirmation link and
+        haven't expired, the newest first, with how the newest email to the address
+        went.
+      parameters:
+      - description: Part of the email or the name
+        in: query
+        name: q
+        type: string
+      - description: The page, from 1
+        in: query
+        name: page
+        type: integer
+      - description: Sign-ups per page, 25 by default, at most 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/admin.SignupsResponse'
+        "400":
+          description: Invalid page or limit
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Sign-ups waiting
+      tags:
+      - admin
+  /admin/signups/{email}:
+    delete:
+      description: Removes a sign-up nobody confirmed, so its link stops working,
+        and records it. The address can sign up again.
+      parameters:
+      - description: The sign-up's email
+        in: path
+        name: email
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: No sign-up waiting for this email
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Remove a sign-up
+      tags:
+      - admin
+  /admin/signups/{email}/resend:
+    post:
+      description: Emails a new confirmation link, good for 24 hours, in the language
+        the sign-up was made in, and records it. The old link stops working.
+      parameters:
+      - description: The sign-up's email
+        in: path
+        name: email
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: No sign-up waiting for this email
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Send a sign-up its link again
+      tags:
+      - admin
   /admin/stats:
     get:
       description: Totals now; the last days (today included) against the days before
@@ -1663,6 +1976,29 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: How Helpic is used
+      tags:
+      - admin
+  /admin/system:
+    get:
+      description: Checks the database, the mail server and the Telegram bot on the
+        spot, and tells how this server's background jobs ran since it started and
+        how the outgoing email stands.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/admin.SystemResponse'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: System status
       tags:
       - admin
   /admin/users:

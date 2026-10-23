@@ -40,6 +40,10 @@ import (
 	"github.com/pmaxis/helpic/internal/user"
 )
 
+// Version is the build, set at link time:
+// -ldflags "-X github.com/pmaxis/helpic/internal/server.Version=…".
+var Version = "dev"
+
 // App is the assembled application.
 type App struct {
 	Handler http.Handler
@@ -66,6 +70,9 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 
 	// --- outgoing email, sent in the background ------------------------------
 	var sender mail.Sender = mail.Log{}
+	// mailCheck tells the admin panel whether the mail server answers; nil
+	// without one.
+	var mailCheck func(context.Context) error
 	if cfg.SMTPHost != "" {
 		smtp, err := mail.NewSMTP(mail.SMTPConfig{
 			Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.MailFrom,
@@ -73,7 +80,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		if err != nil {
 			return nil, err
 		}
-		sender = smtp
+		sender, mailCheck = smtp, smtp.Check
 	}
 	outbox := mail.NewOutbox(pool, sender)
 
@@ -184,9 +191,29 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	adminRepo := admin.NewRepository(pool)
 	adminSvc := admin.NewService(adminRepo, cfg.Location)
 	adminSvc.UseMail(outbox)
+	adminSvc.UseOutbox(outbox)
+	adminSvc.UseSignupLinks(authSvc)
 	appLogs := applog.NewRepository(pool)
 	adminHandler := admin.NewHandler(adminSvc, appLogs)
 	activity := admin.NewActivity(adminRepo, adminSvc)
+	background := jobs.NewRegistry()
+	var botCheck func(context.Context) error
+	if bot != nil {
+		botCheck = func(ctx context.Context) error {
+			_, err := bot.GetMe(ctx)
+			return err
+		}
+	}
+	adminHandler.UseSystem(admin.System{
+		Version: Version,
+		Started: time.Now(),
+		Probes: []admin.Probe{
+			{Name: "database", Check: pool.Ping},
+			{Name: "mail", Check: mailCheck},
+			{Name: "telegram", Check: botCheck},
+		},
+		Jobs: background,
+	})
 
 	// --- router --------------------------------------------------------------
 	authMiddleware := middleware.Auth(tokens, authSvc, cfg.CookieName)
@@ -283,16 +310,16 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		return errors.Join(authSvc.Cleanup(ctx), profileSvc.Cleanup(ctx), telegramSvc.Cleanup(ctx), remindersSvc.Cleanup(ctx), outbox.Cleanup(ctx), appLogs.Cleanup(ctx))
 	}
 
-	background := []func(context.Context){
+	run := []func(context.Context){
 		telegramSvc.Run,
-		func(ctx context.Context) { jobs.Every(ctx, "email", 5*time.Second, outbox.Run) },
-		func(ctx context.Context) { jobs.Every(ctx, "notification emails", time.Minute, emailer.Run) },
-		func(ctx context.Context) { jobs.Every(ctx, "deadline reminders", 15*time.Minute, remindersSvc.Run) },
-		func(ctx context.Context) { jobs.Every(ctx, "cleanup", time.Hour, cleanup) },
-		func(ctx context.Context) { jobs.Every(ctx, "rate limit sweep", time.Minute, lim.sweep) },
+		func(ctx context.Context) { background.Every(ctx, "email", 5*time.Second, outbox.Run) },
+		func(ctx context.Context) { background.Every(ctx, "notification emails", time.Minute, emailer.Run) },
+		func(ctx context.Context) { background.Every(ctx, "deadline reminders", 15*time.Minute, remindersSvc.Run) },
+		func(ctx context.Context) { background.Every(ctx, "cleanup", time.Hour, cleanup) },
+		func(ctx context.Context) { background.Every(ctx, "rate limit sweep", time.Minute, lim.sweep) },
 	}
 	if ratesSvc != nil {
-		background = append(background, func(ctx context.Context) { jobs.Every(ctx, "exchange rates", time.Hour, ratesSvc.Run) })
+		run = append(run, func(ctx context.Context) { background.Every(ctx, "exchange rates", time.Hour, ratesSvc.Run) })
 	}
-	return &App{Handler: r, background: background}, nil
+	return &App{Handler: r, background: run}, nil
 }

@@ -18,8 +18,9 @@ import (
 
 // Handler exposes the admin panel over HTTP.
 type Handler struct {
-	svc  *Service
-	logs *applog.Repository
+	svc    *Service
+	logs   *applog.Repository
+	system System
 }
 
 // NewHandler creates an admin Handler; logs are the server's warnings and
@@ -42,6 +43,12 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Post("/users/{id}/unblock", h.act(ActionUnblock))
 		r.Post("/users/{id}/end-sessions", h.act(ActionEndSessions))
 		r.Post("/users/{id}/reset-two-factor", h.act(ActionResetTwoFactor))
+		r.Get("/emails", h.Emails)
+		r.Post("/emails/{id}/retry", h.RetryEmail)
+		r.Get("/signups", h.Signups)
+		r.Post("/signups/{email}/resend", h.ResendSignup)
+		r.Delete("/signups/{email}", h.DeleteSignup)
+		r.Get("/system", h.System)
 	})
 }
 

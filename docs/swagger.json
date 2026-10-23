@@ -66,6 +66,120 @@
                 }
             }
         },
+        "/admin/emails": {
+            "get": {
+                "description": "The emails Helpic sent or is sending, the newest first, kept for a week: whom to, the subject and how sending went. Never the body, which can hold one-time links.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Outgoing email",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "queued, failed or sent",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Part of the address or the subject",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "The page, from 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Emails per page, 25 by default, at most 100",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/admin.EmailsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid status, page or limit",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/emails/{id}/retry": {
+            "post": {
+                "description": "Sends an email that wasn't sent on the next run, with a fresh set of tries, and records it. A sent email can't be: its body is gone.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Send an email again",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Email ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "email, as it is now",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/admin.EmailDTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "No such email, or it was sent",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/logs": {
             "get": {
                 "description": "The last 30 days, the newest first: failed requests, panics, background jobs. A page at a time, with how many match in all. Requests show their route, never the path.",
@@ -130,6 +244,146 @@
                 }
             }
         },
+        "/admin/signups": {
+            "get": {
+                "description": "Public sign-ups that haven't opened their confirmation link and haven't expired, the newest first, with how the newest email to the address went.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Sign-ups waiting",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Part of the email or the name",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "The page, from 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Sign-ups per page, 25 by default, at most 100",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/admin.SignupsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid page or limit",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/signups/{email}": {
+            "delete": {
+                "description": "Removes a sign-up nobody confirmed, so its link stops working, and records it. The address can sign up again.",
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Remove a sign-up",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The sign-up's email",
+                        "name": "email",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "No sign-up waiting for this email",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/signups/{email}/resend": {
+            "post": {
+                "description": "Emails a new confirmation link, good for 24 hours, in the language the sign-up was made in, and records it. The old link stops working.",
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Send a sign-up its link again",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The sign-up's email",
+                        "name": "email",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "No sign-up waiting for this email",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/stats": {
             "get": {
                 "description": "Totals now; the last days (today included) against the days before them, also day by day. Days are the app's time zone's. Counts only, never anyone's content.",
@@ -159,6 +413,38 @@
                         "description": "Invalid period",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/system": {
+            "get": {
+                "description": "Checks the database, the mail server and the Telegram bot on the spot, and tells how this server's background jobs ran since it started and how the outgoing email stands.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "System status",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/admin.SystemResponse"
                         }
                     },
                     "401": {
@@ -5802,6 +6088,25 @@
                 }
             }
         },
+        "admin.CheckDTO": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "latency_ms": {
+                    "type": "integer"
+                },
+                "name": {
+                    "description": "Name is database, mail or telegram.",
+                    "type": "string"
+                },
+                "state": {
+                    "description": "State is ok, failing or off (left out of the config).",
+                    "type": "string"
+                }
+            }
+        },
         "admin.DayDTO": {
             "type": "object",
             "properties": {
@@ -5820,6 +6125,114 @@
                 },
                 "tasks_created": {
                     "type": "integer"
+                }
+            }
+        },
+        "admin.EmailCountsDTO": {
+            "type": "object",
+            "properties": {
+                "failed": {
+                    "type": "integer"
+                },
+                "last_sent": {
+                    "description": "LastSent is when an email last went out; null when none has lately.",
+                    "type": "string"
+                },
+                "queued": {
+                    "type": "integer"
+                },
+                "sent": {
+                    "type": "integer"
+                }
+            }
+        },
+        "admin.EmailDTO": {
+            "type": "object",
+            "properties": {
+                "attempts": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_error": {
+                    "type": "string"
+                },
+                "next_attempt_at": {
+                    "description": "NextAttemptAt is when a queued email is tried next.",
+                    "type": "string"
+                },
+                "sent_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Status is queued, failed or sent.",
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "admin.EmailsResponse": {
+            "type": "object",
+            "properties": {
+                "counts": {
+                    "$ref": "#/definitions/admin.EmailCountsDTO"
+                },
+                "emails": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/admin.EmailDTO"
+                    }
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "admin.JobDTO": {
+            "type": "object",
+            "properties": {
+                "failures": {
+                    "type": "integer"
+                },
+                "interval_seconds": {
+                    "type": "integer"
+                },
+                "last_error": {
+                    "type": "string"
+                },
+                "last_run": {
+                    "type": "string"
+                },
+                "last_success": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "running": {
+                    "type": "boolean"
+                },
+                "runs": {
+                    "type": "integer"
+                },
+                "state": {
+                    "description": "State is ok, failing (the last run failed), late (it hasn't run again\nin time) or waiting (not run yet).",
+                    "type": "string"
                 }
             }
         },
@@ -5890,6 +6303,53 @@
                 }
             }
         },
+        "admin.SignupDTO": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "email_error": {
+                    "type": "string"
+                },
+                "email_status": {
+                    "description": "EmailStatus is how the newest email to the address went: queued,\nfailed or sent; empty once it is no longer kept.",
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "locale": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "admin.SignupsResponse": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "signups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/admin.SignupDTO"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "admin.StatsResponse": {
             "type": "object",
             "properties": {
@@ -5921,6 +6381,35 @@
                 },
                 "totals": {
                     "$ref": "#/definitions/admin.TotalsDTO"
+                }
+            }
+        },
+        "admin.SystemResponse": {
+            "type": "object",
+            "properties": {
+                "checks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/admin.CheckDTO"
+                    }
+                },
+                "emails": {
+                    "$ref": "#/definitions/admin.EmailCountsDTO"
+                },
+                "go_version": {
+                    "type": "string"
+                },
+                "jobs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/admin.JobDTO"
+                    }
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
                 }
             }
         },

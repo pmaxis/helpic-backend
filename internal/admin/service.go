@@ -16,6 +16,9 @@ type Service struct {
 	repo *Repository
 	loc  *time.Location
 	mail Mailer
+	// emails and signupLinks are the outbox and sign-ups, for the panel.
+	emails      EmailQueue
+	signupLinks SignupLinks
 }
 
 // NewService creates an admin Service. loc is the app's time zone, whose days

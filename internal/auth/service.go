@@ -39,6 +39,7 @@ type repository interface {
 	DeleteExpiredResets(ctx context.Context) error
 
 	SavePendingSignup(ctx context.Context, email, name, passwordHash, locale string, hash []byte, expiresAt time.Time) error
+	RenewPendingSignup(ctx context.Context, email string, hash []byte, expiresAt time.Time) (string, error)
 	TakePendingSignup(ctx context.Context, hash []byte) (email, name, passwordHash, locale string, err error)
 	DeletePendingSignup(ctx context.Context, email string, hash []byte) error
 	DeleteExpiredSignups(ctx context.Context) error

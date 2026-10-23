@@ -68,33 +68,12 @@ func (s *SMTP) Send(ctx context.Context, m Message) error {
 
 	ctx, cancel := context.WithTimeout(ctx, smtpTimeout)
 	defer cancel()
-	addr := net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.cfg.Port))
-	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	c, err := s.dial(ctx)
 	if err != nil {
-		return fmt.Errorf("dial smtp: %w", err)
-	}
-	deadline, _ := ctx.Deadline()
-	_ = conn.SetDeadline(deadline)
-	if s.cfg.Port == 465 {
-		conn = tls.Client(conn, &tls.Config{ServerName: s.cfg.Host, MinVersion: tls.VersionTLS12})
-	}
-	c, err := smtp.NewClient(conn, s.cfg.Host)
-	if err != nil {
-		conn.Close()
-		return fmt.Errorf("smtp hello: %w", err)
+		return err
 	}
 	defer c.Close()
 
-	if ok, _ := c.Extension("STARTTLS"); ok && s.cfg.Port != 465 {
-		if err := c.StartTLS(&tls.Config{ServerName: s.cfg.Host, MinVersion: tls.VersionTLS12}); err != nil {
-			return fmt.Errorf("smtp starttls: %w", err)
-		}
-	}
-	if s.cfg.Username != "" {
-		if err := c.Auth(smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)); err != nil {
-			return fmt.Errorf("smtp auth: %w", err)
-		}
-	}
 	if err := c.Mail(s.from.Address); err != nil {
 		return fmt.Errorf("smtp mail from: %w", err)
 	}
@@ -112,6 +91,53 @@ func (s *SMTP) Send(ctx context.Context, m Message) error {
 		return fmt.Errorf("smtp end data: %w", err)
 	}
 	return c.Quit()
+}
+
+// Check signs in to the mail server and leaves without sending anything, to
+// tell whether email can go out.
+func (s *SMTP) Check(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, smtpTimeout)
+	defer cancel()
+	c, err := s.dial(ctx)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	return c.Quit()
+}
+
+// dial connects, says hello, switches to TLS and signs in. The connection
+// gives up at ctx's deadline.
+func (s *SMTP) dial(ctx context.Context) (*smtp.Client, error) {
+	addr := net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.cfg.Port))
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("dial smtp: %w", err)
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
+	if s.cfg.Port == 465 {
+		conn = tls.Client(conn, &tls.Config{ServerName: s.cfg.Host, MinVersion: tls.VersionTLS12})
+	}
+	c, err := smtp.NewClient(conn, s.cfg.Host)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("smtp hello: %w", err)
+	}
+	if ok, _ := c.Extension("STARTTLS"); ok && s.cfg.Port != 465 {
+		if err := c.StartTLS(&tls.Config{ServerName: s.cfg.Host, MinVersion: tls.VersionTLS12}); err != nil {
+			c.Close()
+			return nil, fmt.Errorf("smtp starttls: %w", err)
+		}
+	}
+	if s.cfg.Username != "" {
+		if err := c.Auth(smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)); err != nil {
+			c.Close()
+			return nil, fmt.Errorf("smtp auth: %w", err)
+		}
+	}
+	return c, nil
 }
 
 // compose builds the MIME message: plain text and HTML as alternatives.

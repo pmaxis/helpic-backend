@@ -13,8 +13,8 @@ import (
 const (
 	// batchSize is how many emails one run sends at most.
 	batchSize = 20
-	// maxAttempts is how many times a send is tried before giving up.
-	maxAttempts = 8
+	// MaxAttempts is how many times a send is tried before giving up.
+	MaxAttempts = 8
 	// firstRetry doubles after each failure, up to maxRetry.
 	firstRetry = time.Minute
 	maxRetry   = 6 * time.Hour
@@ -62,7 +62,7 @@ func (o *Outbox) Run(ctx context.Context) error {
 		WHERE sent_at IS NULL AND attempts < $1 AND next_attempt_at <= now()
 		ORDER BY created_at
 		LIMIT $2
-		FOR UPDATE SKIP LOCKED`, maxAttempts, batchSize)
+		FOR UPDATE SKIP LOCKED`, MaxAttempts, batchSize)
 	if err != nil {
 		return fmt.Errorf("load emails: %w", err)
 	}
@@ -83,7 +83,7 @@ func (o *Outbox) Run(ctx context.Context) error {
 	for _, q := range due {
 		if sendErr := o.sender.Send(ctx, q.m); sendErr != nil {
 			attempts := q.attempts + 1
-			if attempts >= maxAttempts {
+			if attempts >= MaxAttempts {
 				slog.Error("email abandoned", "id", q.id, "attempts", attempts, "error", sendErr)
 			}
 			if _, err := tx.Exec(ctx, `UPDATE emails SET attempts = $2, last_error = $3, next_attempt_at = now() + make_interval(secs => $4) WHERE id = $1`,
@@ -113,7 +113,7 @@ func retryAfter(attempts int) time.Duration {
 func (o *Outbox) Cleanup(ctx context.Context) error {
 	if _, err := o.db.Exec(ctx, `
 		DELETE FROM emails
-		WHERE (sent_at IS NOT NULL OR attempts >= $1) AND created_at < $2`, maxAttempts, time.Now().Add(-keepFor)); err != nil {
+		WHERE (sent_at IS NOT NULL OR attempts >= $1) AND created_at < $2`, MaxAttempts, time.Now().Add(-keepFor)); err != nil {
 		return fmt.Errorf("delete old emails: %w", err)
 	}
 	return nil

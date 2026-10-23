@@ -1,5 +1,7 @@
 .DEFAULT_GOAL := help
 COMPOSE := docker compose
+# The build the admin panel shows: the commit, marked when there are changes.
+export VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 .PHONY: help dev up down build logs test test-unit test-integration migrate-up migrate-down psql fmt swagger
 
