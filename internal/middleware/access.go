@@ -47,10 +47,11 @@ func Logger(next http.Handler) http.Handler {
 		if !rec.wrote {
 			status = http.StatusOK
 		}
+		pattern := routePattern(r)
 		level := slog.LevelInfo
 		if status >= http.StatusInternalServerError {
 			level = slog.LevelError
-		} else if status >= http.StatusBadRequest {
+		} else if status >= http.StatusBadRequest && !(status == http.StatusUnauthorized && probes[pattern]) {
 			level = slog.LevelWarn
 		}
 
@@ -61,7 +62,7 @@ func Logger(next http.Handler) http.Handler {
 			"duration_ms", time.Since(start).Milliseconds(),
 			"ip", ClientIP(r),
 		}
-		if pattern := routePattern(r); pattern != "" {
+		if pattern != "" {
 			attrs = append(attrs, "route", pattern)
 		}
 		if who.id != "" {
@@ -70,6 +71,10 @@ func Logger(next http.Handler) http.Handler {
 		slog.Log(r.Context(), level, "request", attrs...)
 	})
 }
+
+// probes are where the frontend asks whether anyone is signed in: a 401
+// there is the usual answer for a visitor, not a warning.
+var probes = map[string]bool{"/api/v1/me": true, "/api/v1/auth/refresh": true}
 
 // routePattern is the matched route, with placeholders instead of ids, so
 // logs group by endpoint. Empty when the request never reached the router.

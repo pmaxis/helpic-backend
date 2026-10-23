@@ -52,6 +52,25 @@ func TestLogger_WarnsOnClientErrors(t *testing.T) {
 	}
 }
 
+func TestLogger_SignedOutProbesAreNotWarnings(t *testing.T) {
+	call := func(path string) map[string]any {
+		return captureLog(t, func() {
+			r := chi.NewRouter()
+			r.Use(Logger)
+			r.HandleFunc(path, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusUnauthorized) })
+			r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
+		})
+	}
+	for _, path := range []string{"/api/v1/me", "/api/v1/auth/refresh"} {
+		if line := call(path); line["level"] != "INFO" {
+			t.Errorf("%s: %v", path, line)
+		}
+	}
+	if line := call("/api/v1/tasks"); line["level"] != "WARN" {
+		t.Errorf("tasks: %v", line)
+	}
+}
+
 func TestLogger_SkipsHealth(t *testing.T) {
 	var buf bytes.Buffer
 	prev := slog.Default()
