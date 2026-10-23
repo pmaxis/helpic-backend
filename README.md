@@ -22,9 +22,15 @@ make up
 
 Migrations run on start.
 
+The admin panel is for admin accounts, a role of their own with no work in Helpic. Make one with the cli; it prints the password once. Sign in, change it and turn on two-factor in the settings: the panel needs it.
+
+```sh
+docker compose exec backend /app/cli create-admin -email you@example.com -name "Your Name"
+```
+
 ## Configuration
 
-Every variable is documented in [`.env.example`](.env.example). `CORS_ORIGIN` must match the frontend's origin. `ADMIN_EMAILS` opens the admin panel to those accounts; they also need two-factor sign-in on.
+Every variable is documented in [`.env.example`](.env.example). `CORS_ORIGIN` must match the frontend's origin.
 
 With `APP_ENV=production` the server refuses to start on unsafe settings: weak secrets, insecure cookies, a database without TLS verification, Mailpit, or Swagger left on.
 

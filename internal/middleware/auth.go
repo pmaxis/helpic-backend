@@ -5,6 +5,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"slices"
 
 	"github.com/pmaxis/helpic/internal/response"
 	"github.com/pmaxis/helpic/internal/token"
@@ -85,12 +86,12 @@ func SessionID(ctx context.Context) string {
 	return id
 }
 
-// RequireRole lets through only users with the given role; others get a 403.
-// Must run after Auth.
-func RequireRole(role string) func(http.Handler) http.Handler {
+// RequireRole lets through only users with one of the given roles; others get
+// a 403. Must run after Auth.
+func RequireRole(roles ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if Role(r.Context()) != role {
+			if !slices.Contains(roles, Role(r.Context())) {
 				response.Error(w, http.StatusForbidden, response.CodeForbidden, "You don't have access to this resource")
 				return
 			}

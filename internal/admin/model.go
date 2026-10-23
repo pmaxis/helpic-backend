@@ -1,7 +1,7 @@
 // Package admin is the admin panel: how Helpic is used, across all accounts.
-// Who may open it is a list of emails in the config (ADMIN_EMAILS), and they
-// must sign in with two-factor. It shows counts and account metadata only,
-// never the content of anyone's work.
+// It is for admins, accounts of their own role made with the cli, who must
+// sign in with two-factor. It shows counts and account metadata only, never
+// the content of anyone's work; admins themselves are left out of it.
 package admin
 
 import (
@@ -11,6 +11,14 @@ import (
 
 // ErrNotFound is returned for an account that doesn't exist.
 var ErrNotFound = errors.New("account not found")
+
+// ErrEmailExists is returned when making an admin with an email that already
+// has an account.
+var ErrEmailExists = errors.New("an account with this email already exists")
+
+// ErrInvalidEmail is returned when making an admin with something that isn't
+// an email address.
+var ErrInvalidEmail = errors.New("not an email address")
 
 // Totals is the app as it stands.
 type Totals struct {

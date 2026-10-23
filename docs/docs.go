@@ -15,32 +15,6 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/admin/access": {
-            "get": {
-                "description": "Anyone signed in may ask. The panel opens to admins who sign in with two-factor.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "admin"
-                ],
-                "summary": "Whether you're an admin",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/admin.AccessResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Not signed in",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorEnvelope"
-                        }
-                    }
-                }
-            }
-        },
         "/admin/stats": {
             "get": {
                 "description": "Totals now; the last days (today included) against the days before them, also day by day. Days are the app's time zone's. Counts only, never anyone's content.",
@@ -5451,19 +5425,6 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "admin.AccessResponse": {
-            "type": "object",
-            "properties": {
-                "admin": {
-                    "description": "Admin is on when their email is one of ADMIN_EMAILS.",
-                    "type": "boolean"
-                },
-                "two_factor": {
-                    "description": "TwoFactor is on when they sign in with two-factor; the panel needs it.",
-                    "type": "boolean"
-                }
-            }
-        },
         "admin.AccountDTO": {
             "type": "object",
             "properties": {

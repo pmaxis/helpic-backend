@@ -277,7 +277,7 @@ var uk = map[string]string{
 	"The Telegram bot is starting. Try again in a moment.": "Telegram-бот запускається. Спробуйте за мить.",
 
 	// --- API errors: admin panel --------------------------------------------------------
-	"Turn on two-factor sign-in to open the admin panel": "Увімкніть двофакторний вхід, щоб відкрити адмінку",
+	"Turn on two-factor sign-in to open the admin panel": "Увімкніть двофакторний вхід, щоб відкрити адмін-панель",
 	"Ask for 7 to 365 days":                              "Можна попросити від 7 до 365 днів",
 	"Choose freelancer or client":                        "Оберіть: фрилансер чи клієнт",
 	"Ask for 1 to 100 accounts":                          "Можна попросити від 1 до 100 акаунтів",

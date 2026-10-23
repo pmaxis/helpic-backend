@@ -2,71 +2,94 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	"github.com/pmaxis/helpic/internal/config"
+	"github.com/pmaxis/helpic/internal/admin"
 )
 
-// newAdminAPI is newAPI with boss@example.com as the admin, written the way
-// people write emails in an env file.
-func newAdminAPI(t *testing.T) *httptest.Server {
+// signInAdmin makes an admin the way the cli does, signs them in with the
+// password it printed and changes that to the tests' usual one.
+func signInAdmin(t *testing.T, srv *httptest.Server, email string) *http.Client {
 	t.Helper()
-	srv, _, _ := newAPIWith(t, func(c *config.Config) { c.AdminEmails = []string{"boss@example.com"} })
-	return srv
-}
-
-func adminAccess(t *testing.T, srv *httptest.Server, c *http.Client) map[string]any {
-	t.Helper()
-	resp := get(t, c, srv.URL+"/api/v1/admin/access")
-	wantStatus(t, resp, http.StatusOK)
-	return decode(t, resp)
-}
-
-func TestAdmin_OnlyListedEmailsWithTwoFactor(t *testing.T) {
-	srv := newAdminAPI(t)
-	someone := signUpFreelancer(t, srv, "someone@example.com")
-	// The account's email is matched whatever its case.
-	boss := signUpFreelancer(t, srv, "Boss@Example.com")
-
-	// Not on the list: no panel.
-	if a := adminAccess(t, srv, someone); a["admin"] != false || a["two_factor"] != false {
-		t.Fatalf("access = %v", a)
+	password, err := admin.NewService(admin.NewRepository(testPool), time.UTC).CreateAdmin(context.Background(), email, "Boss", "en")
+	if err != nil {
+		t.Fatal(err)
 	}
+	c := newClient()
+	wantStatus(t, login(t, srv, c, email, password), http.StatusOK)
+	resp := do(t, c, http.MethodPut, srv.URL+"/api/v1/me/password", map[string]string{
+		"current_password": password, "password": "supersecret1", "password_confirmation": "supersecret1",
+	})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	return c
+}
+
+func TestAdmin_CreateAdmin(t *testing.T) {
+	srv, _ := newAPI(t)
+	signUpFreelancer(t, srv, "dev@example.com")
+	svc := admin.NewService(admin.NewRepository(testPool), time.UTC)
+	ctx := context.Background()
+	if _, err := svc.CreateAdmin(ctx, " Boss@Example.com ", "Boss", "en"); err != nil {
+		t.Fatal(err)
+	}
+	for email, want := range map[string]error{
+		"boss@example.com": admin.ErrEmailExists,
+		"DEV@example.com":  admin.ErrEmailExists,
+		"boss":             admin.ErrInvalidEmail,
+		"a@b@c":            admin.ErrInvalidEmail,
+	} {
+		if _, err := svc.CreateAdmin(ctx, email, "", "en"); !errors.Is(err, want) {
+			t.Errorf("%q: err = %v, want %v", email, err, want)
+		}
+	}
+}
+
+func TestAdmin_OnlyAdminsWithTwoFactor(t *testing.T) {
+	srv, _ := newAPI(t)
+	someone := signUpFreelancer(t, srv, "someone@example.com")
+	boss := signInAdmin(t, srv, "boss@example.com")
+
+	resp := get(t, boss, srv.URL+"/api/v1/me")
+	wantStatus(t, resp, http.StatusOK)
+	if me := field(decode(t, resp), "user"); me["role"] != "admin" {
+		t.Fatalf("me = %v", me)
+	}
+
+	// Not an admin: no panel, even with two-factor on.
+	turnOnTwoFactor(t, srv, someone)
 	wantStatus(t, get(t, someone, srv.URL+"/api/v1/admin/stats"), http.StatusForbidden)
 	wantStatus(t, get(t, someone, srv.URL+"/api/v1/admin/users"), http.StatusForbidden)
 	wantStatus(t, get(t, newClient(), srv.URL+"/api/v1/admin/stats"), http.StatusUnauthorized)
 
-	// On the list but without two-factor: told so, still no panel.
-	if a := adminAccess(t, srv, boss); a["admin"] != true || a["two_factor"] != false {
-		t.Fatalf("access = %v", a)
-	}
+	// An admin without two-factor: still no panel.
 	wantStatus(t, get(t, boss, srv.URL+"/api/v1/admin/stats"), http.StatusForbidden)
-
 	turnOnTwoFactor(t, srv, boss)
-	if a := adminAccess(t, srv, boss); a["admin"] != true || a["two_factor"] != true {
-		t.Fatalf("access = %v", a)
-	}
 	wantStatus(t, get(t, boss, srv.URL+"/api/v1/admin/stats"), http.StatusOK)
-	wantStatus(t, get(t, someone, srv.URL+"/api/v1/admin/stats"), http.StatusForbidden)
 }
 
-func TestAdmin_NoAdminsWithoutTheList(t *testing.T) {
+func TestAdmin_NoWork(t *testing.T) {
 	srv, _ := newAPI(t)
-	c := signUpFreelancer(t, srv, "boss@example.com")
-	turnOnTwoFactor(t, srv, c)
-	if a := adminAccess(t, srv, c); a["admin"] != false {
-		t.Fatalf("access = %v", a)
+	boss := signInAdmin(t, srv, "boss@example.com")
+	turnOnTwoFactor(t, srv, boss)
+	for _, path := range []string{"/tasks", "/projects", "/reports", "/clients", "/notifications", "/board"} {
+		resp := get(t, boss, srv.URL+"/api/v1"+path)
+		wantStatus(t, resp, http.StatusForbidden)
+		resp.Body.Close()
 	}
-	wantStatus(t, get(t, c, srv.URL+"/api/v1/admin/stats"), http.StatusForbidden)
+	resp := post(t, boss, srv.URL+"/api/v1/tasks", map[string]any{"title": "Logo"})
+	wantStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
 }
 
 func TestAdmin_Stats(t *testing.T) {
-	srv := newAdminAPI(t)
-	boss := signUpFreelancer(t, srv, "boss@example.com")
+	srv, _ := newAPI(t)
+	boss := signInAdmin(t, srv, "boss@example.com")
 	turnOnTwoFactor(t, srv, boss)
 	// One freelancer goes all the way to a paid report, one only signs up.
 	dev := signUpFreelancer(t, srv, "dev@example.com")
@@ -78,8 +101,9 @@ func TestAdmin_Stats(t *testing.T) {
 		wantStatus(t, resp, http.StatusOK)
 		return decode(t, resp)
 	}
-	// Accepting the invitation is not using the app yet; the first signed-in request is.
-	if n := field(stats("?days=7"), "totals")["active_day"]; n != 2.0 {
+	// Accepting the invitation is not using the app yet; the first signed-in
+	// request is. The admin isn't counted at all.
+	if n := field(stats("?days=7"), "totals")["active_day"]; n != 1.0 {
 		t.Fatalf("active before the client's first request = %v", n)
 	}
 	paidTask(t, srv, dev, client)
@@ -100,11 +124,11 @@ func TestAdmin_Stats(t *testing.T) {
 		}
 	}
 	check("totals", map[string]float64{
-		"users": 4, "freelancers": 3, "clients": 1, "two_factor": 1, "tasks": 1,
-		"active_day": 3, "active_week": 3, "active_month": 3,
+		"users": 3, "freelancers": 2, "clients": 1, "two_factor": 0, "tasks": 1,
+		"active_day": 2, "active_week": 2, "active_month": 2,
 	})
 	check("period", map[string]float64{
-		"active": 3, "new_users": 4, "tasks_created": 1, "tasks_completed": 1,
+		"active": 2, "new_users": 3, "tasks_created": 1, "tasks_completed": 1,
 	})
 	check("previous", map[string]float64{"active": 1, "new_users": 0, "tasks_created": 0})
 
@@ -114,7 +138,7 @@ func TestAdmin_Stats(t *testing.T) {
 		t.Fatalf("%d days, %d before, to %v", len(days), len(previous), body["to"])
 	}
 	last := days[6].(map[string]any)
-	if last["day"] != today || last["signups"] != 4.0 || last["active"] != 3.0 || last["tasks_completed"] != 1.0 {
+	if last["day"] != today || last["signups"] != 3.0 || last["active"] != 2.0 || last["tasks_completed"] != 1.0 {
 		t.Fatalf("today = %v", last)
 	}
 	tenDaysAgo := time.Now().UTC().AddDate(0, 0, -10).Format("2006-01-02")
@@ -130,8 +154,8 @@ func TestAdmin_Stats(t *testing.T) {
 }
 
 func TestAdmin_Users(t *testing.T) {
-	srv := newAdminAPI(t)
-	boss := signUpFreelancer(t, srv, "boss@example.com")
+	srv, _ := newAPI(t)
+	boss := signInAdmin(t, srv, "boss@example.com")
 	turnOnTwoFactor(t, srv, boss)
 	freelancer := signUpFreelancer(t, srv, "dev_one@example.com")
 	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
@@ -160,12 +184,13 @@ func TestAdmin_Users(t *testing.T) {
 	if n := list("?activity=never")["total"]; n != 0.0 {
 		t.Fatalf("never active after a request = %v", n)
 	}
-	if n := list("?activity=active")["total"]; n != 3.0 {
+	if n := list("?activity=active")["total"]; n != 2.0 {
 		t.Fatalf("active = %v", n)
 	}
 
 	all := list("")
-	if all["total"] != 3.0 || fmt.Sprint(emails(all)) != "[client@example.com dev_one@example.com boss@example.com]" {
+	// The admin is not one of the accounts.
+	if all["total"] != 2.0 || fmt.Sprint(emails(all)) != "[client@example.com dev_one@example.com]" {
 		t.Fatalf("all, the newest first = %v", emails(all))
 	}
 	first := all["users"].([]any)[0].(map[string]any)
@@ -192,8 +217,8 @@ func TestAdmin_Users(t *testing.T) {
 	if n := list("?role=client")["total"]; n != 1.0 {
 		t.Fatalf("clients = %v", n)
 	}
-	page := list("?limit=2&page=2")
-	if page["total"] != 3.0 || len(page["users"].([]any)) != 1 {
+	page := list("?limit=1&page=2")
+	if page["total"] != 2.0 || len(page["users"].([]any)) != 1 {
 		t.Fatalf("page 2 = %v", page)
 	}
 
@@ -218,7 +243,7 @@ func TestAdmin_Users(t *testing.T) {
 	if since.Weekday() != time.Monday || time.Since(since) < 25*7*24*time.Hour || time.Since(since) > 26*7*24*time.Hour {
 		t.Fatalf("active since = %v", d["active_since"])
 	}
-	for _, id := range []string{"00000000-0000-0000-0000-000000000000", "nope"} {
+	for _, id := range []string{"00000000-0000-0000-0000-000000000000", "nope", myID(t, srv, boss)} {
 		resp := get(t, boss, srv.URL+"/api/v1/admin/users/"+id)
 		wantStatus(t, resp, http.StatusNotFound)
 		resp.Body.Close()

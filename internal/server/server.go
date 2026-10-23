@@ -179,9 +179,9 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	// --- each user's kanban board over their tasks ----------------------------
 	boardHandler := board.NewHandler(board.NewService(board.NewRepository(pool), tasksSvc))
 
-	// --- the admin panel: how Helpic is used, for ADMIN_EMAILS --------------
+	// --- the admin panel: how Helpic is used, for admin accounts -----------
 	adminRepo := admin.NewRepository(pool)
-	adminSvc := admin.NewService(adminRepo, cfg.AdminEmails, cfg.Location)
+	adminSvc := admin.NewService(adminRepo, cfg.Location)
 	adminHandler := admin.NewHandler(adminSvc)
 	activity := admin.NewActivity(adminRepo, adminSvc)
 
@@ -234,30 +234,36 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware)
 			r.Use(activity.Track)
+			// The account itself: every role, admins included.
 			r.Get("/me", userHandler.Me)
 			profileHandler.Routes(r, byUser(lim.passwordChecks))
 			authHandler.SessionRoutes(r)
 			authHandler.TwoFactorRoutes(r, byUser(lim.passwordChecks))
-			tasksHandler.Routes(r)
-			attachmentsHandler.Routes(r)
-			commentsHandler.Routes(r)
-			timelogHandler.Routes(r)
-			projectsHandler.Routes(r)
-			boardHandler.Routes(r)
-			notificationsHandler.Routes(r)
-			emailPrefsHandler.Routes(r)
-			telegramHandler.Routes(r)
-			reportsHandler.Routes(r)
 			adminHandler.Routes(r)
 
+			// The work: freelancers and clients only, never admins.
 			r.Group(func(r chi.Router) {
-				r.Use(middleware.RequireRole(user.RoleFreelancer))
-				clientsHandler.FreelancerRoutes(r, byUser(lim.invites))
-			})
-			r.Group(func(r chi.Router) {
-				r.Use(middleware.RequireRole(user.RoleClient))
-				clientsHandler.ClientRoutes(r)
-				teamHandler.ClientRoutes(r, byUser(lim.invites))
+				r.Use(middleware.RequireRole(user.RoleFreelancer, user.RoleClient))
+				tasksHandler.Routes(r)
+				attachmentsHandler.Routes(r)
+				commentsHandler.Routes(r)
+				timelogHandler.Routes(r)
+				projectsHandler.Routes(r)
+				boardHandler.Routes(r)
+				notificationsHandler.Routes(r)
+				emailPrefsHandler.Routes(r)
+				telegramHandler.Routes(r)
+				reportsHandler.Routes(r)
+
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireRole(user.RoleFreelancer))
+					clientsHandler.FreelancerRoutes(r, byUser(lim.invites))
+				})
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireRole(user.RoleClient))
+					clientsHandler.ClientRoutes(r)
+					teamHandler.ClientRoutes(r, byUser(lim.invites))
+				})
 			})
 		})
 	})

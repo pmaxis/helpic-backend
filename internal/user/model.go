@@ -9,10 +9,12 @@ import (
 var ErrNotFound = errors.New("user not found")
 
 // Account roles. Public sign-up always creates a freelancer; a client account
-// is created by accepting a freelancer's invitation.
+// is created by accepting a freelancer's invitation; an admin only by the cli.
 const (
 	RoleFreelancer = "freelancer"
 	RoleClient     = "client"
+	// RoleAdmin runs the platform: the admin panel, no work of their own.
+	RoleAdmin = "admin"
 )
 
 // User is the domain model for an account. PasswordHash never leaves the
