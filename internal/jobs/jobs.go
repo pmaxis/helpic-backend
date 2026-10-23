@@ -22,6 +22,8 @@ type Status struct {
 	Running   bool
 	Runs      int
 	Failures  int
+	// Streak is how many runs in a row failed, up to the last.
+	Streak int
 }
 
 // Registry runs jobs and remembers how each went, for the admin panel. It
@@ -58,9 +60,10 @@ func (r *Registry) Every(ctx context.Context, name string, interval time.Duratio
 		st.Runs++
 		if err != nil && ctx.Err() == nil {
 			st.Failures++
+			st.Streak++
 			st.LastError = err.Error()
 		} else if err == nil {
-			st.LastError = ""
+			st.LastError, st.Streak = "", 0
 			st.LastSuccess = time.Now()
 		}
 		r.mu.Unlock()

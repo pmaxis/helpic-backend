@@ -21,6 +21,7 @@ type Handler struct {
 	svc    *Service
 	logs   *applog.Repository
 	system System
+	alerts AlertTester
 }
 
 // NewHandler creates an admin Handler; logs are the server's warnings and
@@ -49,6 +50,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Post("/signups/{email}/resend", h.ResendSignup)
 		r.Delete("/signups/{email}", h.DeleteSignup)
 		r.Get("/system", h.System)
+		r.Post("/system/test-alert", h.TestAlert)
 	})
 }
 

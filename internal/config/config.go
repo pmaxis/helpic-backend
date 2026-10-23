@@ -60,6 +60,13 @@ type Config struct {
 	TelegramBotToken string
 	TelegramAPIURL   string
 
+	// AlertBotToken and AlertChatID send the admins alerts, through a bot
+	// of their own so an alert about Telegram still arrives; an empty token
+	// leaves alerts off. AlertLocale is their language.
+	AlertBotToken string
+	AlertChatID   int64
+	AlertLocale   string
+
 	// NBUURL is where the National Bank of Ukraine's official rates are
 	// read, for reports' totals in hryvnias; "" (NBU_API_URL=off) turns
 	// that off.
@@ -144,6 +151,15 @@ func Load() (Config, error) {
 	cfg.AppURL = getEnv("APP_URL", cfg.CORSOrigin)
 	cfg.TelegramBotToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	cfg.TelegramAPIURL = getEnv("TELEGRAM_API_URL", "https://api.telegram.org")
+	cfg.AlertBotToken = os.Getenv("ALERT_TELEGRAM_BOT_TOKEN")
+	if cfg.AlertBotToken != "" {
+		if cfg.AlertChatID, err = strconv.ParseInt(os.Getenv("ALERT_TELEGRAM_CHAT_ID"), 10, 64); err != nil || cfg.AlertChatID == 0 {
+			return Config{}, fmt.Errorf("invalid ALERT_TELEGRAM_CHAT_ID: the numeric ID of the chat alerts go to, e.g. -1001234567890")
+		}
+	}
+	if cfg.AlertLocale = getEnv("ALERT_LOCALE", "uk"); cfg.AlertLocale != "en" && cfg.AlertLocale != "uk" {
+		return Config{}, fmt.Errorf("invalid ALERT_LOCALE: en or uk")
+	}
 	if cfg.NBUURL = strings.TrimRight(getEnv("NBU_API_URL", "https://bank.gov.ua"), "/"); strings.EqualFold(cfg.NBUURL, "off") {
 		cfg.NBUURL = ""
 	}
