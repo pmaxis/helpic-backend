@@ -84,47 +84,16 @@ type JobDTO struct {
 	State string `json:"state"`
 }
 
-// UploaderDTO is an account by what it has uploaded.
-type UploaderDTO struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
-	Files int    `json:"files"`
-	Bytes int64  `json:"bytes"`
+// FilesDTO is the files uploaded to Helpic: how many, and how much they take.
+type FilesDTO struct {
+	Count int   `json:"count"`
+	Bytes int64 `json:"bytes"`
 }
 
-// DiskDTO is the disk the files are kept on.
+// DiskDTO is the disk the files on tasks are kept on.
 type DiskDTO struct {
 	TotalBytes uint64 `json:"total_bytes"`
 	FreeBytes  uint64 `json:"free_bytes"`
-}
-
-// StorageDTO is the files on tasks as they stand: sizes and counts only.
-type StorageDTO struct {
-	Files int   `json:"files"`
-	Bytes int64 `json:"bytes"`
-	// Accounts have uploaded a file at least; NearQuota have used 90% of
-	// the quota or more, 0 without a quota.
-	Accounts     int   `json:"accounts"`
-	NearQuota    int   `json:"near_quota"`
-	QuotaBytes   int64 `json:"quota_bytes"`
-	MaxFileBytes int64 `json:"max_file_bytes"`
-	// Top are the accounts that uploaded the most, the most first.
-	Top []UploaderDTO `json:"top"`
-	// Disk is null when it can't be read.
-	Disk *DiskDTO `json:"disk"`
-}
-
-func toStorageDTO(s Storage) StorageDTO {
-	out := StorageDTO{Files: s.Files, Bytes: s.Bytes, Accounts: s.Accounts, NearQuota: s.NearQuota,
-		QuotaBytes: s.QuotaBytes, MaxFileBytes: s.MaxFileBytes, Top: make([]UploaderDTO, 0, len(s.Top))}
-	for _, u := range s.Top {
-		out.Top = append(out.Top, UploaderDTO{ID: u.ID, Email: u.Email, Name: u.Name, Files: u.Files, Bytes: u.Bytes})
-	}
-	if s.Disk != nil {
-		out.Disk = &DiskDTO{TotalBytes: s.Disk.TotalBytes, FreeBytes: s.Disk.FreeBytes}
-	}
-	return out
 }
 
 // SystemResponse is the server as it stands.
@@ -134,8 +103,9 @@ type SystemResponse struct {
 	StartedAt time.Time      `json:"started_at"`
 	Checks    []CheckDTO     `json:"checks"`
 	Jobs      []JobDTO       `json:"jobs"`
-	Emails    EmailCountsDTO `json:"emails"`
-	Storage   StorageDTO     `json:"storage"`
+	Files     FilesDTO       `json:"files"`
+	// Disk is null when the server can't read it.
+	Disk *DiskDTO `json:"disk"`
 }
 
 func optionalTime(t time.Time) *time.Time {
@@ -148,7 +118,7 @@ func optionalTime(t time.Time) *time.Time {
 // System handles GET /api/v1/admin/system.
 //
 //	@Summary		System status
-//	@Description	Checks the database, the mail server and the Telegram bot on the spot, and tells how this server's background jobs ran since it started, how the outgoing email stands and how much the files on tasks take, against the quota and the disk.
+//	@Description	Checks the database, the mail server and the Telegram bot on the spot, and tells how this server's background jobs ran since it started, how much the files uploaded to tasks take and how much room their disk has left. The outgoing email has a page of its own.
 //	@Tags			admin
 //	@Produce		json
 //	@Success		200	{object}	SystemResponse			"OK"
@@ -171,15 +141,13 @@ func (h *Handler) System(w http.ResponseWriter, r *http.Request) {
 			Running: j.Running, Runs: j.Runs, Failures: j.Failures, State: j.State,
 		})
 	}
-	// The email counts come from the database: unlike the jobs, they cover
-	// every server.
-	if counts, err := h.svc.EmailCounts(r.Context()); err == nil {
-		out.Emails = toEmailCountsDTO(counts)
+	if count, bytes, err := h.svc.Files(r.Context()); err == nil {
+		out.Files = FilesDTO{Count: count, Bytes: bytes}
+	} else {
+		slog.Warn("count files", "error", err)
 	}
-	st, err := h.svc.Storage(r.Context())
-	if err != nil {
-		slog.Warn("read storage", "error", err)
+	if d, ok := h.svc.Disk(); ok {
+		out.Disk = &DiskDTO{TotalBytes: d.TotalBytes, FreeBytes: d.FreeBytes}
 	}
-	out.Storage = toStorageDTO(st)
 	response.JSON(w, http.StatusOK, out)
 }
