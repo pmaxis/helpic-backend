@@ -419,3 +419,82 @@ func TestProjects_MoveKeepsOtherFreelancersOrder(t *testing.T) {
 		t.Fatalf("column = %v", got)
 	}
 }
+
+// freelancerIDs are the freelancers among the people in list.
+func freelancerIDs(list any) map[string]bool {
+	got := map[string]bool{}
+	for _, p := range list.([]any) {
+		person := p.(map[string]any)
+		if person["role"] == "freelancer" {
+			got[person["id"].(string)] = true
+		}
+	}
+	return got
+}
+
+func TestProjects_FreelancersDontSeeEachOther(t *testing.T) {
+	srv, _ := newAPI(t)
+	p := newSharedProject(t, srv)
+	projectURL := srv.URL + "/api/v1/projects/" + p.id
+	task := newTask(t, srv, p.client, map[string]any{"project_id": p.id, "freelancer_id": p.firstID, "title": "Logo"})
+	taskURL := srv.URL + "/api/v1/tasks/" + task["id"].(string)
+
+	// On the project, in its list and its people, a freelancer sees only themself.
+	for _, who := range []struct {
+		client *http.Client
+		id     string
+	}{{p.first, p.firstID}, {p.second, p.secondID}} {
+		project := field(decode(t, get(t, who.client, projectURL)), "project")
+		if got := freelancerIDs(project["participants"]); len(got) != 1 || !got[who.id] {
+			t.Fatalf("project participants = %v", project["participants"])
+		}
+		people := decode(t, get(t, who.client, projectURL+"/people"))
+		if got := freelancerIDs(people["participants"]); len(got) != 1 || !got[who.id] {
+			t.Fatalf("project people = %v", people["participants"])
+		}
+		list := decode(t, get(t, who.client, srv.URL+"/api/v1/projects"))["projects"].([]any)
+		if got := freelancerIDs(list[0].(map[string]any)["participants"]); len(got) != 1 || !got[who.id] {
+			t.Fatalf("listed participants = %v", got)
+		}
+	}
+
+	// On a task, its freelancer isn't offered the others who could take it.
+	if got := freelancerIDs(decode(t, get(t, p.first, taskURL+"/people"))["people"]); len(got) != 1 || !got[p.firstID] {
+		t.Fatalf("task people for the freelancer = %v", got)
+	}
+
+	// The client, who picks the freelancers, sees them all.
+	project := field(decode(t, get(t, p.client, projectURL)), "project")
+	if got := freelancerIDs(project["participants"]); !got[p.firstID] || !got[p.secondID] {
+		t.Fatalf("client's project participants = %v", project["participants"])
+	}
+	if got := freelancerIDs(decode(t, get(t, p.client, taskURL+"/people"))["people"]); !got[p.firstID] || !got[p.secondID] {
+		t.Fatalf("client's task people = %v", got)
+	}
+}
+
+func TestProjects_FreelancerSeesTheAuthorFreelancer(t *testing.T) {
+	srv, _ := newAPI(t)
+	first := signUpFreelancer(t, srv, "one@example.com")
+	client := acceptNew(t, srv, invite(t, srv, first, "client@example.com"))
+	second := signUpFreelancer(t, srv, "two@example.com")
+	resp := acceptInvite(t, srv, newClient(), invite(t, srv, second, "client@example.com"), map[string]string{"password": "clientsecret1"})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	firstID, secondID := myID(t, srv, first), myID(t, srv, second)
+
+	// The first freelancer starts the project and brings the second onto it.
+	project := createProject(t, srv, first, map[string]any{"client_id": myID(t, srv, client), "name": "Site"})
+	projectURL := srv.URL + "/api/v1/projects/" + project["id"].(string)
+	resp = post(t, first, projectURL+"/participants", map[string]any{"user_ids": []string{secondID}})
+	wantStatus(t, resp, http.StatusOK)
+	if got := freelancerIDs(decode(t, resp)["participants"]); !got[firstID] || !got[secondID] {
+		t.Fatalf("author's participants = %v", got)
+	}
+
+	// The second sees who started it, and themself.
+	people := decode(t, get(t, second, projectURL+"/people"))
+	if got := freelancerIDs(people["participants"]); len(got) != 2 || !got[firstID] || !got[secondID] {
+		t.Fatalf("participants = %v", people["participants"])
+	}
+}
