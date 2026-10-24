@@ -69,7 +69,9 @@ func (s *Service) Tell(ctx context.Context, actorID string, t Task, kind, detail
 }
 
 // People lists who on the task's client side can be on it, for the viewer to
-// pick from; a personal task has nobody.
+// pick from; a personal task has nobody. The freelancers who could take the
+// task are only for whoever picks its freelancer: anyone else, the freelancer
+// first, sees none but the task's own.
 func (s *Service) People(ctx context.Context, userID, id string) ([]Person, error) {
 	t, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
@@ -78,7 +80,15 @@ func (s *Service) People(ctx context.Context, userID, id string) ([]Person, erro
 	if t.Client == nil {
 		return []Person{}, nil
 	}
-	return s.repo.ClientPeople(ctx, t.ID)
+	people, err := s.repo.ClientPeople(ctx, t.ID)
+	if err != nil {
+		return nil, err
+	}
+	assigns, err := s.canAssign(ctx, t, userID)
+	if err != nil || assigns {
+		return people, err
+	}
+	return slices.DeleteFunc(people, func(p Person) bool { return p.Role == "freelancer" && p.ID != t.Freelancer.ID }), nil
 }
 
 // canChangePeople reports whether the user may change who is on the task:

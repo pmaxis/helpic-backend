@@ -23,8 +23,17 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
+// seenBy keeps the participants u of the project p the viewer may see. The
+// author, who invites them, and the client's side, who picks who does a task,
+// see every freelancer; another freelancer sees none on it but the author.
+func seenBy(viewer string) string {
+	return `(u.role <> 'freelancer' OR u.id = ` + viewer + ` OR u.id = p.created_by OR p.created_by = ` + viewer + `
+		OR (SELECT vu.role FROM users vu WHERE vu.id = ` + viewer + `) <> 'freelancer')`
+}
+
 // selectProject reads projects for the user in the viewer parameter: the task
-// counts are of the tasks they see, so a contractor counts only theirs.
+// counts are of the tasks they see, so a contractor counts only theirs, and
+// the participants are those they may see.
 func selectProject(viewer string) string {
 	return `SELECT p.id, p.created_by, p.name, p.description, p.created_at, p.updated_at,
 		f.id, f.name, f.email, c.id, c.name, c.email,
@@ -43,7 +52,7 @@ func selectProject(viewer string) string {
 				END)
 				ORDER BY u.id = p.created_by DESC, lower(u.name), u.email)
 			FROM project_participants pp JOIN users u ON u.id = pp.user_id
-			WHERE pp.project_id = p.id), '[]'),
+			WHERE pp.project_id = p.id AND ` + seenBy(viewer) + `), '[]'),
 		(SELECT pp.hourly_rate_cents FROM project_participants pp WHERE pp.project_id = p.id AND pp.user_id = ` + viewer + `)
 	FROM projects p
 	JOIN users f ON f.id = p.freelancer_id
@@ -210,14 +219,16 @@ const whoCanJoin = `
 	JOIN company_members m ON m.company_id = c.id
 	WHERE p.id = $1::uuid AND m.role IN ('member', 'contractor')`
 
-// Participants lists who is on the project: the author first, then by name.
-func (r *Repository) Participants(ctx context.Context, projectID string) ([]Person, error) {
+// Participants lists who is on the project as the user sees them: the author
+// first, then by name.
+func (r *Repository) Participants(ctx context.Context, userID, projectID string) ([]Person, error) {
 	rows, err := r.db.Query(ctx, `SELECT u.id, u.name, u.email, j.role
 		FROM project_participants pp
+		JOIN projects p ON p.id = pp.project_id
 		JOIN users u ON u.id = pp.user_id
 		JOIN (`+whoCanJoin+`) j ON j.id = u.id
-		WHERE pp.project_id = $1::uuid
-		ORDER BY u.id = (SELECT created_by FROM projects WHERE id = $1::uuid) DESC, lower(u.name), u.email`, projectID)
+		WHERE pp.project_id = $1::uuid AND `+seenBy("$2::uuid")+`
+		ORDER BY u.id = p.created_by DESC, lower(u.name), u.email`, projectID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list project participants: %w", err)
 	}

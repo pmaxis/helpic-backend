@@ -101,14 +101,14 @@ func (s *Service) Delete(ctx context.Context, userID, id string) error {
 	return s.repo.Delete(ctx, id)
 }
 
-// People lists the project's participants, and, for its author, who they can
-// still invite: the freelancer, the client, and the client's employees and contractors.
+// People lists the project's participants the user may see, and, for its
+// author, who they can still invite: the freelancer, the client, and the client's employees and contractors.
 func (s *Service) People(ctx context.Context, userID, id string) (participants, candidates []Person, err error) {
 	p, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
 		return nil, nil, err
 	}
-	if participants, err = s.repo.Participants(ctx, id); err != nil {
+	if participants, err = s.repo.Participants(ctx, userID, id); err != nil {
 		return nil, nil, err
 	}
 	if p.CreatedBy != userID {
