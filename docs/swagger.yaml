@@ -256,6 +256,13 @@ definitions:
       total:
         type: integer
     type: object
+  admin.FilesDTO:
+    properties:
+      bytes:
+        type: integer
+      count:
+        type: integer
+    type: object
   admin.JobDTO:
     properties:
       failures:
@@ -463,41 +470,18 @@ definitions:
       totals:
         $ref: '#/definitions/admin.TotalsDTO'
     type: object
-  admin.StorageDTO:
-    properties:
-      accounts:
-        description: |-
-          Accounts have uploaded a file at least; NearQuota have used 90% of
-          the quota or more, 0 without a quota.
-        type: integer
-      bytes:
-        type: integer
-      disk:
-        allOf:
-        - $ref: '#/definitions/admin.DiskDTO'
-        description: Disk is null when it can't be read.
-      files:
-        type: integer
-      max_file_bytes:
-        type: integer
-      near_quota:
-        type: integer
-      quota_bytes:
-        type: integer
-      top:
-        description: Top are the accounts that uploaded the most, the most first.
-        items:
-          $ref: '#/definitions/admin.UploaderDTO'
-        type: array
-    type: object
   admin.SystemResponse:
     properties:
       checks:
         items:
           $ref: '#/definitions/admin.CheckDTO'
         type: array
-      emails:
-        $ref: '#/definitions/admin.EmailCountsDTO'
+      disk:
+        allOf:
+        - $ref: '#/definitions/admin.DiskDTO'
+        description: Disk is null when the server can't read it.
+      files:
+        $ref: '#/definitions/admin.FilesDTO'
       go_version:
         type: string
       jobs:
@@ -506,8 +490,6 @@ definitions:
         type: array
       started_at:
         type: string
-      storage:
-        $ref: '#/definitions/admin.StorageDTO'
       version:
         type: string
     type: object
@@ -543,19 +525,6 @@ definitions:
         type: integer
       users:
         type: integer
-    type: object
-  admin.UploaderDTO:
-    properties:
-      bytes:
-        type: integer
-      email:
-        type: string
-      files:
-        type: integer
-      id:
-        type: string
-      name:
-        type: string
     type: object
   admin.UsersResponse:
     properties:
@@ -2337,8 +2306,8 @@ paths:
     get:
       description: Checks the database, the mail server and the Telegram bot on the
         spot, and tells how this server's background jobs ran since it started, how
-        the outgoing email stands and how much the files on tasks take, against the
-        quota and the disk.
+        much the files uploaded to tasks take and how much room their disk has left.
+        The outgoing email has a page of its own.
       produces:
       - application/json
       responses:

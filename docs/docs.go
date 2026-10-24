@@ -711,7 +711,7 @@ const docTemplate = `{
         },
         "/admin/system": {
             "get": {
-                "description": "Checks the database, the mail server and the Telegram bot on the spot, and tells how this server's background jobs ran since it started, how the outgoing email stands and how much the files on tasks take, against the quota and the disk.",
+                "description": "Checks the database, the mail server and the Telegram bot on the spot, and tells how this server's background jobs ran since it started, how much the files uploaded to tasks take and how much room their disk has left. The outgoing email has a page of its own.",
                 "produces": [
                     "application/json"
                 ],
@@ -6725,6 +6725,17 @@ const docTemplate = `{
                 }
             }
         },
+        "admin.FilesDTO": {
+            "type": "object",
+            "properties": {
+                "bytes": {
+                    "type": "integer"
+                },
+                "count": {
+                    "type": "integer"
+                }
+            }
+        },
         "admin.JobDTO": {
             "type": "object",
             "properties": {
@@ -7013,45 +7024,6 @@ const docTemplate = `{
                 }
             }
         },
-        "admin.StorageDTO": {
-            "type": "object",
-            "properties": {
-                "accounts": {
-                    "description": "Accounts have uploaded a file at least; NearQuota have used 90% of\nthe quota or more, 0 without a quota.",
-                    "type": "integer"
-                },
-                "bytes": {
-                    "type": "integer"
-                },
-                "disk": {
-                    "description": "Disk is null when it can't be read.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/admin.DiskDTO"
-                        }
-                    ]
-                },
-                "files": {
-                    "type": "integer"
-                },
-                "max_file_bytes": {
-                    "type": "integer"
-                },
-                "near_quota": {
-                    "type": "integer"
-                },
-                "quota_bytes": {
-                    "type": "integer"
-                },
-                "top": {
-                    "description": "Top are the accounts that uploaded the most, the most first.",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/admin.UploaderDTO"
-                    }
-                }
-            }
-        },
         "admin.SystemResponse": {
             "type": "object",
             "properties": {
@@ -7061,8 +7033,16 @@ const docTemplate = `{
                         "$ref": "#/definitions/admin.CheckDTO"
                     }
                 },
-                "emails": {
-                    "$ref": "#/definitions/admin.EmailCountsDTO"
+                "disk": {
+                    "description": "Disk is null when the server can't read it.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/admin.DiskDTO"
+                        }
+                    ]
+                },
+                "files": {
+                    "$ref": "#/definitions/admin.FilesDTO"
                 },
                 "go_version": {
                     "type": "string"
@@ -7075,9 +7055,6 @@ const docTemplate = `{
                 },
                 "started_at": {
                     "type": "string"
-                },
-                "storage": {
-                    "$ref": "#/definitions/admin.StorageDTO"
                 },
                 "version": {
                     "type": "string"
@@ -7131,26 +7108,6 @@ const docTemplate = `{
                 },
                 "users": {
                     "type": "integer"
-                }
-            }
-        },
-        "admin.UploaderDTO": {
-            "type": "object",
-            "properties": {
-                "bytes": {
-                    "type": "integer"
-                },
-                "email": {
-                    "type": "string"
-                },
-                "files": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
                 }
             }
         },
