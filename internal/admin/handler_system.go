@@ -84,6 +84,49 @@ type JobDTO struct {
 	State string `json:"state"`
 }
 
+// UploaderDTO is an account by what it has uploaded.
+type UploaderDTO struct {
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
+	Files int    `json:"files"`
+	Bytes int64  `json:"bytes"`
+}
+
+// DiskDTO is the disk the files are kept on.
+type DiskDTO struct {
+	TotalBytes uint64 `json:"total_bytes"`
+	FreeBytes  uint64 `json:"free_bytes"`
+}
+
+// StorageDTO is the files on tasks as they stand: sizes and counts only.
+type StorageDTO struct {
+	Files int   `json:"files"`
+	Bytes int64 `json:"bytes"`
+	// Accounts have uploaded a file at least; NearQuota have used 90% of
+	// the quota or more, 0 without a quota.
+	Accounts     int   `json:"accounts"`
+	NearQuota    int   `json:"near_quota"`
+	QuotaBytes   int64 `json:"quota_bytes"`
+	MaxFileBytes int64 `json:"max_file_bytes"`
+	// Top are the accounts that uploaded the most, the most first.
+	Top []UploaderDTO `json:"top"`
+	// Disk is null when it can't be read.
+	Disk *DiskDTO `json:"disk"`
+}
+
+func toStorageDTO(s Storage) StorageDTO {
+	out := StorageDTO{Files: s.Files, Bytes: s.Bytes, Accounts: s.Accounts, NearQuota: s.NearQuota,
+		QuotaBytes: s.QuotaBytes, MaxFileBytes: s.MaxFileBytes, Top: make([]UploaderDTO, 0, len(s.Top))}
+	for _, u := range s.Top {
+		out.Top = append(out.Top, UploaderDTO{ID: u.ID, Email: u.Email, Name: u.Name, Files: u.Files, Bytes: u.Bytes})
+	}
+	if s.Disk != nil {
+		out.Disk = &DiskDTO{TotalBytes: s.Disk.TotalBytes, FreeBytes: s.Disk.FreeBytes}
+	}
+	return out
+}
+
 // SystemResponse is the server as it stands.
 type SystemResponse struct {
 	Version   string         `json:"version"`
@@ -92,6 +135,7 @@ type SystemResponse struct {
 	Checks    []CheckDTO     `json:"checks"`
 	Jobs      []JobDTO       `json:"jobs"`
 	Emails    EmailCountsDTO `json:"emails"`
+	Storage   StorageDTO     `json:"storage"`
 }
 
 func optionalTime(t time.Time) *time.Time {
@@ -104,7 +148,7 @@ func optionalTime(t time.Time) *time.Time {
 // System handles GET /api/v1/admin/system.
 //
 //	@Summary		System status
-//	@Description	Checks the database, the mail server and the Telegram bot on the spot, and tells how this server's background jobs ran since it started and how the outgoing email stands.
+//	@Description	Checks the database, the mail server and the Telegram bot on the spot, and tells how this server's background jobs ran since it started, how the outgoing email stands and how much the files on tasks take, against the quota and the disk.
 //	@Tags			admin
 //	@Produce		json
 //	@Success		200	{object}	SystemResponse			"OK"
@@ -132,5 +176,10 @@ func (h *Handler) System(w http.ResponseWriter, r *http.Request) {
 	if counts, err := h.svc.EmailCounts(r.Context()); err == nil {
 		out.Emails = toEmailCountsDTO(counts)
 	}
+	st, err := h.svc.Storage(r.Context())
+	if err != nil {
+		slog.Warn("read storage", "error", err)
+	}
+	out.Storage = toStorageDTO(st)
 	response.JSON(w, http.StatusOK, out)
 }

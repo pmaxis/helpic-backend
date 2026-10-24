@@ -22,6 +22,8 @@ type Service struct {
 	// alerts tell the admins' chat, in alertLocale; nil when alerts are off.
 	alerts      Notifier
 	alertLocale string
+	// uploads are the limits on files, and where they are kept.
+	uploads Uploads
 }
 
 // NewService creates an admin Service. loc is the app's time zone, whose days
@@ -121,5 +123,7 @@ const ActivityWeeks = 26
 func (s *Service) AccountDetail(ctx context.Context, id string) (AccountDetail, error) {
 	today := s.Today()
 	monday := today.AddDate(0, 0, -((int(today.Weekday()) + 6) % 7))
-	return s.repo.AccountDetail(ctx, id, today, monday.AddDate(0, 0, -7*(ActivityWeeks-1)))
+	d, err := s.repo.AccountDetail(ctx, id, today, monday.AddDate(0, 0, -7*(ActivityWeeks-1)))
+	d.QuotaBytes = s.uploads.QuotaBytes
+	return d, err
 }

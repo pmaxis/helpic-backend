@@ -249,6 +249,8 @@ func (r *Repository) AccountDetail(ctx context.Context, id string, today, since 
 			(SELECT count(*) FROM reports r WHERE (r.freelancer_id = u.id OR r.client_id = u.id) AND r.paid_at IS NOT NULL),
 			(SELECT coalesce(sum(seconds), 0) FROM time_entries te WHERE te.user_id = u.id),
 			(SELECT count(*) FROM comments c WHERE c.author_id = u.id),
+			(SELECT count(*) FROM attachments a WHERE a.uploaded_by = u.id),
+			(SELECT coalesce(sum(a.size_bytes), 0) FROM attachments a WHERE a.uploaded_by = u.id),
 			EXISTS (SELECT 1 FROM telegram_links tl WHERE tl.user_id = u.id),
 			(SELECT count(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > now()),
 			(SELECT max(s.created_at) FROM sessions s WHERE s.user_id = u.id),
@@ -259,7 +261,7 @@ func (r *Repository) AccountDetail(ctx context.Context, id string, today, since 
 		LEFT JOIN companies mc ON mc.id = m.company_id
 		WHERE u.id = $2 AND u.role <> 'admin'`, date(today), id, date(since)),
 		&d.Locale, &d.Currency, &teamName, &teamRole, &teamMembers, &d.Partners, &d.ReportsSent, &d.ReportsPaid,
-		&d.SecondsLogged, &d.Comments, &d.Telegram, &d.Sessions, &d.LastSignIn, &days)
+		&d.SecondsLogged, &d.Comments, &d.Files, &d.FilesBytes, &d.Telegram, &d.Sessions, &d.LastSignIn, &days)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return AccountDetail{}, ErrNotFound
 	}

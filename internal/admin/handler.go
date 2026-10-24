@@ -327,7 +327,12 @@ type AccountDetailDTO struct {
 	ReportsPaid   int   `json:"reports_paid"`
 	SecondsLogged int64 `json:"seconds_logged"`
 	Comments      int   `json:"comments"`
-	Telegram      bool  `json:"telegram"`
+	// Files are what they uploaded to tasks, FilesBytes how much;
+	// QuotaBytes is how much they may, 0 for no limit.
+	Files      int   `json:"files"`
+	FilesBytes int64 `json:"files_bytes"`
+	QuotaBytes int64 `json:"quota_bytes"`
+	Telegram   bool  `json:"telegram"`
 	// Sessions are their signed-in devices now.
 	Sessions   int        `json:"sessions"`
 	LastSignIn *time.Time `json:"last_sign_in"`
@@ -366,6 +371,7 @@ func toAccountDetailDTO(d AccountDetail) AccountDetailDTO {
 	out := AccountDetailDTO{
 		AccountDTO: toAccountDTO(d.Account), Locale: d.Locale, Currency: d.Currency, Partners: d.Partners,
 		ReportsSent: d.ReportsSent, ReportsPaid: d.ReportsPaid, SecondsLogged: d.SecondsLogged, Comments: d.Comments,
+		Files: d.Files, FilesBytes: d.FilesBytes, QuotaBytes: d.QuotaBytes,
 		Telegram: d.Telegram, Sessions: d.Sessions, LastSignIn: d.LastSignIn,
 		ActiveSince: date(d.ActiveSince), ActiveOn: make([]string, 0, len(d.ActiveOn)),
 	}

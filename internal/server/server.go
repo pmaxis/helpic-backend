@@ -194,6 +194,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	adminSvc.UseMail(outbox)
 	adminSvc.UseOutbox(outbox)
 	adminSvc.UseSignupLinks(authSvc)
+	adminSvc.UseUploads(admin.Uploads{MaxFileBytes: cfg.MaxUploadBytes, QuotaBytes: cfg.UploadQuotaBytes, Dir: cfg.UploadsDir})
 	appLogs := applog.NewRepository(pool)
 	adminHandler := admin.NewHandler(adminSvc, appLogs)
 	adminHandler.UseCodes(authSvc)

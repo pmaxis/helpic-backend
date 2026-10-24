@@ -139,7 +139,12 @@ type AccountDetail struct {
 	ReportsPaid   int
 	SecondsLogged int64
 	Comments      int
-	Telegram      bool
+	// Files are what they uploaded to tasks, FilesBytes how much; QuotaBytes
+	// is how much they may, zero for no limit.
+	Files      int
+	FilesBytes int64
+	QuotaBytes int64
+	Telegram   bool
 	// Sessions are their signed-in devices now; LastSignIn the newest's start.
 	Sessions   int
 	LastSignIn *time.Time
