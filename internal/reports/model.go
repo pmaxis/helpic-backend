@@ -50,9 +50,12 @@ type Party struct {
 
 // Item is one completed task in a report, as it was when the report was made.
 type Item struct {
-	ID          string
-	TaskID      string
-	Title       string
+	ID     string
+	TaskID string
+	Title  string
+	// ParentTitle is the title of the task a subtask belongs to, "" for a
+	// top-level task.
+	ParentTitle string
 	ProjectName string
 	StatusName  string
 	CompletedOn time.Time

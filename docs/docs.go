@@ -5619,6 +5619,53 @@ const docTemplate = `{
                 }
             }
         },
+        "/tasks/{id}/subtasks": {
+            "get": {
+                "description": "The ones you see, archived ones too, the oldest first. A subtask is created with POST /tasks and parent_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "A task's subtasks",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "tasks",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/tasks.DTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/team": {
             "get": {
                 "description": "Clients only. The owner also gets the members and pending invitations.",
@@ -8156,6 +8203,10 @@ const docTemplate = `{
                     "description": "Notes say what was done in the task (shown in a detailed report).",
                     "type": "string"
                 },
+                "parent_title": {
+                    "description": "ParentTitle names the task a subtask belongs to, \"\" for a top-level task.",
+                    "type": "string"
+                },
                 "price_cents": {
                     "description": "PriceCents is null for a task without a price.",
                     "type": "integer"
@@ -8304,6 +8355,10 @@ const docTemplate = `{
                     "description": "Billing is \"fixed\" or \"hourly\": then the price is TrackedSeconds at\nHourlyRateCents. Like the price, the time and the rate are null for\nwhoever doesn't see the price.",
                     "type": "string"
                 },
+                "can_add_subtask": {
+                    "description": "CanAddSubtask is true while the task can be split: it's on the boards\nand isn't a subtask itself.",
+                    "type": "boolean"
+                },
                 "can_archive": {
                     "description": "CanArchive is true on the viewer's own personal task, which they may\nput in the archive by hand.",
                     "type": "boolean"
@@ -8382,6 +8437,13 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "parent": {
+                    "$ref": "#/definitions/tasks.ParentDTO"
+                },
+                "parent_id": {
+                    "description": "ParentID is the task a subtask belongs to, null on a top-level task;\nParent names it, null when the viewer doesn't see it.",
+                    "type": "string"
+                },
                 "participants": {
                     "description": "Participants are who took part: the freelancer first, then everyone who\nset, commented on, attached to or changed the task.",
                     "type": "array",
@@ -8416,6 +8478,14 @@ const docTemplate = `{
                 },
                 "status_name": {
                     "type": "string"
+                },
+                "subtasks": {
+                    "description": "Subtasks counts the subtasks the viewer sees, and the closed ones.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/tasks.SubtaskCount"
+                        }
+                    ]
                 },
                 "title": {
                     "type": "string"
@@ -8471,6 +8541,17 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "tasks.ParentDTO": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
                 }
             }
         },
@@ -8574,6 +8655,10 @@ const docTemplate = `{
                 "freelancer_id": {
                     "type": "string"
                 },
+                "parent_id": {
+                    "description": "ParentID makes the task a subtask of another (create only): it takes\nthe parent's client and project, and a client may leave the freelancer\nout for the parent's.",
+                    "type": "string"
+                },
                 "personal": {
                     "description": "Personal makes a task with no other side: a client's own (a freelancer's\nis made by leaving client_id empty). Create only.",
                     "type": "boolean"
@@ -8608,6 +8693,17 @@ const docTemplate = `{
                 },
                 "status_id": {
                     "type": "string"
+                }
+            }
+        },
+        "tasks.SubtaskCount": {
+            "type": "object",
+            "properties": {
+                "done": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },

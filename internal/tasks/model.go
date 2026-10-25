@@ -6,6 +6,10 @@
 //
 // A task is archived when its report is paid, or by hand when it's personal;
 // then it leaves the boards and nothing on it changes.
+//
+// A task can be split into subtasks, one level deep: each is a task of its
+// own (status, freelancer, price, time), with its parent's client and in its
+// parent's project.
 package tasks
 
 import (
@@ -74,6 +78,14 @@ var (
 	// ErrArchiveNotAllowed is returned for archiving a task by hand that isn't
 	// the user's own personal task: shared work is archived by its payment.
 	ErrArchiveNotAllowed = errors.New("only a personal task is archived by hand")
+	// ErrNestedSubtask is returned for a subtask of a subtask: they are one
+	// level deep.
+	ErrNestedSubtask = errors.New("a subtask has no subtasks")
+	// ErrHasSubtasks is returned for deleting a task that has subtasks.
+	ErrHasSubtasks = errors.New("the task has subtasks")
+	// ErrSubtaskProject is returned for moving a subtask to another project
+	// than its parent's: it moves with its parent.
+	ErrSubtaskProject = errors.New("a subtask stays in its parent's project")
 )
 
 // Person is someone on the task's client side who can be on the task: the
@@ -176,7 +188,13 @@ func CanEdit(t Task, viewerID string) bool {
 // CanDelete reports whether the viewer may delete the task: only its creator,
 // and only before work has started.
 func CanDelete(t Task, viewerID string) bool {
-	return !t.Archived() && t.CreatedBy == viewerID && t.Status == StatusNew
+	return !t.Archived() && t.CreatedBy == viewerID && t.Status == StatusNew && t.Subtasks.Total == 0
+}
+
+// CanAddSubtask reports whether the viewer may split the task: anyone who
+// sees it, while it isn't archived and isn't a subtask itself.
+func CanAddSubtask(t Task) bool {
+	return !t.Archived() && !t.IsSubtask()
 }
 
 // CanSeePrice reports whether the viewer sees the task's price: its
@@ -224,6 +242,19 @@ type Label struct {
 type ReportRef struct {
 	ID    string
 	Title string
+}
+
+// ParentRef names the task a subtask belongs to.
+type ParentRef struct {
+	ID    string
+	Title string
+}
+
+// SubtaskCount is how many subtasks a task has that the viewer sees, and how
+// many of them are closed: done, or archived.
+type SubtaskCount struct {
+	Total int `json:"total"`
+	Done  int `json:"done"`
 }
 
 // ProjectRef names the project a task belongs to.
@@ -285,6 +316,12 @@ type Task struct {
 	// by hand.
 	ArchivedAt *time.Time
 	ArchivedBy *ReportRef
+	// ParentID is the task a subtask belongs to, "" for a top-level task.
+	// Parent names it, nil when the viewer doesn't see it (another
+	// freelancer's task on the project).
+	ParentID string
+	Parent   *ParentRef
+	Subtasks SubtaskCount
 }
 
 // Archived reports whether the task is archived: it's off the boards and
@@ -302,3 +339,6 @@ type Filter struct {
 	// ProjectID keeps one project's tasks.
 	ProjectID string
 }
+
+// IsSubtask reports whether the task belongs to a parent task.
+func (t Task) IsSubtask() bool { return t.ParentID != "" }

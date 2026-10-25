@@ -36,6 +36,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Put("/{id}/priority", h.SetPriority)
 		r.Put("/{id}/labels", h.SetLabels)
 		r.Get("/{id}/history", h.History)
+		r.Get("/{id}/subtasks", h.Subtasks)
 		r.Get("/{id}/people", h.People)
 		r.Put("/{id}/freelancer", h.AssignFreelancer)
 		r.Post("/{id}/participants", h.AddParticipant)
@@ -518,6 +519,34 @@ func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string][]EventDTO{"events": out})
 }
 
+// Subtasks handles GET /api/v1/tasks/{id}/subtasks.
+//
+//	@Summary		A task's subtasks
+//	@Description	The ones you see, archived ones too, the oldest first. A subtask is created with POST /tasks and parent_id.
+//	@Tags			tasks
+//	@Produce		json
+//	@Param			id	path		string					true	"Task ID"
+//	@Success		200	{object}	map[string][]DTO		"tasks"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/tasks/{id}/subtasks [get]
+func (h *Handler) Subtasks(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	list, err := h.svc.Subtasks(r.Context(), userID, chi.URLParam(r, "id"))
+	if err != nil {
+		writeTask(w, 0, Task{}, "", "", err)
+		return
+	}
+	out := make([]DTO, 0, len(list))
+	for _, t := range list {
+		out = append(out, ToDTO(t, role, userID))
+	}
+	response.JSON(w, http.StatusOK, map[string][]DTO{"tasks": out})
+}
+
 // SetStatus handles POST /api/v1/tasks/{id}/status.
 //
 //	@Summary		Move a task
@@ -598,6 +627,12 @@ func writeTask(w http.ResponseWriter, status int, t Task, role, viewerID string,
 		response.Error(w, http.StatusConflict, response.CodeConflict, "A task outside a project needs a freelancer")
 	case errors.Is(err, ErrTransition):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "This status change isn't allowed")
+	case errors.Is(err, ErrNestedSubtask):
+		response.ValidationError(w, map[string]string{"parent_id": "A subtask can't have subtasks of its own"})
+	case errors.Is(err, ErrHasSubtasks):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "The task has subtasks: delete them first")
+	case errors.Is(err, ErrSubtaskProject):
+		response.ValidationError(w, map[string]string{"project_id": "A subtask stays in its parent's project: move the parent instead"})
 	case err != nil:
 		response.Internal(w, err)
 	default:

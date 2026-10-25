@@ -29,7 +29,11 @@ type Request struct {
 	// project and "" takes the task out of it.
 	ProjectID *string `json:"project_id"`
 	// StatusID creates the task straight in a board column (create only).
-	StatusID    string  `json:"status_id"`
+	StatusID string `json:"status_id"`
+	// ParentID makes the task a subtask of another (create only): it takes
+	// the parent's client and project, and a client may leave the freelancer
+	// out for the parent's.
+	ParentID    string  `json:"parent_id"`
 	Title       string  `json:"title"`
 	Description string  `json:"description"`
 	DueOn       *string `json:"due_on"`
@@ -48,6 +52,7 @@ type Params struct {
 	ClientID     string
 	ProjectID    *string
 	StatusID     string
+	ParentID     string
 	Title        string
 	Description  string
 	DueOn        *time.Time
@@ -82,7 +87,15 @@ func (r Request) Validate(creatorRole string) (Params, map[string]string) {
 		p.ProjectID = &trimmed
 	}
 	inProject := p.ProjectID != nil && *p.ProjectID != ""
+	if creatorRole != "" {
+		p.ParentID = strings.TrimSpace(r.ParentID)
+	}
 	switch {
+	case p.ParentID != "":
+		// Who it's with and its project come from the parent.
+		if p.Personal || p.ClientID != "" || p.ProjectID != nil {
+			fields["parent_id"] = "A subtask is with its parent's client, in its project"
+		}
 	case p.Personal && (p.FreelancerID != "" || p.ClientID != "" || inProject):
 		fields["freelancer_id"] = "A personal task has nobody else on it and no project"
 	case creatorRole == user.RoleClient && !p.Personal && p.FreelancerID == "" && !inProject:
@@ -293,6 +306,21 @@ type DTO struct {
 	// its owner did.
 	ArchivedAt *time.Time `json:"archived_at"`
 	ArchivedBy *ReportDTO `json:"archived_by"`
+	// ParentID is the task a subtask belongs to, null on a top-level task;
+	// Parent names it, null when the viewer doesn't see it.
+	ParentID *string    `json:"parent_id"`
+	Parent   *ParentDTO `json:"parent"`
+	// Subtasks counts the subtasks the viewer sees, and the closed ones.
+	Subtasks SubtaskCount `json:"subtasks"`
+	// CanAddSubtask is true while the task can be split: it's on the boards
+	// and isn't a subtask itself.
+	CanAddSubtask bool `json:"can_add_subtask"`
+}
+
+// ParentDTO names the task a subtask belongs to.
+type ParentDTO struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
 }
 
 // ReportDTO names the report whose payment archived a task.
@@ -304,31 +332,40 @@ type ReportDTO struct {
 // ToDTO maps a task for the viewer.
 func ToDTO(t Task, role, viewerID string) DTO {
 	d := DTO{
-		ID:           t.ID,
-		CreatedBy:    t.CreatedBy,
-		Creator:      PartyDTO(t.Creator),
-		StatusID:     t.StatusID,
-		StatusName:   t.StatusName,
-		Position:     t.Position,
-		Title:        t.Title,
-		Description:  t.Description,
-		Status:       t.Status,
-		PriceCents:   t.PriceCents,
-		Currency:     t.Currency,
-		Billing:      t.Billing,
-		Priority:     t.Priority,
-		Labels:       t.Labels,
-		NextStatuses: NextStatuses(t, role, viewerID),
-		CanEdit:      CanEdit(t, viewerID),
-		CanDelete:    CanDelete(t, viewerID),
-		CanSetPrice:  CanSetPrice(t, viewerID),
-		CanSeePrice:  CanSeePrice(t, viewerID),
-		CanTrackTime: CanTrackTime(t, viewerID),
-		Billed:       t.Billed,
-		CanArchive:   CanArchive(t, viewerID),
-		CreatedAt:    t.CreatedAt,
-		UpdatedAt:    t.UpdatedAt,
-		ArchivedAt:   t.ArchivedAt,
+		ID:            t.ID,
+		CreatedBy:     t.CreatedBy,
+		Creator:       PartyDTO(t.Creator),
+		StatusID:      t.StatusID,
+		StatusName:    t.StatusName,
+		Position:      t.Position,
+		Title:         t.Title,
+		Description:   t.Description,
+		Status:        t.Status,
+		PriceCents:    t.PriceCents,
+		Currency:      t.Currency,
+		Billing:       t.Billing,
+		Priority:      t.Priority,
+		Labels:        t.Labels,
+		NextStatuses:  NextStatuses(t, role, viewerID),
+		CanEdit:       CanEdit(t, viewerID),
+		CanDelete:     CanDelete(t, viewerID),
+		CanSetPrice:   CanSetPrice(t, viewerID),
+		CanSeePrice:   CanSeePrice(t, viewerID),
+		CanTrackTime:  CanTrackTime(t, viewerID),
+		Billed:        t.Billed,
+		CanArchive:    CanArchive(t, viewerID),
+		CreatedAt:     t.CreatedAt,
+		UpdatedAt:     t.UpdatedAt,
+		ArchivedAt:    t.ArchivedAt,
+		Subtasks:      t.Subtasks,
+		CanAddSubtask: CanAddSubtask(t),
+	}
+	if t.ParentID != "" {
+		id := t.ParentID
+		d.ParentID = &id
+	}
+	if t.Parent != nil {
+		d.Parent = &ParentDTO{ID: t.Parent.ID, Title: t.Parent.Title}
 	}
 	if t.ArchivedBy != nil {
 		d.ArchivedBy = &ReportDTO{ID: t.ArchivedBy.ID, Title: t.ArchivedBy.Title}

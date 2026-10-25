@@ -16,6 +16,7 @@ import (
 // Repository handles PostgreSQL access for tasks. Every query is scoped to
 // the tasks the user sees (the sees_task SQL function): their freelancer's,
 // their client company's — for a contractor, only the ones they take part in.
+// selectTask takes the viewer as $1.
 type Repository struct {
 	db *pgxpool.Pool
 }
@@ -41,7 +42,13 @@ const selectTask = `SELECT t.id, t.created_by, t.title, t.description, t.status,
 		coalesce(f.role, ''), t.archived_at, ar.id, ar.title,
 		t.billing, task_seconds(t.id), task_billed(t.id),
 		coalesce((SELECT pp.hourly_rate_cents FROM project_participants pp WHERE pp.project_id = t.project_id AND pp.user_id = t.freelancer_id),
-			f.hourly_rate_cents)
+			f.hourly_rate_cents),
+		-- the parent and the subtasks, as far as the viewer ($1) sees them
+		coalesce(t.parent_id::text, ''),
+		(SELECT json_build_object('id', p.id, 'title', p.title) FROM tasks p
+			WHERE p.id = t.parent_id AND sees_task($1, p.id, p.freelancer_id, p.client_id)),
+		(SELECT json_build_object('total', count(*), 'done', count(*) FILTER (WHERE s.status = 'done' OR s.archived_at IS NOT NULL))
+			FROM tasks s WHERE s.parent_id = t.id AND sees_task($1, s.id, s.freelancer_id, s.client_id))
 	FROM tasks t
 	JOIN workflow_statuses ws ON ws.id = t.status_id
 	LEFT JOIN users f ON f.id = t.freelancer_id
@@ -59,6 +66,8 @@ func scanTask(row pgx.Row) (Task, error) {
 		labels                                        []byte
 		participants                                  []byte
 		reportID, reportTitle                         *string
+		parent                                        []byte
+		subtasks                                      []byte
 	)
 	err := row.Scan(&t.ID, &t.CreatedBy, &t.Title, &t.Description, &t.Status, &t.StatusID, &t.StatusName, &t.Position,
 		&t.DueOn, &t.PriceCents, &t.Currency, &t.Priority, &labels, &t.CreatedAt, &t.UpdatedAt,
@@ -66,9 +75,20 @@ func scanTask(row pgx.Row) (Task, error) {
 		&clientID, &clientName, &mail, &projectID, &projectName,
 		&t.Creator.Name, &t.Creator.Email, &participants,
 		&t.FreelancerRole, &t.ArchivedAt, &reportID, &reportTitle,
-		&t.Billing, &t.TrackedSeconds, &t.Billed, &t.HourlyRateCents)
+		&t.Billing, &t.TrackedSeconds, &t.Billed, &t.HourlyRateCents,
+		&t.ParentID, &parent, &subtasks)
 	if err != nil {
 		return t, err
+	}
+	if parent != nil {
+		var ref struct{ ID, Title string }
+		if err := json.Unmarshal(parent, &ref); err != nil {
+			return t, fmt.Errorf("decode parent: %w", err)
+		}
+		t.Parent = &ParentRef{ID: ref.ID, Title: ref.Title}
+	}
+	if err := json.Unmarshal(subtasks, &t.Subtasks); err != nil {
+		return t, fmt.Errorf("decode subtasks: %w", err)
 	}
 	t.Creator.ID = t.CreatedBy
 	if freelancerID != nil {
@@ -296,7 +316,7 @@ func (r *Repository) List(ctx context.Context, userID, role string, f Filter) ([
 // Get loads a task the user sees, or ErrNotFound.
 func (r *Repository) Get(ctx context.Context, userID, id string) (Task, error) {
 	t, err := scanTask(r.db.QueryRow(ctx, selectTask+`
-		WHERE t.id::text = $1 AND sees_task($2, t.id, t.freelancer_id, t.client_id)`, id, userID))
+		WHERE t.id::text = $2 AND sees_task($1, t.id, t.freelancer_id, t.client_id)`, userID, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Task{}, ErrNotFound
 	}
@@ -304,6 +324,56 @@ func (r *Repository) Get(ctx context.Context, userID, id string) (Task, error) {
 		return Task{}, fmt.Errorf("get task: %w", err)
 	}
 	return t, nil
+}
+
+// Subtasks returns the subtasks of a task that the user sees, archived ones
+// too, the oldest first.
+func (r *Repository) Subtasks(ctx context.Context, userID, parentID string) ([]Task, error) {
+	rows, err := r.db.Query(ctx, selectTask+`
+		WHERE t.parent_id::text = $2 AND sees_task($1, t.id, t.freelancer_id, t.client_id)
+		ORDER BY t.created_at, t.id`, userID, parentID)
+	if err != nil {
+		return nil, fmt.Errorf("list subtasks: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Task, error) { return scanTask(row) })
+	if err != nil {
+		return nil, fmt.Errorf("scan subtasks: %w", err)
+	}
+	return out, nil
+}
+
+// OpenSubtask is a subtask that moves with its parent, as the move needs it.
+type OpenSubtask struct {
+	ID string
+	// FreelancerID is "" while the subtask waits for one.
+	FreelancerID string
+}
+
+// OpenSubtasks returns the subtasks of a task that aren't archived, whoever
+// sees them.
+func (r *Repository) OpenSubtasks(ctx context.Context, parentID string) ([]OpenSubtask, error) {
+	rows, err := r.db.Query(ctx, `SELECT id::text, coalesce(freelancer_id::text, '') FROM tasks
+		WHERE parent_id = $1 AND archived_at IS NULL ORDER BY created_at, id`, parentID)
+	if err != nil {
+		return nil, fmt.Errorf("list open subtasks: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (OpenSubtask, error) {
+		var s OpenSubtask
+		return s, row.Scan(&s.ID, &s.FreelancerID)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan open subtasks: %w", err)
+	}
+	return out, nil
+}
+
+// HasSubtasks reports whether the task has any subtask, whoever sees it.
+func (r *Repository) HasSubtasks(ctx context.Context, id string) (bool, error) {
+	var ok bool
+	if err := r.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tasks WHERE parent_id = $1)`, id).Scan(&ok); err != nil {
+		return false, fmt.Errorf("check subtasks: %w", err)
+	}
+	return ok, nil
 }
 
 // ProjectClient returns the client (nil for a personal project) of a project
@@ -449,11 +519,11 @@ func (r *Repository) CreatePersonal(ctx context.Context, freelancerID, projectID
 	}
 	var id string
 	err := r.db.QueryRow(ctx, `WITH st AS (`+bind(pickStatus, "$1::uuid", "NULL::uuid", "NULLIF($2, '')::uuid", "$6")+`)
-		INSERT INTO tasks (freelancer_id, created_by, project_id, title, description, due_on, price_cents, priority, status, status_id, completed_at)
+		INSERT INTO tasks (freelancer_id, created_by, project_id, title, description, due_on, price_cents, priority, status, status_id, completed_at, parent_id)
 		SELECT $1::uuid, $1::uuid, NULLIF($2, '')::uuid, $3, $4, $5, $7, $8, st.category, st.id,
-			CASE WHEN st.category = 'done' THEN now() END
+			CASE WHEN st.category = 'done' THEN now() END, NULLIF($9, '')::uuid
 		FROM st
-		RETURNING id`, freelancerID, projectID, p.Title, p.Description, p.DueOn, statusID, p.PriceCents, p.Priority).Scan(&id)
+		RETURNING id`, freelancerID, projectID, p.Title, p.Description, p.DueOn, statusID, p.PriceCents, p.Priority, p.ParentID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrStatusNotFound
 	}
@@ -482,11 +552,11 @@ func (r *Repository) Create(ctx context.Context, freelancerID, clientID, created
 
 	var id string
 	err = r.db.QueryRow(ctx, `WITH st AS (`+bind(pickStatus, "$1::uuid", "$2::uuid", "NULLIF($4, '')::uuid", "$8")+`)
-		INSERT INTO tasks (freelancer_id, client_id, created_by, project_id, title, description, due_on, price_cents, priority, status, status_id, completed_at)
+		INSERT INTO tasks (freelancer_id, client_id, created_by, project_id, title, description, due_on, price_cents, priority, status, status_id, completed_at, parent_id)
 		SELECT $1::uuid, $2::uuid, $3, NULLIF($4, '')::uuid, $5, $6, $7, $9, $10, st.category, st.id,
-			CASE WHEN st.category = 'done' THEN now() END
+			CASE WHEN st.category = 'done' THEN now() END, NULLIF($11, '')::uuid
 		FROM st
-		RETURNING id`, freelancerID, clientID, createdBy, projectID, p.Title, p.Description, p.DueOn, statusID, p.PriceCents, p.Priority).Scan(&id)
+		RETURNING id`, freelancerID, clientID, createdBy, projectID, p.Title, p.Description, p.DueOn, statusID, p.PriceCents, p.Priority, p.ParentID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrStatusNotFound
 	}
@@ -502,7 +572,9 @@ func bind(q, f, c, p, s string) string {
 }
 
 // Update rewrites the task's content and project ("" = no project). Moving it
-// to another project puts it in that project's column of the same category.
+// to another project puts it in that project's column of the same category;
+// its subtasks that aren't archived move along. The caller checked that each
+// can: a freelancer on the new project, or one to leave projects with.
 func (r *Repository) Update(ctx context.Context, id, projectID string, p Params) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -510,39 +582,56 @@ func (r *Repository) Update(ctx context.Context, id, projectID string, p Params)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	// The freelancer is NULL while a project task waits for one.
-	var freelancerID, clientID *string
-	err = tx.QueryRow(ctx, `UPDATE tasks
+	var oldProject string
+	if err := tx.QueryRow(ctx, `SELECT coalesce(project_id::text, '') FROM tasks WHERE id = $1`, id).Scan(&oldProject); err != nil {
+		return fmt.Errorf("read task project: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE tasks
 		SET title = $2, description = $3, due_on = $4, project_id = NULLIF($5, '')::uuid
-		WHERE id = $1
-		RETURNING freelancer_id, client_id`, id, p.Title, p.Description, p.DueOn, projectID).Scan(&freelancerID, &clientID)
-	if err != nil {
+		WHERE id = $1`, id, p.Title, p.Description, p.DueOn, projectID); err != nil {
 		return fmt.Errorf("update task: %w", err)
 	}
+	if projectID != oldProject {
+		if _, err := tx.Exec(ctx, `UPDATE tasks SET project_id = NULLIF($2, '')::uuid
+			WHERE parent_id = $1 AND archived_at IS NULL`, id, projectID); err != nil {
+			return fmt.Errorf("move subtasks: %w", err)
+		}
+	}
+	// The boards the task and its open subtasks are on now: the project's,
+	// or each one's pair's. The freelancer is NULL while a project task waits
+	// for one.
 	if projectID != "" {
 		if _, err := tx.Exec(ctx, `SELECT ensure_project_workflow($1::uuid)`, projectID); err != nil {
 			return fmt.Errorf("ensure workflow: %w", err)
 		}
-	} else if freelancerID == nil {
-		return ErrNeedsFreelancer
-	} else if _, err := tx.Exec(ctx, `SELECT ensure_workflow($1, $2)`, *freelancerID, clientID); err != nil {
-		return fmt.Errorf("ensure workflow: %w", err)
+	} else {
+		var unassigned bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tasks
+			WHERE (id = $1 OR (parent_id = $1 AND archived_at IS NULL)) AND freelancer_id IS NULL)`, id).Scan(&unassigned); err != nil {
+			return fmt.Errorf("check freelancers: %w", err)
+		}
+		if unassigned {
+			return ErrNeedsFreelancer
+		}
+		if _, err := tx.Exec(ctx, `SELECT ensure_workflow(pairs.freelancer_id, pairs.client_id)
+			FROM (SELECT DISTINCT freelancer_id, client_id FROM tasks
+				WHERE id = $1 OR (parent_id = $1 AND archived_at IS NULL)) pairs`, id); err != nil {
+			return fmt.Errorf("ensure workflow: %w", err)
+		}
 	}
 	if _, err := tx.Exec(ctx, `UPDATE tasks t SET status_id = picked.id, status = picked.category
-		FROM (
-			SELECT ws.id, ws.category
-			FROM tasks t2
-			JOIN workflow_statuses cur ON cur.id = t2.status_id
-			JOIN workflow_statuses ws ON (
-				(t2.project_id IS NOT NULL AND ws.project_id = t2.project_id)
+		FROM tasks t2
+		JOIN workflow_statuses cur ON cur.id = t2.status_id
+		CROSS JOIN LATERAL (
+			SELECT ws.id, ws.category FROM workflow_statuses ws
+			WHERE (t2.project_id IS NOT NULL AND ws.project_id = t2.project_id)
 				OR (t2.project_id IS NULL AND ws.project_id IS NULL
 					AND ws.freelancer_id = t2.freelancer_id AND ws.client_id IS NOT DISTINCT FROM t2.client_id)
-			)
-			WHERE t2.id = $1
 			ORDER BY (ws.category = cur.category) DESC, (lower(ws.name) = lower(cur.name)) DESC, ws.position
 			LIMIT 1
 		) picked
-		WHERE t.id = $1 AND t.status_id <> picked.id`, id); err != nil {
+		WHERE t.id = t2.id AND (t2.id = $1 OR (t2.parent_id = $1 AND t2.archived_at IS NULL))
+		  AND t.status_id <> picked.id`, id); err != nil {
 		return fmt.Errorf("retarget status: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -662,17 +751,36 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// Archive archives a task by hand. ErrArchived when it already is.
-func (r *Repository) Archive(ctx context.Context, id string) error {
-	tag, err := r.db.Exec(ctx, `UPDATE tasks SET archived_at = now(), position = NULL
+// Archive archives a task by hand, and its subtasks that aren't yet, and
+// returns those subtasks' IDs. ErrArchived when the task already is.
+func (r *Repository) Archive(ctx context.Context, id string) ([]string, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	tag, err := tx.Exec(ctx, `UPDATE tasks SET archived_at = now(), position = NULL
 		WHERE id = $1 AND archived_at IS NULL`, id)
 	if err != nil {
-		return fmt.Errorf("archive task: %w", err)
+		return nil, fmt.Errorf("archive task: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrArchived
+		return nil, ErrArchived
 	}
-	return nil
+	rows, err := tx.Query(ctx, `UPDATE tasks SET archived_at = now(), position = NULL
+		WHERE parent_id = $1 AND archived_at IS NULL RETURNING id::text`, id)
+	if err != nil {
+		return nil, fmt.Errorf("archive subtasks: %w", err)
+	}
+	subtasks, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, fmt.Errorf("scan archived subtasks: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit archive: %w", err)
+	}
+	return subtasks, nil
 }
 
 // ArchiveFilter narrows the archive and picks a page of it. With and

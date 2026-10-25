@@ -261,8 +261,36 @@ func (s *Service) Get(ctx context.Context, userID, id string) (Task, error) {
 // Create adds a task between the user and someone they work with: a client
 // names the freelancer (p.FreelancerID), a freelancer names the client
 // (p.ClientID) or leaves it empty for a personal task. A task in a project
-// takes that project's client, and a freelancer who is on the project.
+// takes that project's client, and a freelancer who is on the project. A
+// subtask (p.ParentID) takes its parent's client and project, and by default
+// its freelancer.
 func (s *Service) Create(ctx context.Context, userID, role string, p Params) (Task, error) {
+	var parent *Task
+	if p.ParentID != "" {
+		t, err := s.repo.Get(ctx, userID, p.ParentID)
+		if err != nil {
+			return Task{}, err
+		}
+		if t.Archived() {
+			return Task{}, ErrArchived
+		}
+		if t.IsSubtask() {
+			return Task{}, ErrNestedSubtask
+		}
+		parent = &t
+		p.ParentID = t.ID
+		if t.Client == nil {
+			p.Personal = true
+		} else {
+			p.ClientID = t.Client.ID
+			if p.FreelancerID == "" {
+				p.FreelancerID = t.Freelancer.ID
+			}
+		}
+		if t.Project != nil {
+			p.ProjectID = &t.Project.ID
+		}
+	}
 	freelancerID, clientID := p.FreelancerID, userID
 	if p.Personal {
 		// Anyone's own task: its owner stands where the freelancer would.
@@ -349,9 +377,22 @@ func (s *Service) Create(ctx context.Context, userID, role string, p Params) (Ta
 	t, err := s.repo.Get(ctx, userID, id)
 	if err == nil {
 		s.Record(ctx, t.ID, userID, EventCreated, nil)
+		if parent != nil {
+			s.Record(ctx, parent.ID, userID, EventSubtaskAdded, map[string]any{"title": t.Title})
+		}
 		s.Tell(ctx, userID, t, notifications.KindTaskCreated, "", true)
 	}
 	return t, err
+}
+
+// Subtasks returns the subtasks of a task the user sees: the ones they see
+// too, archived ones included.
+func (s *Service) Subtasks(ctx context.Context, userID, id string) ([]Task, error) {
+	t, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.Subtasks(ctx, userID, t.ID)
 }
 
 // Archive puts the user's own personal task away for good: it leaves the
@@ -368,10 +409,14 @@ func (s *Service) Archive(ctx context.Context, userID, id string) (Task, error) 
 	if !CanArchive(t, userID) {
 		return Task{}, ErrArchiveNotAllowed
 	}
-	if err := s.repo.Archive(ctx, t.ID); err != nil {
+	subtasks, err := s.repo.Archive(ctx, t.ID)
+	if err != nil {
 		return Task{}, err
 	}
 	s.Record(ctx, t.ID, userID, EventArchived, nil)
+	for _, id := range subtasks {
+		s.Record(ctx, id, userID, EventArchived, nil)
+	}
 	return s.repo.Get(ctx, userID, id)
 }
 
@@ -394,12 +439,17 @@ func (s *Service) Update(ctx context.Context, userID, id string, p Params) (Task
 		return Task{}, ErrEditNotAllowed
 	}
 
-	// A nil ProjectID keeps the current project; "" takes the task out of it.
+	// A nil ProjectID keeps the current project; "" takes the task out of it,
+	// and its open subtasks follow.
+	var subtasks []OpenSubtask
 	projectID := ""
 	if t.Project != nil {
 		projectID = t.Project.ID
 	}
 	if p.ProjectID != nil && *p.ProjectID != projectID {
+		if t.IsSubtask() {
+			return Task{}, ErrSubtaskProject
+		}
 		projectID = *p.ProjectID
 		if projectID != "" {
 			pc, err := s.repo.ProjectClient(ctx, userID, projectID)
@@ -425,6 +475,13 @@ func (s *Service) Update(ctx context.Context, userID, id string, p Params) (Task
 		} else if t.Freelancer.ID == "" {
 			return Task{}, ErrNeedsFreelancer
 		}
+		subtasks, err = s.repo.OpenSubtasks(ctx, t.ID)
+		if err != nil {
+			return Task{}, err
+		}
+		if err := s.subtasksMayMove(ctx, subtasks, projectID); err != nil {
+			return Task{}, err
+		}
 	}
 	if err := s.repo.Update(ctx, id, projectID, p); err != nil {
 		return Task{}, err
@@ -433,9 +490,39 @@ func (s *Service) Update(ctx context.Context, userID, id string, p Params) (Task
 	t, err = s.repo.Get(ctx, userID, id)
 	if err == nil {
 		s.recordEdit(ctx, userID, before, t)
+		if from, to := projectName(before.Project), projectName(t.Project); from != to {
+			for _, sub := range subtasks {
+				s.Record(ctx, sub.ID, userID, EventProject, change(from, to))
+			}
+		}
 		s.Tell(ctx, userID, t, notifications.KindTaskUpdated, "", true)
 	}
 	return t, err
+}
+
+// subtasksMayMove checks that a task's open subtasks can follow it to a
+// project ("" = out of projects): each one's freelancer must be on it, and
+// outside a project each one needs a freelancer.
+func (s *Service) subtasksMayMove(ctx context.Context, subtasks []OpenSubtask, projectID string) error {
+	for _, sub := range subtasks {
+		if sub.FreelancerID == "" {
+			if projectID == "" {
+				return ErrNeedsFreelancer
+			}
+			continue
+		}
+		if projectID == "" {
+			continue
+		}
+		on, err := s.repo.IsFreelancerParticipant(ctx, projectID, sub.FreelancerID)
+		if err != nil {
+			return err
+		}
+		if !on {
+			return ErrFreelancerNotOnProject
+		}
+	}
+	return nil
 }
 
 // SetPrice sets how the task is billed and, at a fixed price, sets or clears
@@ -547,6 +634,13 @@ func (s *Service) Delete(ctx context.Context, userID, id string) error {
 	if t.Archived() {
 		return ErrArchived
 	}
+	// Its subtasks would go with it, the ones the user doesn't see too.
+	if has, err := s.repo.HasSubtasks(ctx, t.ID); err != nil || has {
+		if err == nil {
+			err = ErrHasSubtasks
+		}
+		return err
+	}
 	if !CanDelete(t, userID) {
 		return ErrNotEditable
 	}
@@ -559,6 +653,9 @@ func (s *Service) Delete(ctx context.Context, userID, id string) error {
 	}
 	for _, f := range after {
 		f()
+	}
+	if t.IsSubtask() {
+		s.Record(ctx, t.ParentID, userID, EventSubtaskRemoved, map[string]any{"title": t.Title})
 	}
 	s.Tell(ctx, userID, t, notifications.KindTaskDeleted, "", false)
 	return nil

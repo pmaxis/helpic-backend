@@ -1231,6 +1231,10 @@ definitions:
       notes:
         description: Notes say what was done in the task (shown in a detailed report).
         type: string
+      parent_title:
+        description: ParentTitle names the task a subtask belongs to, "" for a top-level
+          task.
+        type: string
       price_cents:
         description: PriceCents is null for a task without a price.
         type: integer
@@ -1340,6 +1344,11 @@ definitions:
           HourlyRateCents. Like the price, the time and the rate are null for
           whoever doesn't see the price.
         type: string
+      can_add_subtask:
+        description: |-
+          CanAddSubtask is true while the task can be split: it's on the boards
+          and isn't a subtask itself.
+        type: boolean
       can_archive:
         description: |-
           CanArchive is true on the viewer's own personal task, which they may
@@ -1396,6 +1405,13 @@ definitions:
         items:
           type: string
         type: array
+      parent:
+        $ref: '#/definitions/tasks.ParentDTO'
+      parent_id:
+        description: |-
+          ParentID is the task a subtask belongs to, null on a top-level task;
+          Parent names it, null when the viewer doesn't see it.
+        type: string
       participants:
         description: |-
           Participants are who took part: the freelancer first, then everyone who
@@ -1425,6 +1441,11 @@ definitions:
         type: string
       status_name:
         type: string
+      subtasks:
+        allOf:
+        - $ref: '#/definitions/tasks.SubtaskCount'
+        description: Subtasks counts the subtasks the viewer sees, and the closed
+          ones.
       title:
         type: string
       tracked_seconds:
@@ -1461,6 +1482,13 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  tasks.ParentDTO:
+    properties:
+      id:
+        type: string
+      title:
+        type: string
     type: object
   tasks.ParticipantRequest:
     properties:
@@ -1527,6 +1555,12 @@ definitions:
         type: string
       freelancer_id:
         type: string
+      parent_id:
+        description: |-
+          ParentID makes the task a subtask of another (create only): it takes
+          the parent's client and project, and a client may leave the freelancer
+          out for the parent's.
+        type: string
       personal:
         description: |-
           Personal makes a task with no other side: a client's own (a freelancer's
@@ -1563,6 +1597,13 @@ definitions:
         type: string
       status_id:
         type: string
+    type: object
+  tasks.SubtaskCount:
+    properties:
+      done:
+        type: integer
+      total:
+        type: integer
     type: object
   team.InviteDTO:
     properties:
@@ -5599,6 +5640,38 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Move a task
+      tags:
+      - tasks
+  /tasks/{id}/subtasks:
+    get:
+      description: The ones you see, archived ones too, the oldest first. A subtask
+        is created with POST /tasks and parent_id.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: tasks
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/tasks.DTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A task's subtasks
       tags:
       - tasks
   /team:

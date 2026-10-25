@@ -84,7 +84,7 @@ func (r *Repository) Get(ctx context.Context, userID, id string) (Report, error)
 		return Report{}, fmt.Errorf("get report: %w", err)
 	}
 	// A draft shows the tasks' current prices and time; a sent report its frozen ones.
-	rows, err := r.db.Query(ctx, `SELECT i.id, coalesce(i.task_id::text, ''), i.title, i.project_name, i.status_name, i.completed_on, i.notes,
+	rows, err := r.db.Query(ctx, `SELECT i.id, coalesce(i.task_id::text, ''), i.title, i.parent_title, i.project_name, i.status_name, i.completed_on, i.notes,
 			CASE WHEN $2 = 'draft' THEN t.price_cents ELSE i.price_cents END,
 			CASE WHEN $2 = 'draft' THEN CASE WHEN t.billing = 'hourly' THEN task_seconds(t.id) END ELSE i.seconds END
 		FROM report_items i LEFT JOIN tasks t ON t.id = i.task_id
@@ -94,7 +94,7 @@ func (r *Repository) Get(ctx context.Context, userID, id string) (Report, error)
 	}
 	rep.Items, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (Item, error) {
 		var it Item
-		err := row.Scan(&it.ID, &it.TaskID, &it.Title, &it.ProjectName, &it.StatusName, &it.CompletedOn, &it.Notes, &it.PriceCents, &it.Seconds)
+		err := row.Scan(&it.ID, &it.TaskID, &it.Title, &it.ParentTitle, &it.ProjectName, &it.StatusName, &it.CompletedOn, &it.Notes, &it.PriceCents, &it.Seconds)
 		return it, err
 	})
 	if err != nil {
@@ -157,12 +157,13 @@ func (r *Repository) Create(ctx context.Context, freelancerID string, p CreatePa
 			return "", fmt.Errorf("add report project: %w", err)
 		}
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO report_items (report_id, task_id, title, project_name, status_name, completed_on, price_cents, notes, position)
-		SELECT $1, t.id, t.title, coalesce(pr.name, ''), ws.name, (t.completed_at AT TIME ZONE $7)::date, t.price_cents, t.description,
+	_, err = tx.Exec(ctx, `INSERT INTO report_items (report_id, task_id, title, parent_title, project_name, status_name, completed_on, price_cents, notes, position)
+		SELECT $1, t.id, t.title, coalesce(par.title, ''), coalesce(pr.name, ''), ws.name, (t.completed_at AT TIME ZONE $7)::date, t.price_cents, t.description,
 			row_number() OVER (ORDER BY t.completed_at, t.title) - 1
 		FROM tasks t
 		JOIN workflow_statuses ws ON ws.id = t.status_id
 		LEFT JOIN projects pr ON pr.id = t.project_id
+		LEFT JOIN tasks par ON par.id = t.parent_id
 		WHERE t.freelancer_id = $2 AND t.client_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid AND t.status = 'done'
 		  AND (t.completed_at AT TIME ZONE $7)::date BETWEEN $4 AND $5
 		  AND (cardinality($6::text[]) = 0 OR t.project_id::text = ANY($6))

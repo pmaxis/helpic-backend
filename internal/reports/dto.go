@@ -154,12 +154,14 @@ type PartyDTO struct {
 
 // ItemDTO is a completed task in a report.
 type ItemDTO struct {
-	ID          string  `json:"id"`
-	TaskID      *string `json:"task_id"`
-	Title       string  `json:"title"`
-	ProjectName string  `json:"project_name"`
-	StatusName  string  `json:"status_name"`
-	CompletedOn string  `json:"completed_on"`
+	ID     string  `json:"id"`
+	TaskID *string `json:"task_id"`
+	Title  string  `json:"title"`
+	// ParentTitle names the task a subtask belongs to, "" for a top-level task.
+	ParentTitle string `json:"parent_title"`
+	ProjectName string `json:"project_name"`
+	StatusName  string `json:"status_name"`
+	CompletedOn string `json:"completed_on"`
 	// PriceCents is null for a task without a price.
 	PriceCents *int64 `json:"price_cents"`
 	// PriceInUAHCents is the price in hryvnias at the report's rate (see
@@ -258,7 +260,7 @@ func ToDTO(r Report, viewerID string) DTO {
 	if r.Items != nil {
 		d.Items = make([]ItemDTO, 0, len(r.Items))
 		for _, it := range r.Items {
-			item := ItemDTO{ID: it.ID, Title: it.Title, ProjectName: it.ProjectName, StatusName: it.StatusName,
+			item := ItemDTO{ID: it.ID, Title: it.Title, ParentTitle: it.ParentTitle, ProjectName: it.ProjectName, StatusName: it.StatusName,
 				CompletedOn: it.CompletedOn.Format(dateLayout), PriceCents: it.PriceCents, PriceInUAHCents: it.PriceInUAH, Seconds: it.Seconds, Notes: it.Notes}
 			if it.TaskID != "" {
 				id := it.TaskID

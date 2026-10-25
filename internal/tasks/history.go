@@ -30,6 +30,10 @@ const (
 	// EventArchived carries "report": the paid report's title, or nothing
 	// when the owner archived a personal task.
 	EventArchived = "archived"
+	// EventSubtaskAdded and EventSubtaskRemoved are on the parent and carry
+	// "title": the subtask's.
+	EventSubtaskAdded   = "subtask_added"
+	EventSubtaskRemoved = "subtask_removed"
 )
 
 // Event is one change in a task's history.
