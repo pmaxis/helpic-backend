@@ -1538,7 +1538,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
-                "description": "Sets the httpOnly auth cookie that every other endpoint reads. An account with two-factor on answers a right password without a code with 403 TWO_FACTOR_REQUIRED; send the same again with the code.",
+                "description": "Sets the httpOnly auth cookie that every other endpoint reads. It also sets a device cookie: a sign-in from a browser the account doesn't know is emailed to its owner. An account with two-factor on answers a right password without a code with 403 TWO_FACTOR_REQUIRED; send the same again with the code.",
                 "consumes": [
                     "application/json"
                 ],

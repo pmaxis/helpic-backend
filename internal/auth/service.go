@@ -53,6 +53,9 @@ type repository interface {
 	RecoveryCodesLeft(ctx context.Context, userID string) (int, error)
 	ReplaceRecoveryCodes(ctx context.Context, userID string, hashes [][]byte) error
 	DisableTwoFactor(ctx context.Context, userID string) error
+
+	SeeDevice(ctx context.Context, userID string, hash []byte) (deviceSeen, error)
+	DeleteStaleDevices(ctx context.Context) error
 }
 
 // tokenIssuer issues signed access JWTs. Implemented by *token.Manager.
@@ -77,6 +80,8 @@ type Service struct {
 	codeGuesses ratelimit.Gate
 	// signIns hear about sign-ins (see OnSignIn).
 	signIns []func(context.Context, SignIn)
+	// loc is the time zone emails tell times in (see UseLocation).
+	loc *time.Location
 }
 
 // NewService creates an auth Service.

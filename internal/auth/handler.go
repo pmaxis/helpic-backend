@@ -185,7 +185,7 @@ func (h *Handler) ConfirmSignup(w http.ResponseWriter, r *http.Request) {
 // Login handles POST /api/v1/auth/login.
 //
 //	@Summary		Sign in
-//	@Description	Sets the httpOnly auth cookie that every other endpoint reads. An account with two-factor on answers a right password without a code with 403 TWO_FACTOR_REQUIRED; send the same again with the code.
+//	@Description	Sets the httpOnly auth cookie that every other endpoint reads. It also sets a device cookie: a sign-in from a browser the account doesn't know is emailed to its owner. An account with two-factor on answers a right password without a code with 403 TWO_FACTOR_REQUIRED; send the same again with the code.
 //	@Tags			auth
 //	@Accept			json
 //	@Produce		json
@@ -668,12 +668,16 @@ func writeTwoFactorChange(w http.ResponseWriter, err error) {
 	}
 }
 
-// Set writes the access cookie and, when the tokens carry one, the refresh
-// cookie.
+// Set writes the access cookie and, when the tokens carry them, the refresh
+// and device cookies. Signing out leaves the device cookie: the browser stays
+// one the account knows.
 func (c CookieConfig) Set(w http.ResponseWriter, t Tokens) {
 	c.write(w, c.Name, c.Path, t.Access, t.AccessExpires)
 	if t.Refresh != "" {
 		c.write(w, c.RefreshName, c.RefreshPath, t.Refresh, t.RefreshExpires)
+	}
+	if t.Device != "" {
+		c.write(w, DeviceCookie, c.Path, t.Device, t.DeviceExpires)
 	}
 }
 

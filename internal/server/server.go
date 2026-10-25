@@ -90,6 +90,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	// --- auth + user ----------------------------------------------------------
 	authRepo := auth.NewRepository(pool)
 	authSvc := auth.NewService(authRepo, tokens, cfg.RefreshExpiration, outbox, cfg.AppURL)
+	authSvc.UseLocation(cfg.Location)
 	cookie := auth.CookieConfig{
 		Name:        cfg.CookieName,
 		Path:        cfg.CookiePath,

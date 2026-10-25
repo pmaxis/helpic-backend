@@ -62,6 +62,25 @@ var uk = map[string]string{
 	"Your Helpic account now signs in with %s instead of this address, %s.":                        "Тепер ваш акаунт Helpic входить з %s замість цієї адреси, %s.",
 	"If that was you, there's nothing to do. If it wasn't, someone else may have your password.":   "Якщо це були ви, нічого робити не треба. Якщо ні — ваш пароль, можливо, знає хтось інший.",
 
+	// --- security notices ------------------------------------------------------------
+	"New sign-in to your Helpic account": "Новий вхід в акаунт Helpic",
+	"New sign-in":                        "Новий вхід",
+	"Someone signed in to your Helpic account, %s, from a device it hasn't been used on before.": "Хтось увійшов у ваш акаунт Helpic, %s, з пристрою, з якого раніше не входили.",
+	"Device: %s":          "Пристрій: %s",
+	"IP address: %s":      "IP-адреса: %s",
+	"unknown":             "невідома",
+	"Time: %s, %s (%s)":   "Час: %s, %s (%s)",
+	"Review your devices": "Переглянути пристрої",
+	"If that was you, there's nothing to do. If it wasn't, change your password right away and sign that device out under Settings → Security.": "Якщо це були ви, нічого робити не треба. Якщо ні — одразу змініть пароль і завершіть сесію цього пристрою в Налаштування → Безпека.",
+	"%s on %s":       "%s на %s",
+	"Unknown device": "Невідомий пристрій",
+	"A recovery code was used on your Helpic account": "В акаунті Helpic використано резервний код",
+	"A recovery code was used":                        "Використано резервний код",
+	"A recovery code was just used instead of a code from the authenticator app on your Helpic account, %s. It no longer works.": "Щойно для вашого акаунта Helpic, %s, замість коду із застосунку-автентифікатора використано резервний код. Він більше не діє.",
+	"Recovery codes left: %d.": "Залишилось резервних кодів: %d.",
+	"If that was you, make new codes under Settings → Security once you have the app again. If it wasn't, someone has your password and your codes: change the password and make new codes right away.": "Якщо це були ви, створіть нові коди в Налаштування → Безпека, коли застосунок знову буде під рукою. Якщо ні — хтось знає ваш пароль і коди: одразу змініть пароль і створіть нові коди.",
+	"Open security settings": "Відкрити налаштування безпеки",
+
 	// --- two-factor sign-in --------------------------------------------------------
 	"Helpic: %s":                       "Helpic: %s",
 	"Two-factor sign-in is on":         "Двофакторний вхід увімкнено",

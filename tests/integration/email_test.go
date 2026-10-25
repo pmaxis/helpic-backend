@@ -138,8 +138,8 @@ func TestPasswordReset(t *testing.T) {
 	resp = get(t, laptop, srv.URL+"/api/v1/me")
 	wantStatus(t, resp, http.StatusUnauthorized)
 	resp.Body.Close()
-	if notice := lastEmailTo(t, "forgetful@example.com"); notice.Subject != "Your Helpic password was changed" {
-		t.Fatalf("notice = %+v", notice)
+	if !hasEmail(t, "forgetful@example.com", "Your Helpic password was changed") {
+		t.Fatalf("emails = %q", subjectsTo(t, "forgetful@example.com"))
 	}
 
 	// A link works once; a newer one replaces an older one.

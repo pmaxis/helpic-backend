@@ -119,7 +119,7 @@ func TestProfile_ChangePassword(t *testing.T) {
 	fresh := post(t, newClient(), srv.URL+"/api/v1/auth/login", map[string]string{"email": "pw@example.com", "password": "brand-new-pw1"})
 	wantStatus(t, fresh, http.StatusOK)
 	fresh.Body.Close()
-	if notice := lastEmailTo(t, "pw@example.com"); notice.Subject != "Your Helpic password was changed" {
-		t.Fatalf("notice = %+v", notice)
+	if !hasEmail(t, "pw@example.com", "Your Helpic password was changed") {
+		t.Fatalf("emails = %q", subjectsTo(t, "pw@example.com"))
 	}
 }

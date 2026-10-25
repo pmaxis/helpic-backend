@@ -332,6 +332,7 @@ func (s *Service) secondFactor(ctx context.Context, userID, code string) error {
 	if !ok {
 		return s.wrongCode(ctx, userID)
 	}
+	s.recoveryCodeNotice(ctx, userID)
 	return nil
 }
 

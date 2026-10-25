@@ -42,6 +42,9 @@ var (
 type Client struct {
 	UserAgent string
 	IP        string
+	// Device is the token in the browser's device cookie, if it has one
+	// (see recognize).
+	Device string
 }
 
 // ClientOf reads the device from a request. The IP is the connection's peer,
@@ -51,7 +54,11 @@ func ClientOf(r *http.Request) Client {
 	if len(ua) > maxUserAgent {
 		ua = ua[:maxUserAgent]
 	}
-	return Client{UserAgent: ua, IP: middleware.ClientIP(r)}
+	c := Client{UserAgent: ua, IP: middleware.ClientIP(r)}
+	if ck, err := r.Cookie(DeviceCookie); err == nil {
+		c.Device = ck.Value
+	}
+	return c
 }
 
 // Session is a signed-in device.
@@ -66,12 +73,15 @@ type Session struct {
 }
 
 // Tokens are what signing in or refreshing hands the browser. Refresh is empty
-// when the browser keeps the refresh token it has.
+// when the browser keeps the refresh token it has; Device is set only by
+// signing in.
 type Tokens struct {
 	Access         string
 	AccessExpires  time.Time
 	Refresh        string
 	RefreshExpires time.Time
+	Device         string
+	DeviceExpires  time.Time
 }
 
 // NewToken returns a random secret (a refresh token or a one-time link) and
@@ -109,7 +119,9 @@ func (s *Service) StartSession(ctx context.Context, u user.User, c Client) (Toke
 	if err != nil {
 		return Tokens{}, err
 	}
-	return Tokens{Access: access, AccessExpires: accessExpires, Refresh: raw, RefreshExpires: expires}, nil
+	device := s.recognize(ctx, u, c)
+	return Tokens{Access: access, AccessExpires: accessExpires, Refresh: raw, RefreshExpires: expires,
+		Device: device, DeviceExpires: time.Now().Add(deviceTTL)}, nil
 }
 
 // Refresh swaps a refresh token for a new one and a new access token. A token
@@ -200,9 +212,11 @@ func (s *Service) EndOtherSessions(ctx context.Context, userID, keepID string) e
 }
 
 // Cleanup removes sessions that have expired (they can't be refreshed
-// anyway), reset links nobody used in time, and sign-ups nobody confirmed.
+// anyway), reset links nobody used in time, sign-ups nobody confirmed, and
+// browsers not signed in from for a year.
 func (s *Service) Cleanup(ctx context.Context) error {
-	return errors.Join(s.repo.DeleteExpiredSessions(ctx), s.repo.DeleteExpiredResets(ctx), s.repo.DeleteExpiredSignups(ctx))
+	return errors.Join(s.repo.DeleteExpiredSessions(ctx), s.repo.DeleteExpiredResets(ctx), s.repo.DeleteExpiredSignups(ctx),
+		s.repo.DeleteStaleDevices(ctx))
 }
 
 // --- repository ----------------------------------------------------------------

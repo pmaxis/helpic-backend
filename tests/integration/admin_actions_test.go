@@ -121,8 +121,8 @@ func TestAdmin_EndSessionsAndResetTwoFactor(t *testing.T) {
 	wantStatus(t, get(t, dev, srv.URL+"/api/v1/me"), http.StatusUnauthorized)
 	// The password alone signs in again, and the owner is told.
 	wantStatus(t, login(t, srv, newClient(), "dev@example.com", "supersecret1"), http.StatusOK)
-	if e := lastEmailTo(t, "dev@example.com"); !strings.Contains(e.Subject, "Two-factor sign-in was reset") {
-		t.Fatalf("last email = %q", e.Subject)
+	if !hasEmail(t, "dev@example.com", "Two-factor sign-in was reset") {
+		t.Fatalf("emails = %q", subjectsTo(t, "dev@example.com"))
 	}
 	// Two-factor is off now: resetting it again changes nothing.
 	adminAct(t, srv, boss, codes, id, "reset-two-factor", "")
