@@ -90,7 +90,7 @@ func (r *Repository) List(ctx context.Context, userID, role, counterpartID strin
 		other = "p.freelancer_id"
 	}
 	rows, err := r.db.Query(ctx, selectProject("$1::uuid")+` WHERE sees_project($1::uuid, p.id)
-		AND ($2 = '' OR `+other+`::text = $2 OR ($2 = '`+PersonalFilter+`' AND `+other+` IS NULL))
+		AND ($2 = '' OR `+other+` = as_uuid($2) OR ($2 = '`+PersonalFilter+`' AND `+other+` IS NULL))
 		ORDER BY lower(p.name), p.created_at`, userID, counterpartID)
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
@@ -105,7 +105,7 @@ func (r *Repository) List(ctx context.Context, userID, role, counterpartID strin
 // Get loads a project the user takes part in, or ErrNotFound.
 func (r *Repository) Get(ctx context.Context, userID, id string) (Project, error) {
 	p, err := scanProject(r.db.QueryRow(ctx, selectProject("$2::uuid")+`
-		WHERE p.id::text = $1 AND sees_project($2::uuid, p.id)`, id, userID))
+		WHERE p.id = as_uuid($1) AND sees_project($2::uuid, p.id)`, id, userID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Project{}, ErrNotFound
 	}
@@ -175,7 +175,7 @@ func (r *Repository) Create(ctx context.Context, freelancerIDs []string, clientI
 
 	var linked int
 	if err = tx.QueryRow(ctx, `SELECT count(*) FROM freelancer_clients
-		WHERE client_id::text = $1 AND freelancer_id::text = ANY($2::text[])`, clientID, freelancerIDs).Scan(&linked); err != nil {
+		WHERE client_id = as_uuid($1) AND freelancer_id = ANY(as_uuids($2::text[]))`, clientID, freelancerIDs).Scan(&linked); err != nil {
 		return "", fmt.Errorf("check links: %w", err)
 	}
 	if linked != len(freelancerIDs) {
@@ -266,13 +266,13 @@ func collectPeople(rows pgx.Rows) ([]Person, error) {
 func (r *Repository) Invite(ctx context.Context, projectID, userID, invitedBy string) (added bool, err error) {
 	var id string
 	err = r.db.QueryRow(ctx, `INSERT INTO project_participants (project_id, user_id, invited_by)
-		SELECT $1::uuid, j.id, $3::uuid FROM (`+whoCanJoin+`) j WHERE j.id::text = $2
+		SELECT $1::uuid, j.id, $3::uuid FROM (`+whoCanJoin+`) j WHERE j.id = as_uuid($2)
 		ON CONFLICT DO NOTHING
 		RETURNING user_id`, projectID, userID, invitedBy).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		var on bool
 		if err := r.db.QueryRow(ctx, `SELECT EXISTS (
-			SELECT 1 FROM project_participants WHERE project_id = $1::uuid AND user_id::text = $2)`, projectID, userID).Scan(&on); err != nil {
+			SELECT 1 FROM project_participants WHERE project_id = $1::uuid AND user_id = as_uuid($2))`, projectID, userID).Scan(&on); err != nil {
 			return false, fmt.Errorf("check participant: %w", err)
 		}
 		if on {
@@ -288,7 +288,7 @@ func (r *Repository) Invite(ctx context.Context, projectID, userID, invitedBy st
 
 // RemoveParticipant takes someone off the project. False means they weren't on it.
 func (r *Repository) RemoveParticipant(ctx context.Context, projectID, userID string) (bool, error) {
-	tag, err := r.db.Exec(ctx, `DELETE FROM project_participants WHERE project_id = $1::uuid AND user_id::text = $2`, projectID, userID)
+	tag, err := r.db.Exec(ctx, `DELETE FROM project_participants WHERE project_id = $1::uuid AND user_id = as_uuid($2)`, projectID, userID)
 	if err != nil {
 		return false, fmt.Errorf("remove project participant: %w", err)
 	}

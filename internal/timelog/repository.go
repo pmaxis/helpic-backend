@@ -50,7 +50,7 @@ func (r *Repository) List(ctx context.Context, taskID string) ([]Entry, error) {
 
 // Get loads one entry, or ErrNotFound.
 func (r *Repository) Get(ctx context.Context, id string) (Entry, error) {
-	e, err := scan(r.db.QueryRow(ctx, selectEntry+` WHERE e.id::text = $1`, id))
+	e, err := scan(r.db.QueryRow(ctx, selectEntry+` WHERE e.id = as_uuid($1)`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Entry{}, ErrNotFound
 	}

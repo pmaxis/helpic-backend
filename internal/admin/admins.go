@@ -129,9 +129,9 @@ func (r *Repository) RecordSignIn(ctx context.Context, in auth.SignIn) error {
 
 // SignIns lists a page of sign-ins, the newest first.
 func (r *Repository) SignIns(ctx context.Context, f SignInFilter) ([]SignInRecord, int, error) {
-	const where = `WHERE (NOT $1 OR outcome <> 'ok') AND ($4 = '' OR admin_id::text = $4)`
+	const where = `WHERE (NOT $1 OR outcome <> 'ok') AND ($4 = '' OR admin_id = as_uuid($4))`
 	var total int
-	if err := r.db.QueryRow(ctx, `SELECT count(*) FROM admin_sign_ins WHERE (NOT $1 OR outcome <> 'ok') AND ($2 = '' OR admin_id::text = $2)`, f.Failed, f.AdminID).Scan(&total); err != nil {
+	if err := r.db.QueryRow(ctx, `SELECT count(*) FROM admin_sign_ins WHERE (NOT $1 OR outcome <> 'ok') AND ($2 = '' OR admin_id = as_uuid($2))`, f.Failed, f.AdminID).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count admin sign-ins: %w", err)
 	}
 	rows, err := r.db.Query(ctx, `SELECT id, at, admin_id, admin_email, outcome, ip, user_agent

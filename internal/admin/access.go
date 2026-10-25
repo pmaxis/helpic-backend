@@ -98,7 +98,7 @@ func (r *Repository) EndSession(ctx context.Context, adminID, id, sessionID, rea
 	if err != nil {
 		return fmt.Errorf("find account: %w", err)
 	}
-	tag, err := tx.Exec(ctx, `DELETE FROM sessions WHERE id::text = $1 AND user_id = $2`, sessionID, id)
+	tag, err := tx.Exec(ctx, `DELETE FROM sessions WHERE id = as_uuid($1) AND user_id = $2`, sessionID, id)
 	if err != nil {
 		return fmt.Errorf("end session: %w", err)
 	}
@@ -165,14 +165,14 @@ const limitsSQL = `
 	LEFT JOIN users u ON u.role <> 'admin' AND (
 		(b.scope = ANY($1) AND u.email = b.key)
 		OR (b.scope = ANY($2) AND u.email = split_part(b.key, ' ', 1))
-		OR (b.scope = ANY($3) AND u.id::text = b.key))
+		OR (b.scope = ANY($3) AND u.id = as_uuid(b.key)))
 	WHERE b.left_now < 1`
 
 // Limits lists the empty buckets.
 func (r *Repository) Limits(ctx context.Context, f LimitFilter) ([]Limit, error) {
 	q := strings.ToLower(strings.TrimSpace(f.Query))
 	rows, err := r.db.Query(ctx, `SELECT * FROM (`+limitsSQL+`) l (scope, key, burst, every_seconds, opens_at, account_id, account_email)
-		WHERE ($4 = '' OR account_id::text = $4)
+		WHERE ($4 = '' OR account_id = as_uuid($4))
 		  AND ($5 = '' OR strpos(lower(key), $5) > 0 OR strpos(lower(account_email), $5) > 0)
 		ORDER BY opens_at DESC, scope, key`,
 		ratelimit.ScopesKeyedBy(ratelimit.KeyEmail), ratelimit.ScopesKeyedBy(ratelimit.KeyEmailIP), ratelimit.ScopesKeyedBy(ratelimit.KeyUser),
@@ -220,7 +220,7 @@ func (r *Repository) ClearLimit(ctx context.Context, adminID, scope, key string)
 		WHERE scope = $1 AND key = $2
 		  AND LEAST(burst, tokens + EXTRACT(EPOCH FROM (clock_timestamp() - updated_at)) / every_seconds) < 1
 		RETURNING COALESCE(
-			CASE WHEN scope = ANY($3) THEN (SELECT email FROM users WHERE id::text = key) END,
+			CASE WHEN scope = ANY($3) THEN (SELECT email FROM users WHERE id = as_uuid(key)) END,
 			CASE WHEN scope = ANY($4) THEN split_part(key, ' ', 1) END,
 			key)`, scope, key, ratelimit.ScopesKeyedBy(ratelimit.KeyUser), ratelimit.ScopesKeyedBy(ratelimit.KeyEmailIP)).Scan(&target)
 	if errors.Is(err, pgx.ErrNoRows) {

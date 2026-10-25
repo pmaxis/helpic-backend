@@ -166,7 +166,7 @@ func (r *Repository) CreateInvite(ctx context.Context, companyID, email, name, r
 // DeleteInvite revokes one of the company's pending invitations.
 func (r *Repository) DeleteInvite(ctx context.Context, companyID, id string) error {
 	tag, err := r.db.Exec(ctx, `DELETE FROM company_invites
-		WHERE id::text = $2 AND company_id = $1 AND accepted_at IS NULL`, companyID, id)
+		WHERE id = as_uuid($2) AND company_id = $1 AND accepted_at IS NULL`, companyID, id)
 	if err != nil {
 		return fmt.Errorf("delete invite: %w", err)
 	}
@@ -179,7 +179,7 @@ func (r *Repository) DeleteInvite(ctx context.Context, companyID, id string) err
 // RemoveMember takes a member out of the company. Their account stays; it
 // just no longer sees the company's work.
 func (r *Repository) RemoveMember(ctx context.Context, companyID, userID string) error {
-	tag, err := r.db.Exec(ctx, `DELETE FROM company_members WHERE company_id = $1 AND user_id::text = $2`, companyID, userID)
+	tag, err := r.db.Exec(ctx, `DELETE FROM company_members WHERE company_id = $1 AND user_id = as_uuid($2)`, companyID, userID)
 	if err != nil {
 		return fmt.Errorf("remove member: %w", err)
 	}
@@ -191,7 +191,7 @@ func (r *Repository) RemoveMember(ctx context.Context, companyID, userID string)
 
 // SetRole makes a member of the company a member or a contractor.
 func (r *Repository) SetRole(ctx context.Context, companyID, userID, role string) error {
-	tag, err := r.db.Exec(ctx, `UPDATE company_members SET role = $3 WHERE company_id = $1 AND user_id::text = $2`, companyID, userID, role)
+	tag, err := r.db.Exec(ctx, `UPDATE company_members SET role = $3 WHERE company_id = $1 AND user_id = as_uuid($2)`, companyID, userID, role)
 	if err != nil {
 		return fmt.Errorf("set member role: %w", err)
 	}

@@ -55,7 +55,7 @@ func (r *Repository) Columns(ctx context.Context, p Pair) ([]Column, error) {
 		return nil, err
 	}
 	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM workflow_statuses ws
-		WHERE ws.freelancer_id::text = $1 AND ws.client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid
+		WHERE ws.freelancer_id = as_uuid($1) AND ws.client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid
 		  AND ws.project_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid
 		ORDER BY ws.position, ws.created_at`, p.FreelancerID, p.ClientID, p.ProjectID)
 	if err != nil {
@@ -70,7 +70,7 @@ func (r *Repository) Columns(ctx context.Context, p Pair) ([]Column, error) {
 
 // Column returns one column, or ErrNotFound.
 func (r *Repository) Column(ctx context.Context, id string) (Column, error) {
-	c, err := scanColumn(r.db.QueryRow(ctx, `SELECT `+columnFields+` FROM workflow_statuses ws WHERE ws.id::text = $1`, id))
+	c, err := scanColumn(r.db.QueryRow(ctx, `SELECT `+columnFields+` FROM workflow_statuses ws WHERE ws.id = as_uuid($1)`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Column{}, ErrNotFound
 	}
@@ -84,7 +84,7 @@ func (r *Repository) Column(ctx context.Context, id string) (Column, error) {
 // workflow (tasks outside a project) is not included.
 func (r *Repository) ProjectColumns(ctx context.Context, p Pair) ([]Column, error) {
 	rows, err := r.db.Query(ctx, `SELECT `+columnFields+` FROM workflow_statuses ws
-		WHERE ws.freelancer_id::text = $1 AND ws.client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid
+		WHERE ws.freelancer_id = as_uuid($1) AND ws.client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid
 		  AND ws.project_id IS NOT NULL
 		ORDER BY ws.position, ws.created_at`, p.FreelancerID, p.ClientID)
 	if err != nil {
@@ -112,7 +112,7 @@ func (r *Repository) Create(ctx context.Context, p Pair, name, bucket string) er
 
 // Rename changes a column's name. Its bucket, and the tasks in it, stay as they are.
 func (r *Repository) Rename(ctx context.Context, id, name string) error {
-	if _, err := r.db.Exec(ctx, `UPDATE workflow_statuses SET name = $2 WHERE id::text = $1`, id, name); err != nil {
+	if _, err := r.db.Exec(ctx, `UPDATE workflow_statuses SET name = $2 WHERE id = as_uuid($1)`, id, name); err != nil {
 		return fmt.Errorf("rename column: %w", err)
 	}
 	return nil
@@ -125,13 +125,13 @@ func (r *Repository) Update(ctx context.Context, id, name, bucket string) error 
 		return fmt.Errorf("begin: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if _, err := tx.Exec(ctx, `UPDATE workflow_statuses SET name = $2, category = $3 WHERE id::text = $1`, id, name, bucket); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE workflow_statuses SET name = $2, category = $3 WHERE id = as_uuid($1)`, id, name, bucket); err != nil {
 		return fmt.Errorf("update column: %w", err)
 	}
 	// Archived tasks keep the status they were closed in.
 	if _, err := tx.Exec(ctx, `UPDATE tasks SET status = $2,
 			completed_at = CASE WHEN $2 = 'done' THEN coalesce(completed_at, now()) END
-		WHERE status_id::text = $1 AND status <> $2 AND archived_at IS NULL`, id, bucket); err != nil {
+		WHERE status_id = as_uuid($1) AND status <> $2 AND archived_at IS NULL`, id, bucket); err != nil {
 		return fmt.Errorf("recategorise tasks: %w", err)
 	}
 	return tx.Commit(ctx)
@@ -140,7 +140,7 @@ func (r *Repository) Update(ctx context.Context, id, name, bucket string) error 
 // HasArchived reports whether any archived task points at a column.
 func (r *Repository) HasArchived(ctx context.Context, id string) (bool, error) {
 	var ok bool
-	if err := r.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tasks WHERE status_id::text = $1 AND archived_at IS NOT NULL)`, id).Scan(&ok); err != nil {
+	if err := r.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tasks WHERE status_id = as_uuid($1) AND archived_at IS NOT NULL)`, id).Scan(&ok); err != nil {
 		return false, fmt.Errorf("check archived tasks: %w", err)
 	}
 	return ok, nil
@@ -150,7 +150,7 @@ func (r *Repository) HasArchived(ctx context.Context, id string) (bool, error) {
 // ones don't count.
 func (r *Repository) TaskCount(ctx context.Context, id string) (int, error) {
 	var n int
-	if err := r.db.QueryRow(ctx, `SELECT count(*) FROM tasks WHERE status_id::text = $1 AND archived_at IS NULL`, id).Scan(&n); err != nil {
+	if err := r.db.QueryRow(ctx, `SELECT count(*) FROM tasks WHERE status_id = as_uuid($1) AND archived_at IS NULL`, id).Scan(&n); err != nil {
 		return 0, fmt.Errorf("count tasks: %w", err)
 	}
 	return n, nil
@@ -170,11 +170,11 @@ func (r *Repository) Delete(ctx context.Context, id, fallbackID string) error {
 				status = CASE WHEN t.archived_at IS NULL THEN ws.category ELSE t.status END,
 				completed_at = CASE WHEN ws.category = 'done' OR t.archived_at IS NOT NULL THEN coalesce(t.completed_at, now()) ELSE t.completed_at END
 			FROM workflow_statuses ws
-			WHERE t.status_id::text = $1 AND ws.id::text = $2`, id, fallbackID); err != nil {
+			WHERE t.status_id = as_uuid($1) AND ws.id = as_uuid($2)`, id, fallbackID); err != nil {
 			return fmt.Errorf("move tasks out: %w", err)
 		}
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM workflow_statuses WHERE id::text = $1`, id); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM workflow_statuses WHERE id = as_uuid($1)`, id); err != nil {
 		return fmt.Errorf("delete column: %w", err)
 	}
 	return tx.Commit(ctx)
@@ -184,7 +184,7 @@ func (r *Repository) Delete(ctx context.Context, id, fallbackID string) error {
 func (r *Repository) Reorder(ctx context.Context, p Pair, ids []string) error {
 	_, err := r.db.Exec(ctx, `UPDATE workflow_statuses w SET position = o.ord - 1
 		FROM unnest($2::text[]) WITH ORDINALITY AS o(id, ord)
-		WHERE w.id::text = o.id AND w.freelancer_id = $1::uuid
+		WHERE w.id = as_uuid(o.id) AND w.freelancer_id = $1::uuid
 		  AND w.client_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid
 		  AND w.project_id IS NOT DISTINCT FROM NULLIF($4, '')::uuid`,
 		p.FreelancerID, ids, p.ClientID, p.ProjectID)
@@ -197,7 +197,7 @@ func (r *Repository) Reorder(ctx context.Context, p Pair, ids []string) error {
 // ProjectAuthor returns the user who created a project, or "" when it is gone.
 func (r *Repository) ProjectAuthor(ctx context.Context, projectID string) (string, error) {
 	var id string
-	err := r.db.QueryRow(ctx, `SELECT created_by::text FROM projects WHERE id::text = $1`, projectID).Scan(&id)
+	err := r.db.QueryRow(ctx, `SELECT created_by::text FROM projects WHERE id = as_uuid($1)`, projectID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
 	}
@@ -211,7 +211,7 @@ func (r *Repository) ProjectAuthor(ctx context.Context, projectID string) (strin
 func (r *Repository) PlaceAll(ctx context.Context, columnID string, taskIDs []string) error {
 	_, err := r.db.Exec(ctx, `UPDATE tasks t SET position = o.ord - 1
 		FROM unnest($2::text[]) WITH ORDINALITY AS o(id, ord)
-		WHERE t.id::text = o.id AND t.status_id::text = $1`, columnID, taskIDs)
+		WHERE t.id = as_uuid(o.id) AND t.status_id = as_uuid($1)`, columnID, taskIDs)
 	if err != nil {
 		return fmt.Errorf("order tasks: %w", err)
 	}
@@ -221,7 +221,7 @@ func (r *Repository) PlaceAll(ctx context.Context, columnID string, taskIDs []st
 // ColumnTaskIDs lists every task in a column, in its board order: ordered
 // cards first, then the rest the way task lists sort them.
 func (r *Repository) ColumnTaskIDs(ctx context.Context, columnID string) ([]string, error) {
-	rows, err := r.db.Query(ctx, `SELECT id::text FROM tasks WHERE status_id::text = $1 AND archived_at IS NULL
+	rows, err := r.db.Query(ctx, `SELECT id::text FROM tasks WHERE status_id = as_uuid($1) AND archived_at IS NULL
 		ORDER BY position NULLS LAST, due_on ASC NULLS LAST, created_at DESC`, columnID)
 	if err != nil {
 		return nil, fmt.Errorf("list column tasks: %w", err)
@@ -237,7 +237,7 @@ func (r *Repository) ColumnTaskIDs(ctx context.Context, columnID string) ([]stri
 func (r *Repository) Linked(ctx context.Context, freelancerID, clientID string) (bool, error) {
 	var ok bool
 	err := r.db.QueryRow(ctx, `SELECT EXISTS (
-		SELECT 1 FROM freelancer_clients WHERE freelancer_id::text = $1 AND client_id::text = $2)`,
+		SELECT 1 FROM freelancer_clients WHERE freelancer_id = as_uuid($1) AND client_id = as_uuid($2))`,
 		freelancerID, clientID).Scan(&ok)
 	if err != nil {
 		return false, fmt.Errorf("check link: %w", err)
@@ -249,7 +249,7 @@ func (r *Repository) Linked(ctx context.Context, freelancerID, clientID string) 
 func (r *Repository) ProjectPair(ctx context.Context, userID, projectID string) (Pair, error) {
 	var p Pair
 	err := r.db.QueryRow(ctx, `SELECT freelancer_id, coalesce(client_id::text, ''), id::text, created_by FROM projects
-		WHERE id::text = $1 AND sees_project($2::uuid, id)`, projectID, userID).
+		WHERE id = as_uuid($1) AND sees_project($2::uuid, id)`, projectID, userID).
 		Scan(&p.FreelancerID, &p.ClientID, &p.ProjectID, &p.AuthorID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Pair{}, ErrNoBoard

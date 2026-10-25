@@ -76,7 +76,7 @@ func (r *Repository) List(ctx context.Context, userID string) ([]Report, error) 
 
 // Get loads a report the user may see, with its items, or ErrNotFound.
 func (r *Repository) Get(ctx context.Context, userID, id string) (Report, error) {
-	rep, err := scanReport(r.db.QueryRow(ctx, selectReport+` WHERE r.id::text = $2 AND `+visible, userID, id))
+	rep, err := scanReport(r.db.QueryRow(ctx, selectReport+` WHERE r.id = as_uuid($2) AND `+visible, userID, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Report{}, ErrNotFound
 	}
@@ -107,7 +107,7 @@ func (r *Repository) Get(ctx context.Context, userID, id string) (Report, error)
 func (r *Repository) Linked(ctx context.Context, freelancerID, clientID string) (bool, error) {
 	var ok bool
 	err := r.db.QueryRow(ctx, `SELECT EXISTS (
-		SELECT 1 FROM freelancer_clients WHERE freelancer_id = $1 AND client_id::text = $2)`,
+		SELECT 1 FROM freelancer_clients WHERE freelancer_id = $1 AND client_id = as_uuid($2))`,
 		freelancerID, clientID).Scan(&ok)
 	if err != nil {
 		return false, fmt.Errorf("check link: %w", err)
@@ -120,7 +120,7 @@ func (r *Repository) Linked(ctx context.Context, freelancerID, clientID string) 
 func (r *Repository) ProjectName(ctx context.Context, freelancerID, clientID, projectID string) (string, error) {
 	var name string
 	err := r.db.QueryRow(ctx, `SELECT name FROM projects
-		WHERE id::text = $3 AND freelancer_id = $1 AND client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid`,
+		WHERE id = as_uuid($3) AND freelancer_id = $1 AND client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid`,
 		freelancerID, clientID, projectID).Scan(&name)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrProjectMismatch
@@ -166,7 +166,7 @@ func (r *Repository) Create(ctx context.Context, freelancerID string, p CreatePa
 		LEFT JOIN tasks par ON par.id = t.parent_id
 		WHERE t.freelancer_id = $2 AND t.client_id IS NOT DISTINCT FROM NULLIF($3, '')::uuid AND t.status = 'done'
 		  AND (t.completed_at AT TIME ZONE $7)::date BETWEEN $4 AND $5
-		  AND (cardinality($6::text[]) = 0 OR t.project_id::text = ANY($6))
+		  AND (cardinality($6::text[]) = 0 OR t.project_id = ANY(as_uuids($6)))
 		  -- a task already on a report, draft or sent, is not billed again
 		  AND NOT EXISTS (SELECT 1 FROM report_items pi WHERE pi.task_id = t.id)
 		ON CONFLICT (task_id) WHERE task_id IS NOT NULL DO NOTHING`,
@@ -192,7 +192,7 @@ func (r *Repository) Update(ctx context.Context, id string, p UpdateParams) erro
 
 // SetItemNotes rewrites what a draft says was done in one task.
 func (r *Repository) SetItemNotes(ctx context.Context, reportID, itemID, notes string) error {
-	tag, err := r.db.Exec(ctx, `UPDATE report_items SET notes = $3 WHERE id::text = $2 AND report_id = $1`, reportID, itemID, notes)
+	tag, err := r.db.Exec(ctx, `UPDATE report_items SET notes = $3 WHERE id = as_uuid($2) AND report_id = $1`, reportID, itemID, notes)
 	if err != nil {
 		return fmt.Errorf("set item notes: %w", err)
 	}
@@ -204,7 +204,7 @@ func (r *Repository) SetItemNotes(ctx context.Context, reportID, itemID, notes s
 
 // RemoveItem drops a task from a draft.
 func (r *Repository) RemoveItem(ctx context.Context, reportID, itemID string) error {
-	tag, err := r.db.Exec(ctx, `DELETE FROM report_items WHERE id::text = $2 AND report_id = $1`, reportID, itemID)
+	tag, err := r.db.Exec(ctx, `DELETE FROM report_items WHERE id = as_uuid($2) AND report_id = $1`, reportID, itemID)
 	if err != nil {
 		return fmt.Errorf("remove item: %w", err)
 	}

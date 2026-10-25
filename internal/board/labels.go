@@ -53,7 +53,7 @@ func (r *Repository) Labels(ctx context.Context, p Pair) ([]Label, error) {
 	rows, err := r.db.Query(ctx, `SELECT l.id, l.freelancer_id, coalesce(l.client_id::text, ''), l.name, l.color,
 			(SELECT count(*) FROM task_labels tl WHERE tl.label_id = l.id)
 		FROM labels l
-		WHERE l.freelancer_id::text = $1 AND l.client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid
+		WHERE l.freelancer_id = as_uuid($1) AND l.client_id IS NOT DISTINCT FROM NULLIF($2, '')::uuid
 		ORDER BY lower(l.name)`, p.FreelancerID, p.ClientID)
 	if err != nil {
 		return nil, fmt.Errorf("list labels: %w", err)
@@ -73,7 +73,7 @@ func (r *Repository) Labels(ctx context.Context, p Pair) ([]Label, error) {
 func (r *Repository) Label(ctx context.Context, userID, id string) (Label, error) {
 	var l Label
 	err := r.db.QueryRow(ctx, `SELECT id, freelancer_id, coalesce(client_id::text, ''), name, color
-		FROM labels WHERE id::text = $1 AND (freelancer_id = $2 OR client_id = acting_client($2))`, id, userID).
+		FROM labels WHERE id = as_uuid($1) AND (freelancer_id = $2 OR client_id = acting_client($2))`, id, userID).
 		Scan(&l.ID, &l.Pair.FreelancerID, &l.Pair.ClientID, &l.Name, &l.Color)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Label{}, ErrLabelNotFound

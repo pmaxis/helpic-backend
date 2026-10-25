@@ -43,7 +43,7 @@ func (r *Repository) List(ctx context.Context, taskID string) ([]Comment, error)
 
 // Get loads one comment, or ErrNotFound.
 func (r *Repository) Get(ctx context.Context, id string) (Comment, error) {
-	c, err := scan(r.db.QueryRow(ctx, selectComment+` WHERE c.id::text = $1`, id))
+	c, err := scan(r.db.QueryRow(ctx, selectComment+` WHERE c.id = as_uuid($1)`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Comment{}, ErrNotFound
 	}

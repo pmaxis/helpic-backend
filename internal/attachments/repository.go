@@ -45,7 +45,7 @@ func (r *Repository) List(ctx context.Context, taskID string) ([]Attachment, err
 
 // Get loads one file, or ErrNotFound.
 func (r *Repository) Get(ctx context.Context, id string) (Attachment, error) {
-	a, err := scan(r.db.QueryRow(ctx, selectAttachment+` WHERE a.id::text = $1`, id))
+	a, err := scan(r.db.QueryRow(ctx, selectAttachment+` WHERE a.id = as_uuid($1)`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Attachment{}, ErrNotFound
 	}
@@ -93,7 +93,7 @@ func (r *Repository) UsedBytes(ctx context.Context, userID string) (int64, error
 
 // IDsOfTask lists a task's file IDs, to remove the files with the task.
 func (r *Repository) IDsOfTask(ctx context.Context, taskID string) ([]string, error) {
-	rows, err := r.db.Query(ctx, `SELECT id::text FROM attachments WHERE task_id::text = $1`, taskID)
+	rows, err := r.db.Query(ctx, `SELECT id::text FROM attachments WHERE task_id = as_uuid($1)`, taskID)
 	if err != nil {
 		return nil, fmt.Errorf("list attachment ids: %w", err)
 	}

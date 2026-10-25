@@ -112,7 +112,7 @@ func (o *Outbox) Counts(ctx context.Context) (QueueCounts, error) {
 func (o *Outbox) Retry(ctx context.Context, id string) (Queued, error) {
 	rows, err := o.db.Query(ctx, `
 		UPDATE emails SET attempts = 0, next_attempt_at = now(), failed_at = NULL
-		WHERE id::text = $2 AND sent_at IS NULL
+		WHERE id = as_uuid($2) AND sent_at IS NULL
 		RETURNING id, to_address, subject, `+statusSQL+`, attempts, last_error, next_attempt_at, sent_at, created_at`, MaxAttempts, id)
 	if err != nil {
 		return Queued{}, fmt.Errorf("retry email: %w", err)

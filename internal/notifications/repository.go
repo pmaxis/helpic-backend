@@ -29,8 +29,8 @@ func (r *Repository) Create(ctx context.Context, n Notification) (Notification, 
 		VALUES ($1, NULLIF($2, '')::uuid, $3, NULLIF($4, '')::uuid, NULLIF($5, '')::uuid, NULLIF($6, '')::uuid, $7, $8,
 			coalesce((SELECT $3 = ANY(p.kinds) FROM app_notification_prefs p WHERE p.user_id = $1), true))
 		RETURNING id, created_at,
-			coalesce((SELECT name FROM users WHERE id::text = $2), ''),
-			coalesce((SELECT email FROM users WHERE id::text = $2), '')`,
+			coalesce((SELECT name FROM users WHERE id = as_uuid($2)), ''),
+			coalesce((SELECT email FROM users WHERE id = as_uuid($2)), '')`,
 		n.UserID, n.ActorID, n.Kind, n.TaskID, n.ProjectID, n.ReportID, n.Subject, n.Detail).
 		Scan(&n.ID, &n.CreatedAt, &n.ActorName, &n.ActorEmail)
 	if err != nil {
@@ -77,7 +77,7 @@ func (r *Repository) UnreadCount(ctx context.Context, userID string) (int, error
 // MarkRead marks one of the user's notifications read.
 func (r *Repository) MarkRead(ctx context.Context, userID, id string) error {
 	tag, err := r.db.Exec(ctx, `UPDATE notifications SET read_at = coalesce(read_at, now())
-		WHERE id::text = $1 AND user_id = $2`, id, userID)
+		WHERE id = as_uuid($1) AND user_id = $2`, id, userID)
 	if err != nil {
 		return fmt.Errorf("mark read: %w", err)
 	}

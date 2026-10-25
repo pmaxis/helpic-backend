@@ -270,7 +270,7 @@ func (r *Repository) AssignFreelancer(ctx context.Context, taskID, freelancerID 
 		}
 	}
 	if old != "" && old != freelancerID && old != createdBy {
-		if _, err := tx.Exec(ctx, `DELETE FROM task_participants WHERE task_id = $1 AND user_id::text = $2`, taskID, old); err != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM task_participants WHERE task_id = $1 AND user_id = as_uuid($2)`, taskID, old); err != nil {
 			return fmt.Errorf("remove previous freelancer: %w", err)
 		}
 	}
@@ -282,7 +282,7 @@ func (r *Repository) AssignFreelancer(ctx context.Context, taskID, freelancerID 
 
 // RemoveParticipant takes someone off the task.
 func (r *Repository) RemoveParticipant(ctx context.Context, taskID, userID string) error {
-	if _, err := r.db.Exec(ctx, `DELETE FROM task_participants WHERE task_id = $1 AND user_id::text = $2`, taskID, userID); err != nil {
+	if _, err := r.db.Exec(ctx, `DELETE FROM task_participants WHERE task_id = $1 AND user_id = as_uuid($2)`, taskID, userID); err != nil {
 		return fmt.Errorf("remove participant: %w", err)
 	}
 	return nil
@@ -294,9 +294,9 @@ func (r *Repository) List(ctx context.Context, userID, role string, f Filter) ([
 	own, other := ownerColumns(role)
 	q := selectTask + ` WHERE ` + own + ` AND t.archived_at IS NULL
 		AND (cardinality($2::text[]) = 0 OR t.status = ANY($2))
-		AND ($3 = '' OR (t.client_id IS NOT NULL AND ` + other + `::text = $3)
+		AND ($3 = '' OR (t.client_id IS NOT NULL AND ` + other + ` = as_uuid($3))
 			OR ($3 = '` + PersonalFilter + `' AND t.client_id IS NULL))
-		AND ($4 = '' OR t.project_id::text = $4)
+		AND ($4 = '' OR t.project_id = as_uuid($4))
 		ORDER BY t.status = 'done', t.due_on ASC NULLS LAST, t.created_at DESC`
 	statuses := f.Statuses
 	if statuses == nil {
@@ -316,7 +316,7 @@ func (r *Repository) List(ctx context.Context, userID, role string, f Filter) ([
 // Get loads a task the user sees, or ErrNotFound.
 func (r *Repository) Get(ctx context.Context, userID, id string) (Task, error) {
 	t, err := scanTask(r.db.QueryRow(ctx, selectTask+`
-		WHERE t.id::text = $2 AND sees_task($1, t.id, t.freelancer_id, t.client_id)`, userID, id))
+		WHERE t.id = as_uuid($2) AND sees_task($1, t.id, t.freelancer_id, t.client_id)`, userID, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Task{}, ErrNotFound
 	}
@@ -330,7 +330,7 @@ func (r *Repository) Get(ctx context.Context, userID, id string) (Task, error) {
 // too, the oldest first.
 func (r *Repository) Subtasks(ctx context.Context, userID, parentID string) ([]Task, error) {
 	rows, err := r.db.Query(ctx, selectTask+`
-		WHERE t.parent_id::text = $2 AND sees_task($1, t.id, t.freelancer_id, t.client_id)
+		WHERE t.parent_id = as_uuid($2) AND sees_task($1, t.id, t.freelancer_id, t.client_id)
 		ORDER BY t.created_at, t.id`, userID, parentID)
 	if err != nil {
 		return nil, fmt.Errorf("list subtasks: %w", err)
@@ -382,7 +382,7 @@ func (r *Repository) HasSubtasks(ctx context.Context, id string) (bool, error) {
 func (r *Repository) ProjectClient(ctx context.Context, userID, projectID string) (*string, error) {
 	var clientID *string
 	err := r.db.QueryRow(ctx, `SELECT client_id FROM projects
-		WHERE id::text = $1 AND (sees_project($2::uuid, id) OR client_id = acting_client($2::uuid))`,
+		WHERE id = as_uuid($1) AND (sees_project($2::uuid, id) OR client_id = acting_client($2::uuid))`,
 		projectID, userID).Scan(&clientID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrProjectNotFound
@@ -414,7 +414,7 @@ func (r *Repository) FreelancerParticipants(ctx context.Context, projectID strin
 func (r *Repository) Linked(ctx context.Context, freelancerID, clientID string) (bool, error) {
 	var ok bool
 	err := r.db.QueryRow(ctx, `SELECT EXISTS (
-		SELECT 1 FROM freelancer_clients WHERE freelancer_id::text = $1 AND client_id::text = $2)`,
+		SELECT 1 FROM freelancer_clients WHERE freelancer_id = as_uuid($1) AND client_id = as_uuid($2))`,
 		freelancerID, clientID).Scan(&ok)
 	if err != nil {
 		return false, fmt.Errorf("check link: %w", err)
@@ -428,7 +428,7 @@ func (r *Repository) IsFreelancerParticipant(ctx context.Context, projectID, use
 	err := r.db.QueryRow(ctx, `SELECT EXISTS (
 		SELECT 1 FROM project_participants pp
 		JOIN users u ON u.id = pp.user_id AND u.role = 'freelancer'
-		WHERE pp.project_id = $1::uuid AND pp.user_id::text = $2)`, projectID, userID).Scan(&ok)
+		WHERE pp.project_id = $1::uuid AND pp.user_id = as_uuid($2))`, projectID, userID).Scan(&ok)
 	if err != nil {
 		return false, fmt.Errorf("check project freelancer: %w", err)
 	}
@@ -442,7 +442,7 @@ func (r *Repository) IsProjectAuthor(ctx context.Context, userID, projectID stri
 	}
 	var ok bool
 	err := r.db.QueryRow(ctx, `SELECT EXISTS (
-		SELECT 1 FROM projects WHERE id::text = $1 AND created_by = $2::uuid)`, projectID, userID).Scan(&ok)
+		SELECT 1 FROM projects WHERE id = as_uuid($1) AND created_by = $2::uuid)`, projectID, userID).Scan(&ok)
 	if err != nil {
 		return false, fmt.Errorf("project author: %w", err)
 	}
@@ -462,7 +462,7 @@ type WorkflowStatus struct {
 func (r *Repository) Status(ctx context.Context, statusID string) (WorkflowStatus, error) {
 	var s WorkflowStatus
 	err := r.db.QueryRow(ctx, `SELECT freelancer_id, client_id, coalesce(project_id::text, ''), category
-		FROM workflow_statuses WHERE id::text = $1`, statusID).
+		FROM workflow_statuses WHERE id = as_uuid($1)`, statusID).
 		Scan(&s.FreelancerID, &s.ClientID, &s.ProjectID, &s.Bucket)
 	s.ParticipantsCanMove = s.Bucket != StatusDone
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -484,7 +484,7 @@ const pickStatus = `SELECT id, category FROM workflow_statuses
 	    ($p IS NOT NULL AND project_id = $p)
 	    OR ($p IS NULL AND project_id IS NULL AND freelancer_id = $f AND client_id IS NOT DISTINCT FROM $c)
 	  )
-	  AND ($s = '' OR id::text = $s)
+	  AND ($s = '' OR id = as_uuid($s))
 	ORDER BY category = 'new' DESC, position LIMIT 1`
 
 // taskWorkflow matches a task's column: the project's, or the pair's when the
@@ -538,7 +538,7 @@ func (r *Repository) CreatePersonal(ctx context.Context, freelancerID, projectID
 func (r *Repository) Create(ctx context.Context, freelancerID, clientID, createdBy, projectID, statusID string, p Params) (string, error) {
 	var linked bool
 	err := r.db.QueryRow(ctx, `SELECT EXISTS (
-		SELECT 1 FROM freelancer_clients WHERE freelancer_id::text = $1 AND client_id::text = $2)`,
+		SELECT 1 FROM freelancer_clients WHERE freelancer_id = as_uuid($1) AND client_id = as_uuid($2))`,
 		freelancerID, clientID).Scan(&linked)
 	if err != nil {
 		return "", fmt.Errorf("check link: %w", err)
@@ -673,7 +673,7 @@ func (r *Repository) SetLabels(ctx context.Context, id string, labelIDs []string
 	err = tx.QueryRow(ctx, `SELECT count(DISTINCT l.id) FROM labels l
 		JOIN tasks t ON t.id = $1
 		LEFT JOIN projects pr ON pr.id = t.project_id
-		WHERE l.id::text = ANY($2) AND l.client_id IS NOT DISTINCT FROM t.client_id
+		WHERE l.id = ANY(as_uuids($2)) AND l.client_id IS NOT DISTINCT FROM t.client_id
 		  AND (l.freelancer_id = t.freelancer_id OR l.freelancer_id = pr.freelancer_id)`,
 		id, labelIDs).Scan(&matching)
 	if err != nil {
@@ -802,9 +802,9 @@ func (r *Repository) ListArchive(ctx context.Context, userID, role string, f Arc
 	}
 	where := `
 		WHERE t.archived_at IS NOT NULL AND sees_task($1, t.id, t.freelancer_id, t.client_id)
-		  AND ($2 = '' OR (t.client_id IS NOT NULL AND ` + other + `::text = $2)
+		  AND ($2 = '' OR (t.client_id IS NOT NULL AND ` + other + ` = as_uuid($2))
 			OR ($2 = '` + PersonalFilter + `' AND t.client_id IS NULL))
-		  AND ($3 = '' OR t.project_id::text = $3)`
+		  AND ($3 = '' OR t.project_id = as_uuid($3))`
 	var total int
 	if err := r.db.QueryRow(ctx, `SELECT count(*) FROM tasks t`+where, userID, f.With, f.ProjectID).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count archive: %w", err)

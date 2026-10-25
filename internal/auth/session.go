@@ -331,7 +331,7 @@ func (r *Repository) ListSessions(ctx context.Context, userID string) ([]Session
 // DeleteUserSession removes one of the user's sessions. ErrSessionNotFound
 // when the user has no such session.
 func (r *Repository) DeleteUserSession(ctx context.Context, userID, id string) error {
-	tag, err := r.db.Exec(ctx, `DELETE FROM sessions WHERE id::text = $1 AND user_id = $2`, id, userID)
+	tag, err := r.db.Exec(ctx, `DELETE FROM sessions WHERE id = as_uuid($1) AND user_id = $2`, id, userID)
 	if err != nil {
 		return fmt.Errorf("delete session: %w", err)
 	}

@@ -1,0 +1,2 @@
+DROP FUNCTION as_uuids(TEXT[]);
+DROP FUNCTION as_uuid(TEXT);

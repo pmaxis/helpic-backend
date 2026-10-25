@@ -185,7 +185,7 @@ func isBadUUID(err error) bool {
 
 // Actions returns a page of actions, the newest first, and how many match.
 func (r *Repository) Actions(ctx context.Context, f ActionFilter) ([]Action, int, error) {
-	const where = `WHERE ($1 = '' OR target_id::text = $1)`
+	const where = `WHERE ($1 = '' OR target_id = as_uuid($1))`
 	var total int
 	if err := r.db.QueryRow(ctx, `SELECT count(*) FROM admin_actions `+where, f.TargetID).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count admin actions: %w", err)

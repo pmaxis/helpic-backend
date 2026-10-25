@@ -113,7 +113,7 @@ func (r *Repository) EndAdminSession(ctx context.Context, adminID, id, sessionID
 	if err != nil {
 		return "", endedSession{}, fmt.Errorf("find admin: %w", err)
 	}
-	err = tx.QueryRow(ctx, `DELETE FROM sessions WHERE id::text = $1 AND user_id = $2 RETURNING ip`, sessionID, id).Scan(&target.ip)
+	err = tx.QueryRow(ctx, `DELETE FROM sessions WHERE id = as_uuid($1) AND user_id = $2 RETURNING ip`, sessionID, id).Scan(&target.ip)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", endedSession{}, ErrSessionNotFound
 	}
