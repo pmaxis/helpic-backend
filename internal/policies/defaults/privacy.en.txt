@@ -1,0 +1,49 @@
+This policy explains what data Helpic collects, why, where it is kept and how you control it. Helpic is a workspace for freelancers and their clients: tasks, projects, time tracking and reports.
+
+## Who is responsible for your data
+
+The service is run by [owner's name]. For anything about your data, write to [contact email].
+
+## What we collect
+
+- Account data: email, first and last name, role (freelancer or client), interface language, currency and hourly rate. Your password is kept only as a cryptographic hash.
+- Work you add yourself: projects, tasks, subtasks, comments, files, time entries, prices, reports and payment marks.
+- Team data: invitations, the members of a client's company and their roles.
+- Sign-in data: for each device you are signed in on, its IP address, browser and operating system, and when it signed in and was last used. Also the days you used the service, for overall statistics.
+- Notification settings and, if you connect the Telegram bot, your Telegram chat ID and username.
+- The server's error log, for diagnosis. It is kept for 30 days.
+
+We collect no payment details: freelancers and clients settle payments outside Helpic.
+
+## Why we use it
+
+- To run the service: to show your work to you and to the people you share it with.
+- To send the notifications you choose: in the app, by email or in Telegram.
+- To protect accounts: two-factor sign-in, the list of your devices, limits on sign-in attempts.
+- To fix errors and understand, in aggregate, how the service is used.
+
+We don't sell data, show ads or use third-party tracking.
+
+## Who else sees your data
+
+- The people you work with: a freelancer and a client see their shared tasks, projects and reports; members of a client's team see their company's work.
+- The email service that delivers our emails.
+- Telegram, if you connect the bot.
+- The hosting provider whose servers Helpic runs on.
+- Authorities, only when the law requires it.
+
+## How long we keep it
+
+Account data and work are kept while the account exists. A device's session is deleted when you sign out of it or it expires. The error log is kept for 30 days.
+
+## Your rights
+
+You can see and correct your data in the settings, and ask for a copy of it or for your account to be deleted by writing to [contact email]. You can turn any notification off and sign out of any device.
+
+## Security
+
+Sessions live in cookies that scripts can't read, connections are encrypted, passwords and tokens are stored only as hashes, and two-factor sign-in is one switch away in the settings.
+
+## Changes
+
+If we change this policy, the new version will appear on this page with the date it was updated.

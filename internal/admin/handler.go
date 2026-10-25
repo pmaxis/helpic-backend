@@ -44,11 +44,15 @@ func (h *Handler) UseCodes(c CodeChecker) {
 	h.codes = c
 }
 
-// Routes mounts the endpoints. Must be called inside an authenticated group;
-// they answer only admins with two-factor on.
-func (h *Handler) Routes(r chi.Router) {
+// Routes mounts the endpoints, and other packages' through more. Must be
+// called inside an authenticated group; they answer only admins with
+// two-factor on.
+func (h *Handler) Routes(r chi.Router, more ...func(chi.Router)) {
 	r.Route("/admin", func(r chi.Router) {
 		r.Use(h.RequireAdmin)
+		for _, mount := range more {
+			mount(r)
+		}
 		r.Get("/stats", h.Stats)
 		r.Get("/users", h.Users)
 		r.Get("/users/{id}", h.User)

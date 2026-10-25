@@ -1,0 +1,20 @@
+Cookies are small files a site keeps in your browser. Helpic uses only the ones it can't work without, and no advertising or analytics cookies.
+
+## Necessary cookies
+
+- auth_token: shows that you are signed in. It lasts 15 minutes and renews itself while you use the service.
+- refresh_token: keeps your session on this device. It lasts until you sign out, or up to 30 days unused, and is sent only to the sign-in addresses.
+
+Scripts on the page can't read either cookie, and both travel only over secure connections. Signing in to Helpic is impossible without them, so they can't be turned off.
+
+## What the browser keeps
+
+Besides cookies, Helpic remembers a few of your settings in the browser's storage (localStorage): the theme, the language, a collapsed sidebar, how lists are shown and that you have closed the cookie notice. This stays on your device.
+
+## How to control them
+
+You can delete cookies and site data in your browser's settings. You'll then need to sign in again, and your settings go back to their defaults.
+
+## Questions
+
+Write to [contact email]. More about how we treat data is in the Privacy Policy.

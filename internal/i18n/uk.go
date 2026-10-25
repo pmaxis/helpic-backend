@@ -364,6 +364,8 @@ var uk = map[string]string{
 	"Choose queued, failed or sent":                                                                              "Оберіть: у черзі, не надіслані чи надіслані",
 	"Keep the reason under 500 characters":                                                                       "Причина має бути коротшою за 500 символів",
 	"This account is blocked. If you think it's a mistake, write to Helpic's support.":                           "Цей акаунт заблоковано. Якщо це помилка, напишіть у підтримку Helpic.",
+	"Write the policy, or put the default back":                                                                  "Напишіть текст політики або поверніть стандартний",
+	"The policy is too long":                                                                                     "Текст політики задовгий",
 
 	// --- emails: an admin reset two-factor sign-in ---------------------------------------
 	"Two-factor sign-in was reset": "Двофакторний вхід скинуто",

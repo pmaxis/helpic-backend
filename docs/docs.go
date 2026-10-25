@@ -459,6 +459,174 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/policies": {
+            "get": {
+                "description": "Every policy in every language, with whether an admin wrote it, when and who.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "The policies",
+                "responses": {
+                    "200": {
+                        "description": "policies",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/policies.AdminPolicyDTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/policies/{kind}/{locale}": {
+            "put": {
+                "description": "Replaces a policy's text in one language; readers see it at once.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Write a policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "privacy, terms or cookies",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "en or uk",
+                        "name": "locale",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The text",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/policies.SaveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "policy",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/policies.AdminPolicyDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Empty or too long",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "No such policy or language",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Forgets the admin's text in one language: readers see the one Helpic comes with.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Put a policy's default back",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "privacy, terms or cookies",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "en or uk",
+                        "name": "locale",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "policy",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/policies.AdminPolicyDTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "No such policy or language",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/sign-ins": {
             "get": {
                 "description": "Every sign-in to an admin account, and every attempt that got the password or the code wrong, the newest first: when, from which address and browser.",
@@ -3814,6 +3982,50 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/policies/{kind}": {
+            "get": {
+                "description": "The privacy policy, the terms of use or the cookie policy, for anyone: as an admin wrote it, or else the text Helpic comes with. In the language asked for, or else the request's.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "policies"
+                ],
+                "summary": "A policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "privacy, terms or cookies",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "en or uk; the request's language by default",
+                        "name": "locale",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "policy",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/policies.PolicyDTO"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such policy or language",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -7917,6 +8129,64 @@ const docTemplate = `{
                 },
                 "unread": {
                     "type": "integer"
+                }
+            }
+        },
+        "policies.AdminPolicyDTO": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "description": "Body is plain lines: \"## \" a heading, \"- \" a list item, an empty line\nbetween paragraphs.",
+                    "type": "string"
+                },
+                "custom": {
+                    "description": "Custom is whether an admin wrote it; otherwise it is Helpic's own.",
+                    "type": "boolean"
+                },
+                "kind": {
+                    "description": "Kind is privacy, terms or cookies.",
+                    "type": "string"
+                },
+                "locale": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "description": "UpdatedBy is the admin's email; empty for the default or once the\naccount is gone.",
+                    "type": "string"
+                }
+            }
+        },
+        "policies.PolicyDTO": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "description": "Body is plain lines: \"## \" a heading, \"- \" a list item, an empty line\nbetween paragraphs.",
+                    "type": "string"
+                },
+                "custom": {
+                    "description": "Custom is whether an admin wrote it; otherwise it is Helpic's own.",
+                    "type": "boolean"
+                },
+                "kind": {
+                    "description": "Kind is privacy, terms or cookies.",
+                    "type": "string"
+                },
+                "locale": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "policies.SaveRequest": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string"
                 }
             }
         },

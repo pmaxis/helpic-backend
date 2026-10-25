@@ -27,6 +27,7 @@ import (
 	"github.com/pmaxis/helpic/internal/mail"
 	"github.com/pmaxis/helpic/internal/middleware"
 	"github.com/pmaxis/helpic/internal/notifications"
+	"github.com/pmaxis/helpic/internal/policies"
 	"github.com/pmaxis/helpic/internal/profile"
 	"github.com/pmaxis/helpic/internal/projects"
 	"github.com/pmaxis/helpic/internal/rates"
@@ -204,6 +205,8 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	adminHandler := admin.NewHandler(adminSvc, appLogs)
 	adminHandler.UseCodes(authSvc)
 	authSvc.OnSignIn(adminSvc.RecordSignIn)
+	// The site's policies: anyone reads them, admins write them.
+	policiesHandler := policies.NewHandler(policies.NewService(pool))
 	activity := admin.NewActivity(adminRepo, adminSvc)
 	background := jobs.NewRegistry()
 	var botCheck func(context.Context) error
@@ -288,6 +291,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			// Confirming a new email signs nobody in, but guesses at links count.
 			profileHandler.PublicRoutes(r)
 		})
+		policiesHandler.PublicRoutes(r)
 
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware)
@@ -297,7 +301,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			profileHandler.Routes(r, byUser(lim.passwordChecks))
 			authHandler.SessionRoutes(r)
 			authHandler.TwoFactorRoutes(r, byUser(lim.passwordChecks))
-			adminHandler.Routes(r)
+			adminHandler.Routes(r, policiesHandler.AdminRoutes)
 
 			// The work: freelancers and clients only, never admins.
 			r.Group(func(r chi.Router) {

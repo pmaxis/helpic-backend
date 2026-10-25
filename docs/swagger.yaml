@@ -989,6 +989,54 @@ definitions:
       unread:
         type: integer
     type: object
+  policies.AdminPolicyDTO:
+    properties:
+      body:
+        description: |-
+          Body is plain lines: "## " a heading, "- " a list item, an empty line
+          between paragraphs.
+        type: string
+      custom:
+        description: Custom is whether an admin wrote it; otherwise it is Helpic's
+          own.
+        type: boolean
+      kind:
+        description: Kind is privacy, terms or cookies.
+        type: string
+      locale:
+        type: string
+      updated_at:
+        type: string
+      updated_by:
+        description: |-
+          UpdatedBy is the admin's email; empty for the default or once the
+          account is gone.
+        type: string
+    type: object
+  policies.PolicyDTO:
+    properties:
+      body:
+        description: |-
+          Body is plain lines: "## " a heading, "- " a list item, an empty line
+          between paragraphs.
+        type: string
+      custom:
+        description: Custom is whether an admin wrote it; otherwise it is Helpic's
+          own.
+        type: boolean
+      kind:
+        description: Kind is privacy, terms or cookies.
+        type: string
+      locale:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  policies.SaveRequest:
+    properties:
+      body:
+        type: string
+    type: object
   profile.ConfirmEmailRequest:
     properties:
       token:
@@ -2188,6 +2236,120 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: The server's warnings and errors
+      tags:
+      - admin
+  /admin/policies:
+    get:
+      description: Every policy in every language, with whether an admin wrote it,
+        when and who.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: policies
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/policies.AdminPolicyDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: The policies
+      tags:
+      - admin
+  /admin/policies/{kind}/{locale}:
+    delete:
+      description: 'Forgets the admin''s text in one language: readers see the one
+        Helpic comes with.'
+      parameters:
+      - description: privacy, terms or cookies
+        in: path
+        name: kind
+        required: true
+        type: string
+      - description: en or uk
+        in: path
+        name: locale
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: policy
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/policies.AdminPolicyDTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: No such policy or language
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Put a policy's default back
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      description: Replaces a policy's text in one language; readers see it at once.
+      parameters:
+      - description: privacy, terms or cookies
+        in: path
+        name: kind
+        required: true
+        type: string
+      - description: en or uk
+        in: path
+        name: locale
+        required: true
+        type: string
+      - description: The text
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/policies.SaveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: policy
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/policies.AdminPolicyDTO'
+            type: object
+        "400":
+          description: Empty or too long
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: No such policy or language
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Write a policy
       tags:
       - admin
   /admin/sign-ins:
@@ -4453,6 +4615,37 @@ paths:
       summary: How many are unread
       tags:
       - notifications
+  /policies/{kind}:
+    get:
+      description: 'The privacy policy, the terms of use or the cookie policy, for
+        anyone: as an admin wrote it, or else the text Helpic comes with. In the language
+        asked for, or else the request''s.'
+      parameters:
+      - description: privacy, terms or cookies
+        in: path
+        name: kind
+        required: true
+        type: string
+      - description: en or uk; the request's language by default
+        in: query
+        name: locale
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: policy
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/policies.PolicyDTO'
+            type: object
+        "404":
+          description: No such policy or language
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A policy
+      tags:
+      - policies
   /projects:
     get:
       parameters:

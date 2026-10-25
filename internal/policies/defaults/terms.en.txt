@@ -1,0 +1,48 @@
+These terms apply to everyone who uses Helpic. By signing up or using the service, you agree to them.
+
+## The service
+
+Helpic is a workspace where a freelancer and their clients keep tasks and projects, track time and report on the work done. It is provided by [owner's name].
+
+## Your account
+
+- Freelancers sign up themselves; clients and their teams join by invitation.
+- Give true details and keep your password secret. You are responsible for what happens in your account.
+- If you notice someone else signed in, change your password and sign out the other sessions in the settings.
+
+## Your data and work
+
+Everything you add to Helpic, such as tasks, files, comments and reports, belongs to you or to the people you work with, as you agree between you. You allow us to store and show it only as far as running the service needs. How we treat data is described in the Privacy Policy.
+
+## Payment for work
+
+Helpic counts time and sums and makes reports, but it doesn't process payments. Settlements, taxes and agreements between a freelancer and a client are theirs to handle. National Bank of Ukraine rates in reports are for reference.
+
+## Price
+
+Helpic is free right now. If paid features appear, we'll tell you in advance, and none will become required without your consent.
+
+## Not allowed
+
+- Breaking the law or other people's rights, or uploading harmful files.
+- Trying to get into other people's accounts or data.
+- Overloading, attacking or scraping the service.
+- Sending spam through invitations or notifications.
+
+We may block an account that does any of this.
+
+## Availability and liability
+
+We work to keep Helpic running smoothly, but provide it "as is", without a guarantee that it will never be interrupted. We are not liable for indirect losses or lost profits. Keep copies of important files.
+
+## Ending
+
+You can stop using Helpic at any time and ask for your account to be deleted by writing to [contact email].
+
+## Changes
+
+We'll tell you about significant changes in advance. The new version will appear on this page with the date it was updated.
+
+## Contact
+
+Send questions about these terms to [contact email]. These terms are governed by the law of Ukraine.
