@@ -29,6 +29,79 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Post("/read-all", h.MarkAllRead)
 		r.Post("/{id}/read", h.MarkRead)
 	})
+	r.Get("/me/app-notifications", h.AppKinds)
+	r.Put("/me/app-notifications", h.SetAppKinds)
+}
+
+// AppPrefsDTO is what the bell shows the user.
+type AppPrefsDTO struct {
+	// Kinds show in the bell.
+	Kinds []string `json:"kinds"`
+	// Available are the kinds it can show; DefaultKinds those on until the
+	// user chooses: all of them.
+	Available    []string `json:"available"`
+	DefaultKinds []string `json:"default_kinds"`
+}
+
+func writeAppPrefs(w http.ResponseWriter, kinds []string) {
+	response.JSON(w, http.StatusOK, map[string]AppPrefsDTO{
+		"app_notifications": {Kinds: kinds, Available: Kinds, DefaultKinds: Kinds},
+	})
+}
+
+// AppKinds handles GET /api/v1/me/app-notifications.
+//
+//	@Summary		What the bell shows you
+//	@Description	The notification kinds shown in the app; all of them until you choose.
+//	@Tags			notifications
+//	@Produce		json
+//	@Success		200	{object}	map[string]AppPrefsDTO	"app_notifications"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router			/me/app-notifications [get]
+func (h *Handler) AppKinds(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	kinds, err := h.svc.AppKinds(r.Context(), userID)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	writeAppPrefs(w, kinds)
+}
+
+// SetAppKinds handles PUT /api/v1/me/app-notifications.
+//
+//	@Summary		Choose what the bell shows you
+//	@Description	The notification kinds to show in the app from now on. The others still go by email and to Telegram, if you get them there. See "available".
+//	@Tags			notifications
+//	@Accept			json
+//	@Produce		json
+//	@Param			body	body		EmailKindsRequest		true	"Request body"
+//	@Success		200		{object}	map[string]AppPrefsDTO	"app_notifications"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Unknown kind"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Router			/me/app-notifications [put]
+func (h *Handler) SetAppKinds(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req EmailKindsRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	kinds, err := h.svc.SetAppKinds(r.Context(), userID, req.Kinds)
+	if errors.Is(err, ErrUnknownKind) {
+		response.ValidationError(w, map[string]string{"kinds": "Unknown notification kind"})
+		return
+	}
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	writeAppPrefs(w, kinds)
 }
 
 // ListResponse is the latest notifications and how many are unread.

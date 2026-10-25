@@ -65,14 +65,9 @@ func (e *Emailer) Kinds(ctx context.Context, userID string) ([]string, error) {
 
 // SetKinds chooses which kinds the user gets by email; none turns email off.
 func (e *Emailer) SetKinds(ctx context.Context, userID string, kinds []string) ([]string, error) {
-	clean := make([]string, 0, len(kinds))
-	for _, k := range kinds {
-		if !slices.Contains(Kinds, k) {
-			return nil, ErrUnknownKind
-		}
-		if !slices.Contains(clean, k) {
-			clean = append(clean, k)
-		}
+	clean, err := cleanKinds(kinds)
+	if err != nil {
+		return nil, err
 	}
 	if _, err := e.db.Exec(ctx, `
 		INSERT INTO email_notification_prefs (user_id, kinds) VALUES ($1, $2)

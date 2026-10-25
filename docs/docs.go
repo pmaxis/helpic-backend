@@ -2832,6 +2832,82 @@ const docTemplate = `{
                 }
             }
         },
+        "/me/app-notifications": {
+            "get": {
+                "description": "The notification kinds shown in the app; all of them until you choose.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "What the bell shows you",
+                "responses": {
+                    "200": {
+                        "description": "app_notifications",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/notifications.AppPrefsDTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "The notification kinds to show in the app from now on. The others still go by email and to Telegram, if you get them there. See \"available\".",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Choose what the bell shows you",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/notifications.EmailKindsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "app_notifications",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/notifications.AppPrefsDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown kind",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/me/currency": {
             "put": {
                 "description": "What a freelancer bills in: USD, EUR, GBP, UAH, PLN or CAD. Refused while a task still has a price, so amounts are not relabeled.",
@@ -7731,6 +7807,31 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                }
+            }
+        },
+        "notifications.AppPrefsDTO": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "description": "Available are the kinds it can show; DefaultKinds those on until the\nuser chooses: all of them.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "default_kinds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "kinds": {
+                    "description": "Kinds show in the bell.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },

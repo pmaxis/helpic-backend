@@ -3,6 +3,7 @@ package notifications
 import (
 	"context"
 	"log/slog"
+	"slices"
 )
 
 // CreateHook hears of every notification once it is stored, e.g. to send it
@@ -72,6 +73,35 @@ func (s *Service) MarkRead(ctx context.Context, userID, id string) error {
 // MarkAllRead marks all the user's notifications read.
 func (s *Service) MarkAllRead(ctx context.Context, userID string) error {
 	return s.repo.MarkAllRead(ctx, userID)
+}
+
+// AppKinds returns the kinds the bell shows the user.
+func (s *Service) AppKinds(ctx context.Context, userID string) ([]string, error) {
+	return s.repo.AppKinds(ctx, userID)
+}
+
+// SetAppKinds chooses which kinds the bell shows the user from now on; the
+// others still go to the channels that want them.
+func (s *Service) SetAppKinds(ctx context.Context, userID string, kinds []string) ([]string, error) {
+	clean, err := cleanKinds(kinds)
+	if err != nil {
+		return nil, err
+	}
+	return clean, s.repo.SetAppKinds(ctx, userID, clean)
+}
+
+// cleanKinds drops repeats, or returns ErrUnknownKind for a kind that doesn't exist.
+func cleanKinds(kinds []string) ([]string, error) {
+	clean := make([]string, 0, len(kinds))
+	for _, k := range kinds {
+		if !slices.Contains(Kinds, k) {
+			return nil, ErrUnknownKind
+		}
+		if !slices.Contains(clean, k) {
+			clean = append(clean, k)
+		}
+	}
+	return clean, nil
 }
 
 // Noop drops notifications; for code paths and tests that don't need them.

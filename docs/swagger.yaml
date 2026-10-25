@@ -912,6 +912,25 @@ definitions:
       name:
         type: string
     type: object
+  notifications.AppPrefsDTO:
+    properties:
+      available:
+        description: |-
+          Available are the kinds it can show; DefaultKinds those on until the
+          user chooses: all of them.
+        items:
+          type: string
+        type: array
+      default_kinds:
+        items:
+          type: string
+        type: array
+      kinds:
+        description: Kinds show in the bell.
+        items:
+          type: string
+        type: array
+    type: object
   notifications.DTO:
     properties:
       actor:
@@ -3771,6 +3790,58 @@ paths:
       summary: Change your name
       tags:
       - account
+  /me/app-notifications:
+    get:
+      description: The notification kinds shown in the app; all of them until you
+        choose.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: app_notifications
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/notifications.AppPrefsDTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: What the bell shows you
+      tags:
+      - notifications
+    put:
+      consumes:
+      - application/json
+      description: The notification kinds to show in the app from now on. The others
+        still go by email and to Telegram, if you get them there. See "available".
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/notifications.EmailKindsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: app_notifications
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/notifications.AppPrefsDTO'
+            type: object
+        "400":
+          description: Unknown kind
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Choose what the bell shows you
+      tags:
+      - notifications
   /me/currency:
     put:
       consumes:
