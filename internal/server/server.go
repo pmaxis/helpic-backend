@@ -248,6 +248,10 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 
 	// --- router --------------------------------------------------------------
 	authMiddleware := middleware.Auth(tokens, authSvc, cfg.CookieName)
+	crossOrigin, err := middleware.CrossOrigin(cfg.CORSOrigin)
+	if err != nil {
+		return nil, err
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP(cfg.TrustedProxies))
@@ -255,6 +259,8 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	r.Use(middleware.Locale)
 	r.Use(middleware.Recovery(!cfg.IsProduction()))
 	r.Use(middleware.CORS(cfg.CORSOrigin))
+	// After CORS, so the frontend can read the refusal.
+	r.Use(crossOrigin)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		if err := pool.Ping(r.Context()); err != nil {

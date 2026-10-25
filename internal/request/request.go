@@ -5,6 +5,7 @@ package request
 
 import (
 	"encoding/json"
+	"mime"
 	"net/http"
 
 	"github.com/pmaxis/helpic/internal/middleware"
@@ -30,9 +31,24 @@ func UserRole(w http.ResponseWriter, r *http.Request) (userID, role string, ok b
 	return userID, middleware.Role(r.Context()), ok
 }
 
-// Decode reads a JSON body of at most 1 MiB into dst, or answers 400 and
-// returns false.
+// JSON reports whether the body is labelled JSON, or else answers 415. A form
+// can't send that label from another site, so a body without it is no one's
+// API call.
+func JSON(w http.ResponseWriter, r *http.Request) bool {
+	t, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || t != "application/json" {
+		response.Error(w, http.StatusUnsupportedMediaType, response.CodeUnsupportedMediaType, "Send the request body as JSON")
+		return false
+	}
+	return true
+}
+
+// Decode reads a JSON body of at most 1 MiB into dst, or answers 415 or 400
+// and returns false.
 func Decode(w http.ResponseWriter, r *http.Request, dst any) bool {
+	if !JSON(w, r) {
+		return false
+	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody)).Decode(dst); err != nil {
 		response.Error(w, http.StatusBadRequest, response.CodeValidation, "Invalid JSON body")
 		return false

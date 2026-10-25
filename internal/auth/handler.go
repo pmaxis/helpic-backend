@@ -697,6 +697,9 @@ func (c CookieConfig) refreshToken(r *http.Request) string {
 
 // decodeJSON strictly decodes the request body, writing a 400 on failure.
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	if !request.JSON(w, r) {
+		return false
+	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {

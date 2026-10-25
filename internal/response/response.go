@@ -25,7 +25,9 @@ const (
 	CodeConflict          = "CONFLICT"
 	CodeUnprocessable     = "UNPROCESSABLE"
 	CodeRateLimited       = "RATE_LIMITED"
-	CodeInternal          = "INTERNAL_ERROR"
+	// CodeUnsupportedMediaType: a body that isn't labelled JSON.
+	CodeUnsupportedMediaType = "UNSUPPORTED_MEDIA_TYPE"
+	CodeInternal             = "INTERNAL_ERROR"
 )
 
 // APIError is the machine + human readable error body.

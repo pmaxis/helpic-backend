@@ -30,7 +30,7 @@ docker compose exec backend /app/cli create-admin -email you@example.com -name "
 
 ## Configuration
 
-Every variable is documented in [`.env.example`](.env.example). `CORS_ORIGIN` must match the frontend's origin.
+Every variable is documented in [`.env.example`](.env.example). `CORS_ORIGIN` must match the frontend's origin: it is the only other origin a browser may change data from (POST, PUT, PATCH, DELETE), and request bodies must be sent as `application/json`.
 
 With `APP_ENV=production` the server refuses to start on unsafe settings: weak secrets, insecure cookies, a database without TLS verification, Mailpit, or Swagger left on.
 
