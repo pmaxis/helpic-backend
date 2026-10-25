@@ -51,6 +51,8 @@ type Service struct {
 	// username is the bot's, known once it has called getMe.
 	username atomic.Value
 	queue    chan notifications.Notification
+	// act is how the bot acts for the user; nil while it only tells.
+	act *Actions
 }
 
 // NewService creates a telegram Service; bot is nil to turn Telegram off.
@@ -128,9 +130,10 @@ func (s *Service) Disconnect(ctx context.Context, userID string) error {
 	return nil
 }
 
-// Cleanup removes connect links nobody opened in time.
+// Cleanup removes connect links nobody opened in time, and forgets old
+// messages and drafts.
 func (s *Service) Cleanup(ctx context.Context) error {
-	return s.repo.DeleteExpiredCodes(ctx)
+	return errors.Join(s.repo.DeleteExpiredCodes(ctx), s.repo.DeleteStale(ctx, messageTTL, draftTTL))
 }
 
 // Enqueue takes a stored notification to send to its recipient's chat, if
@@ -183,9 +186,17 @@ func (s *Service) deliver(ctx context.Context, n notifications.Notification) {
 		return
 	}
 	text, button := s.message(n, l.Locale)
+	k := keyboard(s.actionButtons(ctx, l, n), button)
 	sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
-	err = s.bot.SendMessage(sendCtx, l.ChatID, text, button)
+	id, err := s.bot.Send(sendCtx, l.ChatID, text, k)
+	if err == nil {
+		// A reply to it comments on its task; its buttons act for this user.
+		if err := s.repo.Remember(ctx, l.ChatID, id, l.UserID, n.TaskID); err != nil {
+			slog.Error("telegram: remember message", "error", err)
+		}
+		return
+	}
 	if IsBlocked(err) {
 		// The user blocked the bot: stop trying.
 		if _, err := s.repo.DisconnectChat(ctx, l.ChatID); err != nil {
@@ -232,6 +243,7 @@ func (s *Service) readUpdates(ctx context.Context) {
 		if err == nil {
 			s.username.Store(me.Username)
 			slog.Info("telegram bot ready", "username", me.Username)
+			s.setCommands(ctx)
 			break
 		}
 		slog.Error("telegram: getMe", "error", err)
@@ -255,16 +267,20 @@ func (s *Service) readUpdates(ctx context.Context) {
 		}
 		for _, u := range updates {
 			offset = u.UpdateID + 1
-			if u.Message != nil {
+			switch {
+			case u.Message != nil:
 				s.handle(ctx, *u.Message)
+			case u.CallbackQuery != nil:
+				s.press(ctx, *u.CallbackQuery)
 			}
 		}
 	}
 }
 
 // handle answers a message to the bot: /start with a code connects the chat,
-// /stop disconnects it. Only private chats count. It answers in the language
-// the sender's Telegram is in.
+// /stop disconnects it, /timer shows the running timer, and anything else
+// acts (see respond). Only private chats count. Until the chat is connected
+// it answers in the language the sender's Telegram is in.
 func (s *Service) handle(ctx context.Context, m Message) {
 	if m.Chat.Type != "private" {
 		return
@@ -278,7 +294,7 @@ func (s *Service) handle(ctx context.Context, m Message) {
 	switch command {
 	case "/start":
 		if arg == "" {
-			s.reply(ctx, m.Chat.ID, t("Hi! To get your Helpic notifications here, open Helpic → Settings → Notifications and press <b>Connect Telegram</b>."))
+			s.reply(ctx, m.Chat.ID, t("Hi! To use Helpic here, open Helpic → Settings → Integrations and press <b>Connect Telegram</b>."))
 			return
 		}
 		s.connect(ctx, m, strings.TrimSpace(arg), locale)
@@ -295,9 +311,45 @@ func (s *Service) handle(ctx context.Context, m Message) {
 		}
 		s.reply(ctx, m.Chat.ID, t("Disconnected. No more Helpic notifications will come here."))
 	default:
-		s.reply(ctx, m.Chat.ID, t("I only send Helpic notifications. Send /stop to turn them off."))
+		if s.act == nil {
+			s.reply(ctx, m.Chat.ID, t("I only send Helpic notifications. Send /stop to turn them off."))
+			return
+		}
+		var replyTo int64
+		if m.ReplyTo != nil {
+			replyTo = m.ReplyTo.MessageID
+		}
+		l, err := s.repo.ByChat(ctx, m.Chat.ID, replyTo)
+		if errors.Is(err, ErrNotConnected) {
+			s.reply(ctx, m.Chat.ID, t("Hi! To use Helpic here, open Helpic → Settings → Integrations and press <b>Connect Telegram</b>."))
+			return
+		}
+		if err != nil {
+			slog.Error("telegram: load chat", "error", err)
+			s.reply(ctx, m.Chat.ID, t("Something went wrong. Please try again."))
+			return
+		}
+		switch command {
+		case "/timer":
+			s.showTimer(ctx, l, m.Chat.ID)
+		case "/help":
+			s.reply(ctx, m.Chat.ID, translate(l.Locale)(helpText))
+		default:
+			if strings.HasPrefix(command, "/") {
+				s.reply(ctx, m.Chat.ID, translate(l.Locale)(helpText))
+				return
+			}
+			s.respond(ctx, l, m)
+		}
 	}
 }
+
+// helpText says what the bot does.
+const helpText = "Here's what I can do:\n\n" +
+	"• <b>Reply</b> to a notification about a task, and your reply becomes a comment on it.\n" +
+	"• <b>Send or forward</b> me a message, and it becomes a task: choose who it's with.\n" +
+	"• Buttons under notifications start the timer, send done work back, or mark a report paid.\n" +
+	"• /timer shows the running timer, /stop turns notifications off."
 
 // connect ties the chat to the account the code was made for. Until then it
 // speaks the sender's language; once connected, the account's.
@@ -309,7 +361,7 @@ func (s *Service) connect(ctx context.Context, m Message, code, locale string) {
 		return
 	}
 	if !ok {
-		s.reply(ctx, m.Chat.ID, i18n.T(locale, "This link has expired or was already used. Get a new one in Helpic → Settings → Notifications."))
+		s.reply(ctx, m.Chat.ID, i18n.T(locale, "This link has expired or was already used. Get a new one in Helpic → Settings → Integrations."))
 		return
 	}
 	locale = userLocale
@@ -325,9 +377,33 @@ func (s *Service) connect(ctx context.Context, m Message, code, locale string) {
 		s.reply(ctx, m.Chat.ID, i18n.T(locale, "Something went wrong. Please try again."))
 		return
 	}
-	s.reply(ctx, m.Chat.ID, i18n.T(locale,
+	text := i18n.T(locale,
 		"✅ Connected to Helpic as <b>%s</b>.\n\nImportant notifications will come here. Choose which in Settings → Notifications, or send /stop to turn them off.",
-		html.EscapeString(name)))
+		html.EscapeString(name))
+	if s.act != nil {
+		text += "\n\n" + i18n.T(locale, "You can act here too: reply to a notification to comment, or send me a message to make a task. /help says more.")
+	}
+	s.reply(ctx, m.Chat.ID, text)
+}
+
+// setCommands puts the bot's commands in Telegram's menu, in English and in
+// Ukrainian; a failure is logged.
+func (s *Service) setCommands(ctx context.Context) {
+	for _, locale := range []string{i18n.Default, i18n.UK} {
+		t := translate(locale)
+		commands := []Command{
+			{Command: "timer", Description: t("The running timer")},
+			{Command: "help", Description: t("What I can do")},
+			{Command: "stop", Description: t("Turn notifications off")},
+		}
+		language := ""
+		if locale == i18n.UK {
+			language = i18n.UK
+		}
+		if err := s.bot.SetCommands(ctx, commands, language); err != nil {
+			slog.Error("telegram: set commands", "error", err)
+		}
+	}
 }
 
 // reply sends a message to a chat; a failure is logged.

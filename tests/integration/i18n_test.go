@@ -129,7 +129,7 @@ func TestI18n_NotificationEmailInRecipientLanguage(t *testing.T) {
 func TestI18n_TelegramSpeaksTheirLanguage(t *testing.T) {
 	_, bot := newAPIWithBot(t)
 	bot.userSendsIn(77, "olena", "uk", "/start")
-	bot.waitSent(t, 77, "Налаштування → Сповіщення")
+	bot.waitSent(t, 77, "Налаштування → Інтеграції")
 	bot.userSendsIn(77, "olena", "uk", "/stop")
 	bot.waitSent(t, 77, "Цей чат не підключено до Helpic.")
 }

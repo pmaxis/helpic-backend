@@ -162,10 +162,12 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	attachmentsHandler := attachments.NewHandler(attachmentsSvc)
 
 	// --- the discussion on a task ----------------------------------------------
-	commentsHandler := comments.NewHandler(comments.NewService(comments.NewRepository(pool), tasksSvc))
+	commentsSvc := comments.NewService(comments.NewRepository(pool), tasksSvc)
+	commentsHandler := comments.NewHandler(commentsSvc)
 
 	// --- time spent on tasks, which prices the ones billed by the hour --------
-	timelogHandler := timelog.NewHandler(timelog.NewService(timelog.NewRepository(pool), tasksSvc, cfg.Location))
+	timelogSvc := timelog.NewService(timelog.NewRepository(pool), tasksSvc, cfg.Location)
+	timelogHandler := timelog.NewHandler(timelogSvc)
 
 	// --- reports of work done, sent to clients ------------------------------
 	zone := "UTC"
@@ -174,6 +176,9 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	}
 	reportsSvc := reports.NewService(reports.NewRepository(pool), notifier, tasksSvc, zone)
 	reportsHandler := reports.NewHandler(reportsSvc)
+
+	// --- the bot acts too: comments, the timer, sending work back, payments --
+	telegramSvc.UseActions(telegram.Actions{Tasks: tasksSvc, Comments: commentsSvc, Timer: timelogSvc, Reports: reportsSvc})
 
 	// --- reports' totals in hryvnias, at the NBU's official rate ------------
 	var ratesSvc *rates.Service

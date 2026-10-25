@@ -3,6 +3,11 @@
 // the bot, and opening it there (/start <code>) ties the chat to the account.
 // They pick which kinds of notification go to Telegram; /stop in the chat or
 // disconnecting in the app ends it. Without a bot token the feature is off.
+//
+// The bot acts too (see actions.go): a reply to a notification comments on
+// its task, buttons under one start the timer, send done work back or mark a
+// report paid, /timer shows the running timer, and any other message, sent
+// or forwarded, becomes a task once its sender picks who it's with.
 package telegram
 
 import (
@@ -47,6 +52,27 @@ type Link struct {
 	LinkedAt time.Time
 	// Locale is the user's language, for what the bot says to them.
 	Locale string
+	// Role is the user's: "freelancer" or "client".
+	Role string
+}
+
+// Target is someone a task from the bot can be set with.
+type Target struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Draft is a task to be, from a message sent to the bot, until its sender
+// picks who it's with — personal, or one of Targets — and then, when that
+// pair has any, a project from Projects or none.
+type Draft struct {
+	Title       string
+	Description string
+	Targets     []Target
+	// Choice is who they picked: "p" for personal, or a target's place; ""
+	// until they do.
+	Choice   string
+	Projects []Target
 }
 
 // Wants reports whether the user wants this kind of notification in Telegram.

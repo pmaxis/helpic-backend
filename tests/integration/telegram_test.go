@@ -22,11 +22,34 @@ type fakeBot struct {
 	pending []map[string]any
 	sent    []sentMessage
 	blocked map[int64]bool
+	// nextMessage numbers the messages the bot sends; answers are the notes
+	// it showed on button presses.
+	nextMessage int64
+	answers     []string
 }
 
 type sentMessage struct {
+	ID     int64
 	ChatID int64
 	Text   string
+	// Buttons are the message's buttons as they are now: rows of text and
+	// callback_data (or url).
+	Buttons [][]fakeButton
+}
+
+type fakeButton struct {
+	Text string `json:"text"`
+	Data string `json:"callback_data"`
+	URL  string `json:"url"`
+}
+
+func buttonsOf(params map[string]any) [][]fakeButton {
+	var markup struct {
+		InlineKeyboard [][]fakeButton `json:"inline_keyboard"`
+	}
+	raw, _ := json.Marshal(params["reply_markup"])
+	_ = json.Unmarshal(raw, &markup)
+	return markup.InlineKeyboard
 }
 
 func newFakeBot(t *testing.T) (*fakeBot, *httptest.Server) {
@@ -71,8 +94,30 @@ func (b *fakeBot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			reply(map[string]any{"ok": false, "error_code": 403, "description": "Forbidden: bot was blocked by the user"})
 			return
 		}
-		b.sent = append(b.sent, sentMessage{ChatID: chatID, Text: params["text"].(string)})
-		reply(map[string]any{"ok": true, "result": map[string]any{}})
+		b.nextMessage++
+		b.sent = append(b.sent, sentMessage{ID: b.nextMessage, ChatID: chatID, Text: params["text"].(string), Buttons: buttonsOf(params)})
+		reply(map[string]any{"ok": true, "result": map[string]any{"message_id": b.nextMessage, "chat": map[string]any{"id": chatID, "type": "private"}}})
+	case "editMessageText", "editMessageReplyMarkup":
+		chatID, id := int64(params["chat_id"].(float64)), int64(params["message_id"].(float64))
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		for i, m := range b.sent {
+			if m.ChatID == chatID && m.ID == id {
+				if text, ok := params["text"].(string); ok {
+					b.sent[i].Text = text
+				}
+				b.sent[i].Buttons = buttonsOf(params)
+			}
+		}
+		reply(map[string]any{"ok": true, "result": true})
+	case "answerCallbackQuery":
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		text, _ := params["text"].(string)
+		b.answers = append(b.answers, text)
+		reply(map[string]any{"ok": true, "result": true})
+	case "setMyCommands":
+		reply(map[string]any{"ok": true, "result": true})
 	default:
 		reply(map[string]any{"ok": false, "error_code": 404, "description": "Not Found"})
 	}
@@ -100,6 +145,117 @@ func (b *fakeBot) userSendsIn(chatID int64, username, lang, text string) {
 	var u map[string]any
 	_ = json.Unmarshal(raw, &u)
 	b.pending = append(b.pending, u)
+}
+
+// queue adds an update, round-tripped through JSON so numbers read back as
+// float64, like the rest.
+func (b *fakeBot) queue(update map[string]any) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.nextID++
+	update["update_id"] = b.nextID
+	raw, _ := json.Marshal(update)
+	var u map[string]any
+	_ = json.Unmarshal(raw, &u)
+	b.pending = append(b.pending, u)
+}
+
+func privateMessage(chatID int64, text string) map[string]any {
+	return map[string]any{
+		"message_id": 100000 + chatID,
+		"text":       text,
+		"chat":       map[string]any{"id": chatID, "type": "private"},
+		"from":       map[string]any{"id": chatID, "username": "max", "first_name": "Max"},
+	}
+}
+
+// userReplies answers one of the bot's messages.
+func (b *fakeBot) userReplies(chatID, messageID int64, text string) {
+	m := privateMessage(chatID, text)
+	m["reply_to_message"] = map[string]any{"message_id": messageID, "chat": map[string]any{"id": chatID, "type": "private"}}
+	b.queue(map[string]any{"message": m})
+}
+
+// userForwards forwards a message someone else wrote to the bot.
+func (b *fakeBot) userForwards(chatID int64, from, text string) {
+	m := privateMessage(chatID, text)
+	m["forward_origin"] = map[string]any{"type": "hidden_user", "sender_user_name": from}
+	b.queue(map[string]any{"message": m})
+}
+
+// userPresses presses the button with this data under one of the bot's messages.
+func (b *fakeBot) userPresses(chatID, messageID int64, data string) {
+	var buttons [][]fakeButton
+	for _, m := range b.messages() {
+		if m.ChatID == chatID && m.ID == messageID {
+			buttons = m.Buttons
+		}
+	}
+	b.queue(map[string]any{"callback_query": map[string]any{
+		"id":   fmt.Sprintf("cb-%d", messageID),
+		"from": map[string]any{"id": chatID, "first_name": "Max"},
+		"data": data,
+		"message": map[string]any{
+			"message_id":   messageID,
+			"chat":         map[string]any{"id": chatID, "type": "private"},
+			"reply_markup": map[string]any{"inline_keyboard": buttons},
+		},
+	}})
+}
+
+// waitMessage waits for a message to the chat containing want, and returns it.
+func (b *fakeBot) waitMessage(t *testing.T, chatID int64, want string) sentMessage {
+	t.Helper()
+	b.waitSent(t, chatID, want)
+	msgs := b.messages()
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].ChatID == chatID && strings.Contains(msgs[i].Text, want) {
+			return msgs[i]
+		}
+	}
+	return sentMessage{}
+}
+
+// message is one of the bot's messages as it is now.
+func (b *fakeBot) message(chatID, id int64) sentMessage {
+	for _, m := range b.messages() {
+		if m.ChatID == chatID && m.ID == id {
+			return m
+		}
+	}
+	return sentMessage{}
+}
+
+// waitAnswer waits for a button press answered with a note containing want.
+func (b *fakeBot) waitAnswer(t *testing.T, want string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		b.mu.Lock()
+		answers := append([]string(nil), b.answers...)
+		b.mu.Unlock()
+		for _, a := range answers {
+			if strings.Contains(a, want) {
+				return
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	t.Fatalf("no answer containing %q; answers: %q", want, b.answers)
+}
+
+// data is the callback data of the message's button starting with prefix, "" for none.
+func (m sentMessage) data(prefix string) string {
+	for _, row := range m.Buttons {
+		for _, btn := range row {
+			if strings.HasPrefix(btn.Data, prefix) {
+				return btn.Data
+			}
+		}
+	}
+	return ""
 }
 
 func (b *fakeBot) block(chatID int64) {
@@ -321,7 +477,16 @@ func TestTelegram_Disconnect(t *testing.T) {
 func TestTelegram_StartWithoutCode(t *testing.T) {
 	_, bot := newAPIWithBot(t)
 	bot.userSends(99, "someone", "/start")
-	bot.waitSent(t, 99, "Settings → Notifications")
+	bot.waitSent(t, 99, "Settings → Integrations")
+	// Anything else from a chat that isn't connected says how to connect it.
 	bot.userSends(99, "someone", "hello")
-	bot.waitSent(t, 99, "I only send Helpic notifications")
+	eventually(t, "a second answer", func() bool {
+		n := 0
+		for _, m := range bot.messages() {
+			if m.ChatID == 99 && strings.Contains(m.Text, "Connect Telegram") {
+				n++
+			}
+		}
+		return n == 2
+	})
 }
