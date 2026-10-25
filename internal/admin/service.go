@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
+	"github.com/pmaxis/helpic/internal/auth"
 )
 
 // Service makes admins and gathers the statistics.
@@ -54,11 +54,11 @@ func (s *Service) CreateAdmin(ctx context.Context, email, name, locale string) (
 		return "", fmt.Errorf("generate password: %w", err)
 	}
 	password = base64.RawURLEncoding.EncodeToString(b)
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := auth.HashPassword(password)
 	if err != nil {
-		return "", fmt.Errorf("hash password: %w", err)
+		return "", err
 	}
-	if err := s.repo.CreateAdmin(ctx, email, strings.TrimSpace(name), string(hash), locale); err != nil {
+	if err := s.repo.CreateAdmin(ctx, email, strings.TrimSpace(name), hash, locale); err != nil {
 		return "", err
 	}
 	return password, nil

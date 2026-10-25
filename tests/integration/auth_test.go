@@ -22,7 +22,9 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"golang.org/x/crypto/bcrypt"
 
+	"github.com/pmaxis/helpic/internal/auth"
 	"github.com/pmaxis/helpic/internal/config"
 	"github.com/pmaxis/helpic/internal/database"
 	"github.com/pmaxis/helpic/internal/server"
@@ -36,6 +38,8 @@ var (
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
+	// The least work bcrypt allows: tests make hundreds of accounts.
+	auth.PasswordCost = bcrypt.MinCost
 
 	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
 		tcpostgres.WithDatabase("app_test"),

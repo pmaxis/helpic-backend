@@ -40,11 +40,19 @@ type Handler struct {
 	// resets counts reset links asked for per email from one address, and
 	// emailResets per email from anywhere; nil doesn't limit them.
 	resets, emailResets ratelimit.Gate
+	// breaches turns away new passwords known from a breach; nil allows them.
+	breaches BreachChecker
 }
 
 // NewHandler creates an auth Handler.
 func NewHandler(svc *Service, cookie CookieConfig) *Handler {
 	return &Handler{svc: svc, cookie: cookie}
+}
+
+// RefuseBreached turns away new passwords, at sign-up and reset, that the
+// checker knows from a breach.
+func (h *Handler) RefuseBreached(breaches BreachChecker) {
+	h.breaches = breaches
 }
 
 // LimitResetRequests stops emailing reset links to an address once either
@@ -118,6 +126,10 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	params, fieldErrs := req.Validate()
 	if len(fieldErrs) > 0 {
 		response.ValidationError(w, fieldErrs)
+		return
+	}
+	if msg := BreachedPassword(r.Context(), h.breaches, params.Password); msg != "" {
+		response.ValidationError(w, map[string]string{"password": msg})
 		return
 	}
 
@@ -331,6 +343,10 @@ func (h *Handler) Reset(w http.ResponseWriter, r *http.Request) {
 	}
 	if fields := req.Validate(); len(fields) > 0 {
 		response.ValidationError(w, fields)
+		return
+	}
+	if msg := BreachedPassword(r.Context(), h.breaches, req.Password); msg != "" {
+		response.ValidationError(w, map[string]string{"password": msg})
 		return
 	}
 	err := h.svc.ResetPassword(r.Context(), req.Token, req.Password)

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/mail"
@@ -83,11 +82,11 @@ func (s *Service) ResetPassword(ctx context.Context, raw, password string) error
 	if err != nil {
 		return err
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := HashPassword(password)
 	if err != nil {
-		return fmt.Errorf("hash password: %w", err)
+		return err
 	}
-	if err := s.repo.SetPasswordAndSignOut(ctx, userID, string(hash)); err != nil {
+	if err := s.repo.SetPasswordAndSignOut(ctx, userID, hash); err != nil {
 		return err
 	}
 	if err := s.mail.Send(ctx, PasswordChangedEmail(email, locale)); err != nil {
@@ -133,6 +132,15 @@ func (r *Repository) TakeReset(ctx context.Context, hash []byte) (userID, email,
 		return "", "", "", ErrResetInvalid
 	}
 	return userID, email, locale, nil
+}
+
+// UpgradePasswordHash replaces the user's password hash with one of the same
+// password made with more work, unless the password changed meanwhile.
+func (r *Repository) UpgradePasswordHash(ctx context.Context, userID, old, upgraded string) error {
+	if _, err := r.db.Exec(ctx, `UPDATE users SET password_hash = $3 WHERE id = $1 AND password_hash = $2`, userID, old, upgraded); err != nil {
+		return fmt.Errorf("upgrade password hash: %w", err)
+	}
+	return nil
 }
 
 // SetPasswordAndSignOut sets the user's password and ends all their sessions.

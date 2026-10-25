@@ -17,6 +17,14 @@ type Handler struct {
 	svc    *Service
 	repo   *Repository
 	cookie auth.CookieConfig
+	// breaches turns away new passwords known from a breach; nil allows them.
+	breaches auth.BreachChecker
+}
+
+// RefuseBreached turns away the password of a new client account when the
+// checker knows it from a breach.
+func (h *Handler) RefuseBreached(breaches auth.BreachChecker) {
+	h.breaches = breaches
 }
 
 // NewHandler creates a clients Handler. The cookie config is used to sign the
@@ -262,6 +270,10 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		params, fields := req.ValidateNew()
 		if len(fields) > 0 {
 			response.ValidationError(w, fields)
+			return
+		}
+		if msg := auth.BreachedPassword(r.Context(), h.breaches, params.Password); msg != "" {
+			response.ValidationError(w, map[string]string{"password": msg})
 			return
 		}
 		session, err = h.svc.AcceptNew(r.Context(), l, params, auth.ClientOf(r))

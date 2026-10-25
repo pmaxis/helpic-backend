@@ -72,6 +72,11 @@ type Config struct {
 	// that off.
 	NBUURL string
 
+	// PwnedPasswordsURL is Have I Been Pwned's Pwned Passwords, asked whether a
+	// new password is known from a breach; "" (PWNED_PASSWORDS_URL=off) turns
+	// that off.
+	PwnedPasswordsURL string
+
 	// RateLimit slows down password guessing and sign-up spam (on unless
 	// RATE_LIMIT says otherwise). TrustedProxies are the proxies whose
 	// X-Forwarded-For names the client; without any, the peer is the client.
@@ -162,6 +167,9 @@ func Load() (Config, error) {
 	}
 	if cfg.NBUURL = strings.TrimRight(getEnv("NBU_API_URL", "https://bank.gov.ua"), "/"); strings.EqualFold(cfg.NBUURL, "off") {
 		cfg.NBUURL = ""
+	}
+	if cfg.PwnedPasswordsURL = strings.TrimRight(getEnv("PWNED_PASSWORDS_URL", "https://api.pwnedpasswords.com"), "/"); strings.EqualFold(cfg.PwnedPasswordsURL, "off") {
+		cfg.PwnedPasswordsURL = ""
 	}
 	cfg.RateLimit = getEnvBool("RATE_LIMIT", true)
 	cfg.SMTPHost = os.Getenv("SMTP_HOST")

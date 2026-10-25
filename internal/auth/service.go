@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -36,6 +35,7 @@ type repository interface {
 	CreateReset(ctx context.Context, userID string, hash []byte, expiresAt time.Time) error
 	TakeReset(ctx context.Context, hash []byte) (userID, email, locale string, err error)
 	SetPasswordAndSignOut(ctx context.Context, userID, passwordHash string) error
+	UpgradePasswordHash(ctx context.Context, userID, old, upgraded string) error
 	DeleteExpiredResets(ctx context.Context) error
 
 	SavePendingSignup(ctx context.Context, email, name, passwordHash, locale string, hash []byte, expiresAt time.Time) error
@@ -59,10 +59,6 @@ type repository interface {
 type tokenIssuer interface {
 	Generate(userID, sessionID string) (string, time.Time, error)
 }
-
-// dummyHash is a valid bcrypt hash compared against when the email is unknown,
-// so login timing does not reveal whether an account exists.
-var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-password-for-timing"), bcrypt.DefaultCost)
 
 // Service contains authentication business logic: password hashing and
 // verification, registration rules, sessions (see session.go) and two-factor
@@ -93,12 +89,12 @@ func NewService(repo repository, tokens tokenIssuer, refreshTTL time.Duration, m
 // to be normalized by the caller's validation step. The account speaks the
 // request's language. Returns ErrEmailExists on a duplicate.
 func (s *Service) Register(ctx context.Context, p RegisterParams, role string) (user.User, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(p.Password), bcrypt.DefaultCost)
+	hash, err := HashPassword(p.Password)
 	if err != nil {
-		return user.User{}, fmt.Errorf("hash password: %w", err)
+		return user.User{}, err
 	}
 
-	u, err := s.repo.CreateUser(ctx, p.Email, p.Name, role, string(hash), i18n.FromContext(ctx))
+	u, err := s.repo.CreateUser(ctx, p.Email, p.Name, role, hash, i18n.FromContext(ctx))
 	if errors.Is(err, ErrEmailExists) {
 		return user.User{}, ErrEmailExists
 	}
@@ -123,8 +119,7 @@ func (s *Service) Discard(ctx context.Context, userID string) error {
 func (s *Service) Login(ctx context.Context, p LoginParams, c Client) (user.User, Tokens, error) {
 	u, err := s.repo.GetByEmail(ctx, p.Email)
 	if errors.Is(err, user.ErrNotFound) {
-		// Perform a dummy hash comparison to keep timing consistent.
-		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(p.Password))
+		spendCheck(p.Password)
 		return user.User{}, Tokens{}, ErrInvalidCredentials
 	}
 	if err != nil {
@@ -132,9 +127,11 @@ func (s *Service) Login(ctx context.Context, p LoginParams, c Client) (user.User
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(p.Password)); err != nil {
+		padCheck(u.PasswordHash, p.Password)
 		s.signedIn(ctx, u, c, SignInWrongPassword)
 		return user.User{}, Tokens{}, ErrInvalidCredentials
 	}
+	s.upgradeHash(ctx, u, p.Password)
 	if u.TwoFactor {
 		if err := s.secondFactor(ctx, u.ID, p.Code); err != nil {
 			var limit *CodeLimitError

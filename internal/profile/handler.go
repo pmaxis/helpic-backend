@@ -17,11 +17,19 @@ import (
 // Handler exposes the account settings endpoints over HTTP.
 type Handler struct {
 	svc *Service
+	// breaches turns away new passwords known from a breach; nil allows them.
+	breaches auth.BreachChecker
 }
 
 // NewHandler creates a profile Handler.
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
+}
+
+// RefuseBreached turns away a new password when the checker knows it from a
+// breach.
+func (h *Handler) RefuseBreached(breaches auth.BreachChecker) {
+	h.breaches = breaches
 }
 
 // PublicRoutes mounts the endpoints that need no signed-in user.
@@ -165,6 +173,10 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	if fields := req.Validate(); len(fields) > 0 {
 		response.ValidationError(w, fields)
+		return
+	}
+	if msg := auth.BreachedPassword(r.Context(), h.breaches, req.Password); msg != "" {
+		response.ValidationError(w, map[string]string{"password": msg})
 		return
 	}
 	u, err := h.svc.ChangePassword(r.Context(), userID, middleware.SessionID(r.Context()), req.CurrentPassword, req.Password)

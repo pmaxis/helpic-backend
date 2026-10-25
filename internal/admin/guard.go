@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"golang.org/x/crypto/bcrypt"
 
+	"github.com/pmaxis/helpic/internal/auth"
 	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/mail"
 )
@@ -169,14 +169,14 @@ func (s *Service) ResetAdmin(ctx context.Context, email string) (string, error) 
 		return "", fmt.Errorf("generate password: %w", err)
 	}
 	password := base64.RawURLEncoding.EncodeToString(b)
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := auth.HashPassword(password)
 	if err != nil {
-		return "", fmt.Errorf("hash password: %w", err)
+		return "", err
 	}
 	if err := s.repo.cliAct(ctx, email, ActionResetAdmin, func(tx pgx.Tx, id string) error {
 		if _, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2, blocked_at = NULL,
 				two_factor_secret = NULL, two_factor_pending = NULL, two_factor_step = 0
-			WHERE id = $1`, id, string(hash)); err != nil {
+			WHERE id = $1`, id, hash); err != nil {
 			return fmt.Errorf("reset admin: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM two_factor_recovery_codes WHERE user_id = $1`, id); err != nil {

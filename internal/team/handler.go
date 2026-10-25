@@ -16,11 +16,19 @@ import (
 type Handler struct {
 	svc    *Service
 	cookie auth.CookieConfig
+	// breaches turns away new passwords known from a breach; nil allows them.
+	breaches auth.BreachChecker
 }
 
 // NewHandler creates a team Handler; the cookie config signs a new member in.
 func NewHandler(svc *Service, cookie auth.CookieConfig) *Handler {
 	return &Handler{svc: svc, cookie: cookie}
+}
+
+// RefuseBreached turns away a new member's password when the checker knows
+// it from a breach.
+func (h *Handler) RefuseBreached(breaches auth.BreachChecker) {
+	h.breaches = breaches
 }
 
 // ClientRoutes mounts the endpoints for clients. Must be called inside an
@@ -252,6 +260,10 @@ func (h *Handler) Join(w http.ResponseWriter, r *http.Request) {
 	p, fields := req.Validate()
 	if len(fields) > 0 {
 		response.ValidationError(w, fields)
+		return
+	}
+	if msg := auth.BreachedPassword(r.Context(), h.breaches, p.Password); msg != "" {
+		response.ValidationError(w, map[string]string{"password": msg})
 		return
 	}
 	session, err := h.svc.Join(r.Context(), req.Token, p, auth.ClientOf(r))

@@ -3,7 +3,6 @@ package profile
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 
@@ -55,11 +54,11 @@ func (s *Service) ChangePassword(ctx context.Context, userID, sessionID, current
 	if _, err := s.verify(ctx, userID, currentPassword); err != nil {
 		return user.User{}, err
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	hash, err := auth.HashPassword(newPassword)
 	if err != nil {
-		return user.User{}, fmt.Errorf("hash password: %w", err)
+		return user.User{}, err
 	}
-	u, err := s.repo.SetPasswordHash(ctx, userID, string(hash))
+	u, err := s.repo.SetPasswordHash(ctx, userID, hash)
 	if err != nil {
 		return user.User{}, err
 	}

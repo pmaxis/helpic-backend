@@ -30,6 +30,7 @@ import (
 	"github.com/pmaxis/helpic/internal/policies"
 	"github.com/pmaxis/helpic/internal/profile"
 	"github.com/pmaxis/helpic/internal/projects"
+	"github.com/pmaxis/helpic/internal/pwned"
 	"github.com/pmaxis/helpic/internal/rates"
 	"github.com/pmaxis/helpic/internal/reminders"
 	"github.com/pmaxis/helpic/internal/reports"
@@ -145,6 +146,15 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 
 	// --- a client's company and its members -----------------------------------
 	teamHandler := team.NewHandler(team.NewService(team.NewRepository(pool), authSvc, notifier, outbox, cfg.AppURL), cookie)
+
+	// --- new passwords known from a breach are turned away -------------------
+	if cfg.PwnedPasswordsURL != "" {
+		breaches := pwned.NewClient(cfg.PwnedPasswordsURL)
+		authHandler.RefuseBreached(breaches)
+		profileHandler.RefuseBreached(breaches)
+		clientsHandler.RefuseBreached(breaches)
+		teamHandler.RefuseBreached(breaches)
+	}
 
 	// --- projects grouping tasks ---------------------------------------------
 	projectsHandler := projects.NewHandler(projects.NewService(projects.NewRepository(pool), notifier))

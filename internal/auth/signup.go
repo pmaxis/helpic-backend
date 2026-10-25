@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/mail"
@@ -40,16 +39,16 @@ func (s *Service) RequestSignup(ctx context.Context, p RegisterParams) error {
 		return err
 	}
 
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(p.Password), bcrypt.DefaultCost)
+	passwordHash, err := HashPassword(p.Password)
 	if err != nil {
-		return fmt.Errorf("hash password: %w", err)
+		return err
 	}
 	raw, hash, err := NewToken()
 	if err != nil {
 		return err
 	}
 	locale := i18n.FromContext(ctx)
-	if err := s.repo.SavePendingSignup(ctx, p.Email, p.Name, string(passwordHash), locale, hash, time.Now().Add(signupTTL)); err != nil {
+	if err := s.repo.SavePendingSignup(ctx, p.Email, p.Name, passwordHash, locale, hash, time.Now().Add(signupTTL)); err != nil {
 		return err
 	}
 
