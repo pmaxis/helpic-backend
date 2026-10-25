@@ -1,6 +1,7 @@
 // Package attachments stores files on tasks — mockups, specs, results. Both
 // sides of a task see and download them; whoever uploaded a file may delete
-// it. The bytes live on disk, one file per attachment, named by its ID.
+// it. The bytes live on disk, one file per attachment, named by its ID. With
+// a virus scanner set up, a new file downloads only once it was checked.
 package attachments
 
 import (
@@ -19,6 +20,21 @@ var (
 	ErrQuota = errors.New("upload quota used up")
 	// ErrEmpty is returned for an upload without a file in it.
 	ErrEmpty = errors.New("no file in the upload")
+	// ErrScanPending is returned for a file not checked for malware yet.
+	ErrScanPending = errors.New("file is being checked")
+	// ErrInfected is returned for a file that had malware in it.
+	ErrInfected = errors.New("file had malware")
+)
+
+// Where a file is in its check for malware.
+const (
+	// ScanUnscanned is a file stored without a scanner set up: it downloads,
+	// and is checked once there is one.
+	ScanUnscanned = "unscanned"
+	// ScanPending is waiting for the check and doesn't download yet.
+	ScanPending  = "pending"
+	ScanClean    = "clean"
+	ScanInfected = "infected"
 )
 
 // Uploader is who added a file.
@@ -37,6 +53,10 @@ type Attachment struct {
 	ContentType string
 	SizeBytes   int64
 	CreatedAt   time.Time
+	// Scan is one of the Scan… states; Threat names the malware in an
+	// infected file.
+	Scan   string
+	Threat string
 }
 
 // inlineTypes are the images a browser may show in place; anything else is

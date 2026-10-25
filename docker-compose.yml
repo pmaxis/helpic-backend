@@ -26,6 +26,16 @@ services:
     ports:
       - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
 
+  # Checks uploads for malware. Loading its signatures takes a couple of
+  # minutes and about 1.5 GB of memory, so it starts only when asked:
+  # `make up-clamav`, or CLAMAV_ADDRESS=clamav:3310 docker compose --profile clamav up.
+  clamav:
+    image: clamav/clamav-debian:1.4
+    profiles: ["clamav"]
+    restart: unless-stopped
+    volumes:
+      - clamav_data:/var/lib/clamav
+
   # Browse the database at http://localhost:8088 (server is filled in; the
   # user and password are POSTGRES_USER and POSTGRES_PASSWORD).
   adminer:
@@ -69,6 +79,7 @@ services:
       ALERT_LOCALE: ${ALERT_LOCALE:-uk}
       NBU_API_URL: ${NBU_API_URL:-}
       PWNED_PASSWORDS_URL: ${PWNED_PASSWORDS_URL:-}
+      CLAMAV_ADDRESS: ${CLAMAV_ADDRESS:-}
       RATE_LIMIT: ${RATE_LIMIT:-true}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
@@ -91,3 +102,4 @@ services:
 volumes:
   postgres_data:
   uploads:
+  clamav_data:

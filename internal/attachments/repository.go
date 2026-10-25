@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,13 +22,13 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 const selectAttachment = `SELECT a.id, a.task_id, a.file_name, a.content_type, a.size_bytes, a.created_at,
-		u.id, u.name, u.email
+		a.scan_status, a.threat, u.id, u.name, u.email
 	FROM attachments a JOIN users u ON u.id = a.uploaded_by`
 
 func scan(row pgx.Row) (Attachment, error) {
 	var a Attachment
 	err := row.Scan(&a.ID, &a.TaskID, &a.FileName, &a.ContentType, &a.SizeBytes, &a.CreatedAt,
-		&a.Uploader.ID, &a.Uploader.Name, &a.Uploader.Email)
+		&a.Scan, &a.Threat, &a.Uploader.ID, &a.Uploader.Name, &a.Uploader.Email)
 	return a, err
 }
 
@@ -66,8 +68,8 @@ func (r *Repository) NewID(ctx context.Context) (string, error) {
 
 // Create records a stored file.
 func (r *Repository) Create(ctx context.Context, a Attachment) error {
-	_, err := r.db.Exec(ctx, `INSERT INTO attachments (id, task_id, uploaded_by, file_name, content_type, size_bytes)
-		VALUES ($1, $2, $3, $4, $5, $6)`, a.ID, a.TaskID, a.Uploader.ID, a.FileName, a.ContentType, a.SizeBytes)
+	_, err := r.db.Exec(ctx, `INSERT INTO attachments (id, task_id, uploaded_by, file_name, content_type, size_bytes, scan_status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`, a.ID, a.TaskID, a.Uploader.ID, a.FileName, a.ContentType, a.SizeBytes, a.Scan)
 	if err != nil {
 		return fmt.Errorf("create attachment: %w", err)
 	}
@@ -82,10 +84,12 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// UsedBytes is the size of every file the user has uploaded.
+// UsedBytes is the size of every file the user has uploaded and still has:
+// an infected file's bytes are gone.
 func (r *Repository) UsedBytes(ctx context.Context, userID string) (int64, error) {
 	var n int64
-	if err := r.db.QueryRow(ctx, `SELECT coalesce(sum(size_bytes), 0) FROM attachments WHERE uploaded_by = $1`, userID).Scan(&n); err != nil {
+	if err := r.db.QueryRow(ctx, `SELECT coalesce(sum(size_bytes), 0) FROM attachments
+		WHERE uploaded_by = $1 AND scan_status <> 'infected'`, userID).Scan(&n); err != nil {
 		return 0, fmt.Errorf("sum uploads: %w", err)
 	}
 	return n, nil
@@ -102,4 +106,60 @@ func (r *Repository) IDsOfTask(ctx context.Context, taskID string) ([]string, er
 		return nil, fmt.Errorf("scan attachment ids: %w", err)
 	}
 	return ids, nil
+}
+
+// claimAfter is how long a file taken for a check stays with that server;
+// after it, another takes it, in case the first stopped halfway.
+const claimAfter = 5 * time.Minute
+
+// ClaimToScan takes up to limit files waiting for a check, new uploads
+// before files stored without a scanner, oldest first.
+func (r *Repository) ClaimToScan(ctx context.Context, limit int) ([]Attachment, error) {
+	rows, err := r.db.Query(ctx, `
+		WITH taken AS (
+			UPDATE attachments SET scan_claimed_at = now()
+			WHERE id IN (
+				SELECT id FROM attachments
+				WHERE scan_status IN ('pending', 'unscanned') AND (scan_claimed_at IS NULL OR scan_claimed_at < $2)
+				ORDER BY scan_status = 'unscanned', created_at
+				LIMIT $1
+				FOR UPDATE SKIP LOCKED)
+			RETURNING *)
+		`+strings.Replace(selectAttachment, "FROM attachments a", "FROM taken a", 1), limit, time.Now().Add(-claimAfter))
+	if err != nil {
+		return nil, fmt.Errorf("claim attachments to scan: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Attachment, error) { return scan(row) })
+	if err != nil {
+		return nil, fmt.Errorf("scan claimed attachments: %w", err)
+	}
+	return out, nil
+}
+
+// ClaimOne takes the new upload for its check, unless another server has.
+func (r *Repository) ClaimOne(ctx context.Context, id string) (bool, error) {
+	tag, err := r.db.Exec(ctx, `UPDATE attachments SET scan_claimed_at = now()
+		WHERE id = $1 AND scan_status = 'pending' AND scan_claimed_at IS NULL`, id)
+	if err != nil {
+		return false, fmt.Errorf("claim attachment to scan: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// SetScan records how the check went: status is ScanClean or ScanInfected.
+func (r *Repository) SetScan(ctx context.Context, id, status, threat string) error {
+	if _, err := r.db.Exec(ctx, `UPDATE attachments
+		SET scan_status = $2, threat = $3, scanned_at = now(), scan_claimed_at = NULL
+		WHERE id = $1`, id, status, threat); err != nil {
+		return fmt.Errorf("set attachment scan: %w", err)
+	}
+	return nil
+}
+
+// ReleaseScan hands back a file whose check failed, for the next try.
+func (r *Repository) ReleaseScan(ctx context.Context, id string) error {
+	if _, err := r.db.Exec(ctx, `UPDATE attachments SET scan_claimed_at = NULL WHERE id = $1`, id); err != nil {
+		return fmt.Errorf("release attachment scan: %w", err)
+	}
+	return nil
 }

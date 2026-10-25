@@ -22,6 +22,11 @@ type DTO struct {
 	// CanDelete is true for the uploader.
 	CanDelete bool      `json:"can_delete"`
 	CreatedAt time.Time `json:"created_at"`
+	// Scan is the check for malware: "pending" doesn't download yet,
+	// "infected" never does (Threat names what was found); "clean" and
+	// "unscanned" (stored without a scanner) download.
+	Scan   string `json:"scan" enums:"pending,clean,infected,unscanned"`
+	Threat string `json:"threat,omitempty"`
 }
 
 // ListResponse is a task's files and the largest file the server takes.
@@ -42,5 +47,7 @@ func ToDTO(a Attachment, viewerID string) DTO {
 		UploadedBy:  UploaderDTO(a.Uploader),
 		CanDelete:   a.Uploader.ID == viewerID,
 		CreatedAt:   a.CreatedAt,
+		Scan:        a.Scan,
+		Threat:      a.Threat,
 	}
 }

@@ -35,9 +35,11 @@ func (s *Service) Files(ctx context.Context) (count int, bytes int64, err error)
 	return s.repo.Files(ctx)
 }
 
-// Files counts every file on a task and sums their sizes.
+// Files counts every file on a task and sums their sizes, but for infected
+// files, whose bytes are gone.
 func (r *Repository) Files(ctx context.Context) (count int, bytes int64, err error) {
-	if err = r.db.QueryRow(ctx, `SELECT count(*), coalesce(sum(size_bytes), 0) FROM attachments`).Scan(&count, &bytes); err != nil {
+	if err = r.db.QueryRow(ctx, `SELECT count(*), coalesce(sum(size_bytes), 0) FROM attachments
+		WHERE scan_status <> 'infected'`).Scan(&count, &bytes); err != nil {
 		return 0, 0, fmt.Errorf("count files: %w", err)
 	}
 	return count, bytes, nil

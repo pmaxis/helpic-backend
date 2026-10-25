@@ -48,6 +48,14 @@ func Bot(check func(context.Context) error) Check {
 	}
 }
 
+// Scanner alerts when ClamAV doesn't answer: new uploads wait unchecked
+// and don't download.
+func Scanner(check func(context.Context) error) Check {
+	return func(ctx context.Context, t Translator) ([]Problem, error) {
+		return service(t("The virus scanner isn't answering"), t("The virus scanner answers again"), check)(ctx, t)
+	}
+}
+
 // JobStreak is how many failed runs in a row make a job worth an alert.
 const JobStreak = 3
 

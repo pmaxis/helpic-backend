@@ -69,7 +69,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 // "file" part.
 //
 //	@Summary		Attach a file to a task
-//	@Description	Multipart, one "file" part, up to MAX_UPLOAD_MB. The type is read from the bytes.
+//	@Description	Multipart, one "file" part, up to MAX_UPLOAD_MB. The type is read from the bytes. With a virus scanner set up the file comes back with scan "pending" and downloads once it is checked.
 //	@Tags			attachments
 //	@Accept			multipart/form-data
 //	@Produce		json
@@ -119,7 +119,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 // ?inline=1 shows a safe image in place.
 //
 //	@Summary		Download a file
-//	@Description	Always as a download, except PNG/JPEG/GIF/WebP images with inline=1.
+//	@Description	Always as a download, except PNG/JPEG/GIF/WebP images with inline=1. A file still being checked for viruses (scan "pending") or found infected answers 409.
 //	@Tags			attachments
 //	@Produce		octet-stream
 //	@Param			id		path		string					true	"Attachment ID"
@@ -127,6 +127,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 //	@Success		200		{file}		file					"The file"
 //	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
 //	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409		{object}	response.ErrorEnvelope	"Being checked for viruses, or infected"
 //	@Router			/attachments/{id} [get]
 func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
@@ -197,6 +198,10 @@ func writeError(w http.ResponseWriter, err error) {
 		response.Error(w, http.StatusRequestEntityTooLarge, response.CodeValidation, "The file is too large")
 	case errors.Is(err, ErrQuota):
 		response.Error(w, http.StatusRequestEntityTooLarge, response.CodeValidation, "You've used up your space for files. Delete some of yours to add more.")
+	case errors.Is(err, ErrScanPending):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "This file is still being checked for viruses. Try again in a moment.")
+	case errors.Is(err, ErrInfected):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "This file was removed: the virus check found malware in it")
 	case errors.Is(err, ErrEmpty):
 		response.ValidationError(w, map[string]string{"file": "The file is empty"})
 	default:

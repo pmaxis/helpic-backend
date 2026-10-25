@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/pmaxis/helpic/internal/attachments"
 	"github.com/pmaxis/helpic/internal/auth"
 	"github.com/pmaxis/helpic/internal/board"
+	"github.com/pmaxis/helpic/internal/clamav"
 	"github.com/pmaxis/helpic/internal/clients"
 	"github.com/pmaxis/helpic/internal/comments"
 	"github.com/pmaxis/helpic/internal/config"
@@ -164,13 +166,21 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	tasksSvc := tasks.NewService(tasks.NewRepository(pool), notifier)
 	tasksHandler := tasks.NewHandler(tasksSvc)
 
-	// --- files on tasks: mockups, specs, results -------------------------------
+	// --- files on tasks: mockups, specs, results; checked by ClamAV ------------
 	uploads, err := attachments.NewStore(cfg.UploadsDir)
 	if err != nil {
 		return nil, err
 	}
 	attachmentsSvc := attachments.NewService(attachments.NewRepository(pool), uploads, tasksSvc, cfg.MaxUploadBytes, cfg.UploadQuotaBytes)
 	tasksSvc.OnDelete(attachmentsSvc.TaskDeleted)
+	var clamdCheck func(context.Context) error
+	if cfg.ClamAVAddress != "" {
+		clamd := clamav.NewClient(cfg.ClamAVAddress)
+		attachmentsSvc.UseScanner(clamd)
+		clamdCheck = clamd.Ping
+	} else if cfg.IsProduction() {
+		slog.Warn("CLAMAV_ADDRESS is not set: uploads are not checked for malware")
+	}
 	attachmentsHandler := attachments.NewHandler(attachmentsSvc)
 
 	// --- the discussion on a task ----------------------------------------------
@@ -241,6 +251,9 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		if botCheck != nil {
 			checks = append(checks, alerts.Bot(botCheck))
 		}
+		if clamdCheck != nil {
+			checks = append(checks, alerts.Scanner(clamdCheck))
+		}
 		watcher = alerts.NewWatcher(alertBot, cfg.AlertLocale, checks...)
 		adminHandler.UseAlerts(watcher)
 		adminSvc.UseAlerts(watcher, cfg.AlertLocale)
@@ -253,6 +266,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			{Name: "mail", Check: mailCheck},
 			{Name: "telegram", Check: botCheck},
 			{Name: "alerts", Check: alertCheck},
+			{Name: "clamav", Check: clamdCheck},
 		},
 		Jobs: background,
 	})
@@ -371,6 +385,9 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	}
 	if watcher != nil {
 		run = append(run, func(ctx context.Context) { background.Every(ctx, "alerts", 2*time.Minute, watcher.Run) })
+	}
+	if clamdCheck != nil {
+		run = append(run, func(ctx context.Context) { background.Every(ctx, "virus checks", 30*time.Second, attachmentsSvc.Run) })
 	}
 	if ratesSvc != nil {
 		run = append(run, func(ctx context.Context) { background.Every(ctx, "exchange rates", time.Hour, ratesSvc.Run) })

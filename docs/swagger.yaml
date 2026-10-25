@@ -555,9 +555,22 @@ definitions:
       is_image:
         description: IsImage marks a picture the browser may preview.
         type: boolean
+      scan:
+        description: |-
+          Scan is the check for malware: "pending" doesn't download yet,
+          "infected" never does (Threat names what was found); "clean" and
+          "unscanned" (stored without a scanner) download.
+        enum:
+        - pending
+        - clean
+        - infected
+        - unscanned
+        type: string
       size_bytes:
         type: integer
       task_id:
+        type: string
+      threat:
         type: string
       uploaded_by:
         $ref: '#/definitions/attachments.UploaderDTO'
@@ -2881,7 +2894,8 @@ paths:
       consumes:
       - multipart/form-data
       description: Multipart, one "file" part, up to MAX_UPLOAD_MB. The type is read
-        from the bytes.
+        from the bytes. With a virus scanner set up the file comes back with scan
+        "pending" and downloads once it is checked.
       parameters:
       - description: Task ID
         in: query
@@ -2950,6 +2964,8 @@ paths:
       - attachments
     get:
       description: Always as a download, except PNG/JPEG/GIF/WebP images with inline=1.
+        A file still being checked for viruses (scan "pending") or found infected
+        answers 409.
       parameters:
       - description: Attachment ID
         in: path
@@ -2973,6 +2989,10 @@ paths:
             $ref: '#/definitions/response.ErrorEnvelope'
         "404":
           description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Being checked for viruses, or infected
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Download a file

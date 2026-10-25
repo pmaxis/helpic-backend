@@ -3,15 +3,17 @@ package attachments
 import (
 	"bufio"
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"mime"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
-
-	"io"
 
 	"github.com/pmaxis/helpic/internal/notifications"
 	"github.com/pmaxis/helpic/internal/tasks"
@@ -35,6 +37,20 @@ type Service struct {
 	tasks   taskAccess
 	maxSize int64
 	quota   int64
+	// scanner checks new files for malware; nil stores them unscanned.
+	scanner Scanner
+}
+
+// Scanner checks a file for malware, naming the threat it found or "" for
+// a clean file. Implemented by *clamav.Client.
+type Scanner interface {
+	Scan(ctx context.Context, r io.Reader) (threat string, err error)
+}
+
+// UseScanner has new files checked for malware before they download, and
+// files stored before checked as well.
+func (s *Service) UseScanner(sc Scanner) {
+	s.scanner = sc
 }
 
 // NewService creates an attachments Service; maxSize caps one file in bytes,
@@ -96,24 +112,116 @@ func (s *Service) Upload(ctx context.Context, userID, taskID, fileName string, r
 		FileName:    cleanName(fileName),
 		ContentType: sniff(head),
 		SizeBytes:   size,
+		Scan:        ScanUnscanned,
+	}
+	if s.scanner != nil {
+		a.Scan = ScanPending
 	}
 	if err := s.repo.Create(ctx, a); err != nil {
 		_ = s.store.Remove(id)
 		return Attachment{}, err
+	}
+	if s.scanner != nil {
+		go s.scanSoon(id)
 	}
 	s.tasks.Record(ctx, t.ID, userID, tasks.EventAttachmentAdded, map[string]any{"name": a.FileName})
 	s.tasks.Tell(ctx, userID, t, notifications.KindAttachmentAdded, a.FileName, true)
 	return s.repo.Get(ctx, id)
 }
 
-// Open returns a file of a task the user takes part in, for reading.
+// Open returns a file of a task the user takes part in, for reading:
+// ErrScanPending while it waits for its check, ErrInfected after malware
+// was found in it.
 func (s *Service) Open(ctx context.Context, userID, id string) (Attachment, *os.File, error) {
 	a, err := s.visible(ctx, userID, id)
 	if err != nil {
 		return Attachment{}, nil, err
 	}
+	switch a.Scan {
+	case ScanPending:
+		return Attachment{}, nil, ErrScanPending
+	case ScanInfected:
+		return Attachment{}, nil, ErrInfected
+	}
 	f, err := s.store.Open(a.ID)
 	return a, f, err
+}
+
+// scanBatch is how many files one run of Run checks at most.
+const scanBatch = 20
+
+// scanSoon checks a new upload at once rather than at the next run of Run,
+// unless another server already took it. Its context isn't the request's,
+// which ends with the upload; should the server stop first, Run takes the
+// file up later.
+func (s *Service) scanSoon(id string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	ok, err := s.repo.ClaimOne(ctx, id)
+	if err != nil || !ok {
+		if err != nil {
+			slog.Error("failed to take an upload for its check", "attachment_id", id, "error", err)
+		}
+		return
+	}
+	a, err := s.repo.Get(ctx, id)
+	if err != nil {
+		slog.Error("failed to load an upload for its check", "attachment_id", id, "error", err)
+		return
+	}
+	if err := s.check(ctx, a); err != nil {
+		slog.Error("failed to check an upload for malware", "attachment_id", id, "error", err)
+	}
+}
+
+// Run checks the files waiting for it, for the background jobs. A file that
+// couldn't be checked waits for the next run, and the run fails.
+func (s *Service) Run(ctx context.Context) error {
+	if s.scanner == nil {
+		return nil
+	}
+	list, err := s.repo.ClaimToScan(ctx, scanBatch)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, a := range list {
+		if err := s.check(ctx, a); err != nil {
+			errs = append(errs, fmt.Errorf("attachment %s: %w", a.ID, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// check scans a file taken for its check and records the outcome. Malware
+// takes the bytes away for good; the row stays to say what happened.
+func (s *Service) check(ctx context.Context, a Attachment) error {
+	f, err := s.store.Open(a.ID)
+	if errors.Is(err, ErrNotFound) {
+		// Deleted meanwhile.
+		return nil
+	}
+	if err != nil {
+		_ = s.repo.ReleaseScan(ctx, a.ID)
+		return err
+	}
+	threat, err := s.scanner.Scan(ctx, f)
+	f.Close()
+	if err != nil {
+		if rerr := s.repo.ReleaseScan(ctx, a.ID); rerr != nil {
+			slog.Error("failed to hand back a file for its next check", "attachment_id", a.ID, "error", rerr)
+		}
+		return err
+	}
+	if threat == "" {
+		return s.repo.SetScan(ctx, a.ID, ScanClean, "")
+	}
+	if err := s.repo.SetScan(ctx, a.ID, ScanInfected, threat); err != nil {
+		return err
+	}
+	slog.Warn("malware found in an attachment; its file was removed",
+		"attachment_id", a.ID, "task_id", a.TaskID, "uploader_id", a.Uploader.ID, "threat", threat)
+	return s.store.Remove(a.ID)
 }
 
 // Delete removes a file its uploader added, while its task isn't archived.

@@ -295,6 +295,8 @@ var uk = map[string]string{
 	"This task is archived: its discussion is closed":                        "Задача в архіві: обговорення закрито",
 	"This task is archived: its files stay as they are":                      "Задача в архіві: її файли лишаються як є",
 	"Only whoever uploaded a file can delete it":                             "Видалити файл може лише той, хто його завантажив",
+	"This file is still being checked for viruses. Try again in a moment.":   "Файл ще перевіряється на віруси. Спробуйте за хвилину.",
+	"This file was removed: the virus check found malware in it":             "Файл видалено: перевірка знайшла в ньому шкідливе ПЗ",
 
 	// --- API errors: time and rates ---------------------------------------------------
 	"Enter an amount like 40 or 37.50":                    "Вкажіть суму, наприклад 40 або 37.50",
@@ -365,6 +367,8 @@ var uk = map[string]string{
 	"The mail server answers again":                           "Поштовий сервер знову відповідає",
 	"The Telegram bot can't reach Telegram":                   "Telegram-бот не може дістатися до Telegram",
 	"The Telegram bot reaches Telegram again":                 "Telegram-бот знову на звʼязку з Telegram",
+	"The virus scanner isn't answering":                       "Антивірус не відповідає",
+	"The virus scanner answers again":                         "Антивірус знову відповідає",
 	"The “%s” job keeps failing":                              "Фонова задача «%s» постійно падає",
 	"The “%s” job works again":                                "Фонова задача «%s» знову працює",
 	"%d runs in a row failed: %s":                             "Невдалих запусків поспіль: %d. %s",

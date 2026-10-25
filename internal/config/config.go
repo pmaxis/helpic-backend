@@ -72,6 +72,10 @@ type Config struct {
 	// that off.
 	NBUURL string
 
+	// ClamAVAddress is clamd's host:port, which checks uploads for malware;
+	// "" stores them unchecked.
+	ClamAVAddress string
+
 	// PwnedPasswordsURL is Have I Been Pwned's Pwned Passwords, asked whether a
 	// new password is known from a breach; "" (PWNED_PASSWORDS_URL=off) turns
 	// that off.
@@ -168,6 +172,7 @@ func Load() (Config, error) {
 	if cfg.NBUURL = strings.TrimRight(getEnv("NBU_API_URL", "https://bank.gov.ua"), "/"); strings.EqualFold(cfg.NBUURL, "off") {
 		cfg.NBUURL = ""
 	}
+	cfg.ClamAVAddress = os.Getenv("CLAMAV_ADDRESS")
 	if cfg.PwnedPasswordsURL = strings.TrimRight(getEnv("PWNED_PASSWORDS_URL", "https://api.pwnedpasswords.com"), "/"); strings.EqualFold(cfg.PwnedPasswordsURL, "off") {
 		cfg.PwnedPasswordsURL = ""
 	}

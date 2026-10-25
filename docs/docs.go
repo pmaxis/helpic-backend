@@ -1386,7 +1386,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Multipart, one \"file\" part, up to MAX_UPLOAD_MB. The type is read from the bytes.",
+                "description": "Multipart, one \"file\" part, up to MAX_UPLOAD_MB. The type is read from the bytes. With a virus scanner set up the file comes back with scan \"pending\" and downloads once it is checked.",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -1452,7 +1452,7 @@ const docTemplate = `{
         },
         "/attachments/{id}": {
             "get": {
-                "description": "Always as a download, except PNG/JPEG/GIF/WebP images with inline=1.",
+                "description": "Always as a download, except PNG/JPEG/GIF/WebP images with inline=1. A file still being checked for viruses (scan \"pending\") or found infected answers 409.",
                 "produces": [
                     "application/octet-stream"
                 ],
@@ -1490,6 +1490,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Being checked for viruses, or infected",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -7489,10 +7495,23 @@ const docTemplate = `{
                     "description": "IsImage marks a picture the browser may preview.",
                     "type": "boolean"
                 },
+                "scan": {
+                    "description": "Scan is the check for malware: \"pending\" doesn't download yet,\n\"infected\" never does (Threat names what was found); \"clean\" and\n\"unscanned\" (stored without a scanner) download.",
+                    "type": "string",
+                    "enum": [
+                        "pending",
+                        "clean",
+                        "infected",
+                        "unscanned"
+                    ]
+                },
                 "size_bytes": {
                     "type": "integer"
                 },
                 "task_id": {
+                    "type": "string"
+                },
+                "threat": {
                     "type": "string"
                 },
                 "uploaded_by": {

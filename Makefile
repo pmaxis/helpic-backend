@@ -3,7 +3,7 @@ COMPOSE := docker compose
 # The build the admin panel shows: the commit, marked when there are changes.
 export VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: help dev up down build logs test test-unit test-integration migrate-up migrate-down psql fmt swagger
+.PHONY: help dev up up-clamav down build logs test test-unit test-integration migrate-up migrate-down psql fmt swagger
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -15,8 +15,11 @@ dev: ## Build and start postgres + backend in the foreground
 up: ## Start postgres + backend in the background
 	$(COMPOSE) up -d --build
 
+up-clamav: ## Start the stack with ClamAV checking uploads
+	CLAMAV_ADDRESS=clamav:3310 $(COMPOSE) --profile clamav up -d --build
+
 down: ## Stop and remove the containers
-	$(COMPOSE) down
+	$(COMPOSE) --profile clamav down
 
 build: ## Build the Docker images
 	$(COMPOSE) build
