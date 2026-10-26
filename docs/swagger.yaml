@@ -911,6 +911,15 @@ definitions:
       updated_at:
         type: string
     type: object
+  comments.PersonDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
   comments.Request:
     properties:
       body:
@@ -3615,6 +3624,8 @@ paths:
     post:
       consumes:
       - application/json
+      description: Markdown. Mentioning someone who sees the task, as @[Name](user
+        ID), tells them; anyone else's mention stays plain text.
       parameters:
       - description: Task ID
         in: query
@@ -3718,6 +3729,38 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Edit your comment
+      tags:
+      - comments
+  /comments/people:
+    get:
+      description: Everyone who sees the task, by name. A comment mentions someone
+        as @[Name](user ID).
+      parameters:
+      - description: Task ID
+        in: query
+        name: task
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: people
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/comments.PersonDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Who a comment can mention
       tags:
       - comments
   /email-changes/confirm:

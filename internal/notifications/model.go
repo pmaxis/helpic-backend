@@ -25,6 +25,9 @@ const (
 	KindAttachmentAdded = "attachment_added"
 	// KindCommentAdded: a comment on a task; Detail is its start.
 	KindCommentAdded = "comment_added"
+	// KindCommentMention: a comment on a task mentions the user, who isn't
+	// told about it as KindCommentAdded too; Detail is its start.
+	KindCommentMention = "comment_mention"
 	// KindTaskDueSoon: an open task is due tomorrow; KindTaskOverdue: it was
 	// due yesterday. Detail is the due date (YYYY-MM-DD); there is no actor.
 	KindTaskDueSoon = "task_due_soon"

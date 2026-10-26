@@ -215,6 +215,30 @@ func (r *Repository) ClientSideParticipants(ctx context.Context, taskID, clientI
 	return out, nil
 }
 
+// Readers lists who sees the task (the sees_task SQL function), by name.
+func (r *Repository) Readers(ctx context.Context, taskID string) ([]Person, error) {
+	rows, err := r.db.Query(ctx, `SELECT u.id::text, u.name, u.email
+		FROM tasks t
+		JOIN users u ON u.id = t.freelancer_id OR u.id = t.client_id
+			OR u.id IN (SELECT cm.user_id FROM companies c
+				JOIN company_members cm ON cm.company_id = c.id
+				WHERE c.owner_id = t.client_id)
+		WHERE t.id = $1 AND sees_task(u.id, t.id, t.freelancer_id, t.client_id)
+		ORDER BY lower(u.name), u.email`, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("list task readers: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Person, error) {
+		var p Person
+		err := row.Scan(&p.ID, &p.Name, &p.Email)
+		return p, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan task readers: %w", err)
+	}
+	return out, nil
+}
+
 // AddParticipant puts someone on the task.
 func (r *Repository) AddParticipant(ctx context.Context, taskID, userID string) error {
 	if _, err := r.db.Exec(ctx, `SELECT note_participant($1, $2, now())`, taskID, userID); err != nil {

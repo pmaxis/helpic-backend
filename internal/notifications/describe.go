@@ -17,6 +17,7 @@ var Kinds = []string{
 	KindTaskDueSoon,
 	KindTaskOverdue,
 	KindCommentAdded,
+	KindCommentMention,
 	KindAttachmentAdded,
 	KindProjectCreated,
 	KindProjectInvited,
@@ -36,6 +37,7 @@ var DefaultKinds = []string{
 	KindTaskDueSoon,
 	KindTaskOverdue,
 	KindCommentAdded,
+	KindCommentMention,
 	KindReportSent,
 	KindReportPaid,
 	KindClientJoined,
@@ -118,11 +120,19 @@ func Phrase(n Notification, locale, who, subject, detail string) string {
 		return t("%s marked %s as paid", who, subject)
 	case KindCommentAdded:
 		return t("%s commented on %s", who, subject)
+	case KindCommentMention:
+		return t("%s mentioned you in %s", who, subject)
 	case KindAttachmentAdded:
 		return t("%s attached “%s” to %s", who, detail, subject)
 	default:
 		return t("%s changed %s", who, subject)
 	}
+}
+
+// Quotes reports whether the notification's detail is a comment's text,
+// quoted under it.
+func Quotes(n Notification) bool {
+	return (n.Kind == KindCommentAdded || n.Kind == KindCommentMention) && n.Detail != ""
 }
 
 // DueDate shows a reminder's YYYY-MM-DD due date: "17 Oct 2026", "17 жовтня 2026".

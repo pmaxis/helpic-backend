@@ -2459,6 +2459,7 @@ const docTemplate = `{
                 }
             },
             "post": {
+                "description": "Markdown. Mentioning someone who sees the task, as @[Name](user ID), tells them; anyone else's mention stays plain text.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2501,6 +2502,53 @@ const docTemplate = `{
                         "description": "Invalid input",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/comments/people": {
+            "get": {
+                "description": "Everyone who sees the task, by name. A comment mentions someone as @[Name](user ID).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "comments"
+                ],
+                "summary": "Who a comment can mention",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "task",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "people",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/comments.PersonDTO"
+                                }
+                            }
                         }
                     },
                     "401": {
@@ -8015,6 +8063,20 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "comments.PersonDTO": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
                     "type": "string"
                 }
             }

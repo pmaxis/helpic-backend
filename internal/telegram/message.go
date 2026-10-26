@@ -26,10 +26,9 @@ func (s *Service) message(n notifications.Notification, locale string) (string, 
 		text = "⚠️ " + text
 	case notifications.KindReportPaid:
 		text += " 💸"
-	case notifications.KindCommentAdded:
-		if n.Detail != "" {
-			text += "\n\n<i>" + html.EscapeString(n.Detail) + "</i>"
-		}
+	}
+	if notifications.Quotes(n) {
+		text += "\n\n<i>" + html.EscapeString(n.Detail) + "</i>"
 	}
 	return text, s.button(n, locale)
 }

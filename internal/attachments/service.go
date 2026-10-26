@@ -25,7 +25,7 @@ const maxFileName = 200
 // what happened. Implemented by *tasks.Service.
 type taskAccess interface {
 	Get(ctx context.Context, userID, id string) (tasks.Task, error)
-	Tell(ctx context.Context, actorID string, t tasks.Task, kind, detail string, withTask bool)
+	Tell(ctx context.Context, actorID string, t tasks.Task, kind, detail string, withTask bool, skip ...string)
 	Record(ctx context.Context, taskID, actorID, kind string, data map[string]any)
 }
 

@@ -25,6 +25,7 @@ func NewHandler(svc *Service) *Handler {
 func (h *Handler) Routes(r chi.Router) {
 	r.Route("/comments", func(r chi.Router) {
 		r.Get("/", h.List)
+		r.Get("/people", h.People)
 		r.Post("/", h.Create)
 		r.Put("/{id}", h.Update)
 		r.Delete("/{id}", h.Delete)
@@ -59,19 +60,48 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string][]DTO{"comments": out})
 }
 
+// People handles GET /api/v1/comments/people?task={id}.
+//
+//	@Summary		Who a comment can mention
+//	@Description	Everyone who sees the task, by name. A comment mentions someone as @[Name](user ID).
+//	@Tags			comments
+//	@Produce		json
+//	@Param			task	query		string					true	"Task ID"
+//	@Success		200		{object}	map[string][]PersonDTO	"people"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/comments/people [get]
+func (h *Handler) People(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	people, err := h.svc.People(r.Context(), userID, r.URL.Query().Get("task"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	out := make([]PersonDTO, 0, len(people))
+	for _, p := range people {
+		out = append(out, PersonDTO{ID: p.ID, Name: p.Name, Email: p.Email})
+	}
+	response.JSON(w, http.StatusOK, map[string][]PersonDTO{"people": out})
+}
+
 // Create handles POST /api/v1/comments?task={id}.
 //
-//	@Summary	Comment on a task
-//	@Tags		comments
-//	@Accept		json
-//	@Produce	json
-//	@Param		task	query		string					true	"Task ID"
-//	@Param		body	body		Request					true	"Request body"
-//	@Success	201		{object}	map[string]DTO			"comment"
-//	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
-//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
-//	@Failure	404		{object}	response.ErrorEnvelope	"Not found"
-//	@Router		/comments [post]
+//	@Summary		Comment on a task
+//	@Description	Markdown. Mentioning someone who sees the task, as @[Name](user ID), tells them; anyone else's mention stays plain text.
+//	@Tags			comments
+//	@Accept			json
+//	@Produce		json
+//	@Param			task	query		string					true	"Task ID"
+//	@Param			body	body		Request					true	"Request body"
+//	@Success		201		{object}	map[string]DTO			"comment"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/comments [post]
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
 	if !ok {

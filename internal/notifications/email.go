@@ -173,7 +173,7 @@ func (e *Emailer) compose(to, locale string, list []Notification) mail.Email {
 		n := list[0]
 		line := Describe(n, locale)
 		var paras []string
-		if n.Kind == KindCommentAdded && n.Detail != "" {
+		if Quotes(n) {
 			paras = append(paras, "“"+n.Detail+"”")
 		}
 		return mail.Email{
@@ -190,7 +190,7 @@ func (e *Emailer) compose(to, locale string, list []Notification) mail.Email {
 	paras := make([]string, 0, min(len(list), emailListed)+1)
 	for _, n := range list[:min(len(list), emailListed)] {
 		line := "• " + Describe(n, locale)
-		if n.Kind == KindCommentAdded && n.Detail != "" {
+		if Quotes(n) {
 			line += ": “" + n.Detail + "”"
 		}
 		paras = append(paras, line)

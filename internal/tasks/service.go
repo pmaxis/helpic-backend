@@ -39,8 +39,9 @@ func NewService(repo *Repository, notify notifier) *Service {
 
 // Tell notifies the other side of the task — nobody for a personal task. The
 // client side is the company's owner, plus their people on the task (who set
-// it, were added or took part) while they're still in the company.
-func (s *Service) Tell(ctx context.Context, actorID string, t Task, kind, detail string, withTask bool) {
+// it, were added or took part) while they're still in the company. Anyone in
+// skip is left out: they hear about it some other way.
+func (s *Service) Tell(ctx context.Context, actorID string, t Task, kind, detail string, withTask bool, skip ...string) {
 	if t.Client == nil {
 		return
 	}
@@ -56,8 +57,14 @@ func (s *Service) Tell(ctx context.Context, actorID string, t Task, kind, detail
 		}
 		recipients = append(recipients, people...)
 	}
-	for _, to := range recipients {
-		n := notifications.Notification{UserID: to, ActorID: actorID, Kind: kind, Subject: t.Title, Detail: detail}
+	recipients = slices.DeleteFunc(recipients, func(id string) bool { return slices.Contains(skip, id) })
+	s.TellPeople(ctx, actorID, t, recipients, kind, detail, withTask)
+}
+
+// TellPeople notifies the given people about the task.
+func (s *Service) TellPeople(ctx context.Context, actorID string, t Task, to []string, kind, detail string, withTask bool) {
+	for _, id := range to {
+		n := notifications.Notification{UserID: id, ActorID: actorID, Kind: kind, Subject: t.Title, Detail: detail}
 		if withTask {
 			n.TaskID = t.ID
 		}
@@ -66,6 +73,13 @@ func (s *Service) Tell(ctx context.Context, actorID string, t Task, kind, detail
 		}
 		s.notify.Notify(ctx, n)
 	}
+}
+
+// Readers lists everyone who sees the task: its freelancer, and on the
+// client's side the owner and the company's people who see it (a contractor
+// only once they're on it). A personal task is its owner's alone.
+func (s *Service) Readers(ctx context.Context, t Task) ([]Person, error) {
+	return s.repo.Readers(ctx, t.ID)
 }
 
 // People lists who on the task's client side can be on it, for the viewer to

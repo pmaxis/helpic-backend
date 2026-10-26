@@ -16,6 +16,7 @@ var uk = map[string]string{
 	"%s is overdue: it was due %s":     "%s прострочено: дедлайн був %s",
 	"%s added you to %s":               "%s: вас додано до %s",
 	"%s joined your team":              "%s тепер у вашій команді",
+	"%s mentioned you in %s":           "%s: вас згадано в коментарі до %s",
 	"%s marked %s as paid":             "%s: звіт %s позначено оплаченим",
 	"%s moved %s to %s":                "%s: статус %s змінено на %s",
 	"%s sent you a report %s":          "Новий звіт від %s: %s",

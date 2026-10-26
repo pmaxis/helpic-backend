@@ -2,6 +2,7 @@ package integration
 
 import (
 	"net/http"
+	"slices"
 	"testing"
 )
 
@@ -68,4 +69,92 @@ func TestComments(t *testing.T) {
 	resp = post(t, outsider, listURL, map[string]string{"body": "Hi"})
 	wantStatus(t, resp, http.StatusNotFound)
 	resp.Body.Close()
+}
+
+func TestCommentMentions(t *testing.T) {
+	srv, _ := newAPI(t)
+	freelancer := signUpFreelancer(t, srv, "free@example.com")
+	owner := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
+	resp := do(t, owner, http.MethodPut, srv.URL+"/api/v1/team", map[string]string{"name": "Acme"})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	member := joinTeam(t, srv, owner, "member@example.com")
+	contractor := joinTeamAs(t, srv, owner, "contractor@example.com", "contractor")
+	outsider := signUpFreelancer(t, srv, "other@example.com")
+	freelancerID, ownerID, memberID, contractorID := myID(t, srv, freelancer), myID(t, srv, owner), myID(t, srv, member), myID(t, srv, contractor)
+	resp = get(t, freelancer, srv.URL+"/api/v1/me")
+	wantStatus(t, resp, http.StatusOK)
+	freelancerName := field(decode(t, resp), "user")["name"].(string)
+	task := newTask(t, srv, owner, map[string]any{"freelancer_id": freelancerID, "title": "Logo"})
+	listURL := srv.URL + "/api/v1/comments?task=" + task["id"].(string)
+	peopleURL := srv.URL + "/api/v1/comments/people?task=" + task["id"].(string)
+
+	// Whoever sees the task can be mentioned: not the contractor, who isn't on it.
+	resp = get(t, owner, peopleURL)
+	wantStatus(t, resp, http.StatusOK)
+	var ids []string
+	for _, p := range decode(t, resp)["people"].([]any) {
+		ids = append(ids, p.(map[string]any)["id"].(string))
+	}
+	if len(ids) != 3 || !slices.Contains(ids, freelancerID) || !slices.Contains(ids, ownerID) || !slices.Contains(ids, memberID) {
+		t.Fatalf("people = %v", ids)
+	}
+	wantStatus(t, get(t, outsider, peopleURL), http.StatusNotFound)
+
+	// Mentions keep the current names; one of someone who can't see the task is plain text.
+	resp = post(t, owner, listURL, map[string]string{
+		"body": "@[F](" + freelancerID + ") and @[M](" + memberID + "), please look. cc @[C](" + contractorID + ")",
+	})
+	wantStatus(t, resp, http.StatusCreated)
+	want := "@[" + freelancerName + "](" + freelancerID + ") and @[Max Member](" + memberID + "), please look. cc @C"
+	if got := field(decode(t, resp), "comment")["body"]; got != want {
+		t.Fatalf("body = %q, want %q", got, want)
+	}
+
+	// The mentioned hear they were, once; the contractor hears nothing.
+	count := func(c *http.Client, kind string) int {
+		notes, _ := notifications(t, srv, c)
+		n := 0
+		for _, x := range notes {
+			if x.Kind == kind {
+				n++
+				if x.Detail != "@"+freelancerName+" and @Max Member, please look. cc @C" {
+					t.Errorf("detail = %q", x.Detail)
+				}
+			}
+		}
+		return n
+	}
+	for _, c := range []*http.Client{freelancer, member} {
+		if count(c, "comment_mention") != 1 || count(c, "comment_added") != 0 {
+			t.Fatal("a mentioned person wasn't told once, as a mention")
+		}
+	}
+	if notes, _ := notifications(t, srv, contractor); len(notes) != 0 {
+		t.Fatalf("contractor was told: %+v", notes)
+	}
+
+	// Editing tells only whoever is mentioned for the first time.
+	resp = post(t, freelancer, listURL, map[string]string{"body": "Will do"})
+	wantStatus(t, resp, http.StatusCreated)
+	replyURL := srv.URL + "/api/v1/comments/" + field(decode(t, resp), "comment")["id"].(string)
+	resp = do(t, freelancer, http.MethodPut, replyURL, map[string]string{"body": "Will do, @[Owner](" + ownerID + ") @[Me](" + freelancerID + ")"})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	resp = do(t, freelancer, http.MethodPut, replyURL, map[string]string{"body": "Will do, @[Owner](" + ownerID + ") — by Friday"})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	notes, _ := notifications(t, srv, owner)
+	mentions := 0
+	for _, n := range notes {
+		if n.Kind == "comment_mention" {
+			mentions++
+		}
+	}
+	if mentions != 1 {
+		t.Fatalf("owner mentions = %d: %+v", mentions, notes)
+	}
+	if count(freelancer, "comment_mention") != 1 {
+		t.Fatal("mentioning yourself told you")
+	}
 }

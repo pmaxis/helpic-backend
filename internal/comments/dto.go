@@ -32,6 +32,13 @@ type AuthorDTO struct {
 	Email string `json:"email"`
 }
 
+// PersonDTO is someone a comment can mention.
+type PersonDTO struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
 // DTO is a comment as a side of its task sees it.
 type DTO struct {
 	ID     string    `json:"id"`
