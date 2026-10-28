@@ -107,8 +107,8 @@ func takeAll(r *http.Request, gates []ratelimit.Gate, keys []string) error {
 
 // Register handles POST /api/v1/auth/register.
 //
-//	@Summary		Sign up as a freelancer
-//	@Description	Emails a confirmation link. The account is created when that link is opened, not before. An email that already has an account gets a note saying so instead; the answer is the same, so it doesn't tell who has an account.
+//	@Summary		Sign up as a freelancer or a client
+//	@Description	Emails a confirmation link. role is freelancer (the default) or client. The account is created when that link is opened, not before. An email that already has an account gets a note saying so instead; the answer is the same, so it doesn't tell who has an account.
 //	@Tags			auth
 //	@Accept			json
 //	@Produce		json
@@ -144,7 +144,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 // ConfirmSignup handles POST /api/v1/auth/signups/confirm.
 //
 //	@Summary		Confirm a sign-up email
-//	@Description	Creates the freelancer account and signs this browser in. The link is the proof the inbox is theirs.
+//	@Description	Creates the account, with the role it signed up as, and signs this browser in. The link is the proof the inbox is theirs.
 //	@Tags			auth
 //	@Accept			json
 //	@Produce		json

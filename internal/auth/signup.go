@@ -14,8 +14,8 @@ import (
 	"github.com/pmaxis/helpic/internal/user"
 )
 
-// Public sign-up creates no account until the address opens the link we
-// emailed it. Invitations still create an account at once: opening that
+// Public sign-up, as a freelancer or a client, creates no account until the
+// address opens the link we emailed it. Invitations still create an account at once: opening that
 // link already proved the inbox.
 
 // signupTTL is how long a sign-up confirmation link works.
@@ -48,7 +48,7 @@ func (s *Service) RequestSignup(ctx context.Context, p RegisterParams) error {
 		return err
 	}
 	locale := i18n.FromContext(ctx)
-	if err := s.repo.SavePendingSignup(ctx, p.Email, p.Name, passwordHash, locale, hash, time.Now().Add(signupTTL)); err != nil {
+	if err := s.repo.SavePendingSignup(ctx, p.Email, p.Name, p.Role, passwordHash, locale, hash, time.Now().Add(signupTTL)); err != nil {
 		return err
 	}
 
@@ -110,14 +110,14 @@ func accountExistsEmail(u user.User, appURL string) mail.Email {
 	}
 }
 
-// ConfirmSignup creates the freelancer account the link names and signs
-// that browser in. The link is the proof the inbox is theirs.
+// ConfirmSignup creates the account the link names, with the role it signed
+// up as, and signs that browser in. The link is the proof the inbox is theirs.
 func (s *Service) ConfirmSignup(ctx context.Context, raw string, c Client) (user.User, Tokens, error) {
-	email, name, passwordHash, locale, err := s.repo.TakePendingSignup(ctx, HashToken(raw))
+	email, name, role, passwordHash, locale, err := s.repo.TakePendingSignup(ctx, HashToken(raw))
 	if err != nil {
 		return user.User{}, Tokens{}, err
 	}
-	u, err := s.repo.CreateUser(ctx, email, name, user.RoleFreelancer, passwordHash, locale)
+	u, err := s.repo.CreateUser(ctx, email, name, role, passwordHash, locale)
 	if err != nil {
 		return user.User{}, Tokens{}, err
 	}
@@ -130,17 +130,18 @@ func (s *Service) ConfirmSignup(ctx context.Context, raw string, c Client) (user
 
 // SavePendingSignup stores a sign-up waiting for its email, replacing an
 // earlier one for the same address.
-func (r *Repository) SavePendingSignup(ctx context.Context, email, name, passwordHash, locale string, hash []byte, expiresAt time.Time) error {
+func (r *Repository) SavePendingSignup(ctx context.Context, email, name, role, passwordHash, locale string, hash []byte, expiresAt time.Time) error {
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO pending_signups (email, name, password_hash, locale, token_hash, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO pending_signups (email, name, role, password_hash, locale, token_hash, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (email) DO UPDATE SET
 			name = EXCLUDED.name,
+			role = EXCLUDED.role,
 			password_hash = EXCLUDED.password_hash,
 			locale = EXCLUDED.locale,
 			token_hash = EXCLUDED.token_hash,
 			expires_at = EXCLUDED.expires_at,
-			created_at = now()`, email, name, passwordHash, locale, hash, expiresAt)
+			created_at = now()`, email, name, role, passwordHash, locale, hash, expiresAt)
 	if err != nil {
 		return fmt.Errorf("save sign-up: %w", err)
 	}
@@ -166,22 +167,22 @@ func (r *Repository) RenewPendingSignup(ctx context.Context, email string, hash 
 
 // TakePendingSignup uses up a confirmation link. ErrSignupInvalid when it
 // is unknown, replaced or expired.
-func (r *Repository) TakePendingSignup(ctx context.Context, hash []byte) (email, name, passwordHash, locale string, err error) {
+func (r *Repository) TakePendingSignup(ctx context.Context, hash []byte) (email, name, role, passwordHash, locale string, err error) {
 	var live bool
 	err = r.db.QueryRow(ctx, `
 		DELETE FROM pending_signups
 		WHERE token_hash = $1
-		RETURNING email, name, password_hash, locale, expires_at > now()`, hash).Scan(&email, &name, &passwordHash, &locale, &live)
+		RETURNING email, name, role, password_hash, locale, expires_at > now()`, hash).Scan(&email, &name, &role, &passwordHash, &locale, &live)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", "", "", ErrSignupInvalid
+		return "", "", "", "", "", ErrSignupInvalid
 	}
 	if err != nil {
-		return "", "", "", "", fmt.Errorf("take sign-up: %w", err)
+		return "", "", "", "", "", fmt.Errorf("take sign-up: %w", err)
 	}
 	if !live {
-		return "", "", "", "", ErrSignupInvalid
+		return "", "", "", "", "", ErrSignupInvalid
 	}
-	return email, name, passwordHash, locale, nil
+	return email, name, role, passwordHash, locale, nil
 }
 
 // DeletePendingSignup removes the sign-up stored under this link, so a

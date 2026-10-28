@@ -199,6 +199,7 @@ var uk = map[string]string{
 	"Wrong password":                                                   "Неправильний пароль",
 	"Enter your current password":                                      "Вкажіть поточний пароль",
 	"Name is required":                                                 "Вкажіть ім'я",
+	"Sign up as a freelancer or a client":                              "Зареєструйтеся як фрилансер або замовник",
 	"Name is too long":                                                 "Ім'я задовге",
 	"First name is required":                                           "Вкажіть ім'я",
 	"First name is too long":                                           "Ім'я задовге",

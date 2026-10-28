@@ -244,13 +244,57 @@ func TestRegister_Success(t *testing.T) {
 		t.Fatalf("confirmed account = %v", u)
 	}
 	if u["role"] != "freelancer" {
-		t.Fatalf("role = %v, want freelancer: public sign-up always creates a freelancer", u["role"])
+		t.Fatalf("role = %v, want freelancer: a sign-up without a role is a freelancer's", u["role"])
 	}
 	if _, exists := u["password"]; exists {
 		t.Fatal("response leaked password")
 	}
 	if _, exists := u["password_hash"]; exists {
 		t.Fatal("response leaked password_hash")
+	}
+}
+
+func TestRegister_Client(t *testing.T) {
+	srv, c := newAPI(t)
+
+	resp := post(t, c, srv.URL+"/api/v1/auth/register", map[string]string{
+		"email": "owner@acme.test", "name": "Olena", "role": "client",
+		"password": "supersecret1", "password_confirmation": "supersecret1",
+	})
+	wantStatus(t, resp, http.StatusAccepted)
+	resp.Body.Close()
+
+	resp = confirmSignup(t, c, srv.URL, "owner@acme.test")
+	wantStatus(t, resp, http.StatusCreated)
+	if u := field(decode(t, resp), "user"); u["role"] != "client" || u["name"] != "Olena" {
+		t.Fatalf("confirmed account = %v, want a client", u)
+	}
+
+	// A client of their own: no freelancers yet, and no freelancer's pages.
+	resp = get(t, c, srv.URL+"/api/v1/freelancers")
+	wantStatus(t, resp, http.StatusOK)
+	if list, _ := decode(t, resp)["freelancers"].([]any); len(list) != 0 {
+		t.Fatalf("freelancers = %v, want none", list)
+	}
+	resp = get(t, c, srv.URL+"/api/v1/clients")
+	wantStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+}
+
+func TestRegister_UnknownRole(t *testing.T) {
+	srv, c := newAPI(t)
+	for _, role := range []string{"admin", "member"} {
+		resp := post(t, c, srv.URL+"/api/v1/auth/register", map[string]string{
+			"email": "who@example.com", "name": "Who", "role": role,
+			"password": "supersecret1", "password_confirmation": "supersecret1",
+		})
+		wantStatus(t, resp, http.StatusBadRequest)
+		if got := errorCode(decode(t, resp)); got != "VALIDATION_ERROR" {
+			t.Fatalf("role %q: code = %q, want VALIDATION_ERROR", role, got)
+		}
+	}
+	if list := emailsTo(t, "who@example.com"); len(list) != 0 {
+		t.Fatalf("emails = %d, want none for a refused role", len(list))
 	}
 }
 

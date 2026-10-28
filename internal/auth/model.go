@@ -22,6 +22,9 @@ type RegisterParams struct {
 	Email    string
 	Name     string
 	Password string
+	// Role is what a public sign-up asked to be, a freelancer or a client;
+	// Register takes the role as its own argument instead.
+	Role string
 }
 
 // LoginParams is the validated, normalized input to Service.Login.

@@ -38,9 +38,9 @@ type repository interface {
 	UpgradePasswordHash(ctx context.Context, userID, old, upgraded string) error
 	DeleteExpiredResets(ctx context.Context) error
 
-	SavePendingSignup(ctx context.Context, email, name, passwordHash, locale string, hash []byte, expiresAt time.Time) error
+	SavePendingSignup(ctx context.Context, email, name, role, passwordHash, locale string, hash []byte, expiresAt time.Time) error
 	RenewPendingSignup(ctx context.Context, email string, hash []byte, expiresAt time.Time) (string, error)
-	TakePendingSignup(ctx context.Context, hash []byte) (email, name, passwordHash, locale string, err error)
+	TakePendingSignup(ctx context.Context, hash []byte) (email, name, role, passwordHash, locale string, err error)
 	DeletePendingSignup(ctx context.Context, email string, hash []byte) error
 	DeleteExpiredSignups(ctx context.Context) error
 
@@ -89,8 +89,8 @@ func NewService(repo repository, tokens tokenIssuer, refreshTTL time.Duration, m
 	return &Service{repo: repo, tokens: tokens, refreshTTL: refreshTTL, mail: mail, appURL: strings.TrimRight(appURL, "/")}
 }
 
-// Register creates a new account with the given role. Public sign-up always
-// passes user.RoleFreelancer; invitations create clients. The email is expected
+// Register creates a new account with the given role, for an invitation;
+// public sign-up goes through RequestSignup instead. The email is expected
 // to be normalized by the caller's validation step. The account speaks the
 // request's language. Returns ErrEmailExists on a duplicate.
 func (s *Service) Register(ctx context.Context, p RegisterParams, role string) (user.User, error) {

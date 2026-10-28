@@ -10,12 +10,14 @@ import (
 	"github.com/pmaxis/helpic/internal/user"
 )
 
-// RegisterRequest is the JSON body for POST /api/v1/auth/register.
+// RegisterRequest is the JSON body for POST /api/v1/auth/register. Role is
+// "freelancer" (the default when left out) or "client".
 type RegisterRequest struct {
 	Email                string `json:"email"`
 	Name                 string `json:"name"`
 	Password             string `json:"password"`
 	PasswordConfirmation string `json:"password_confirmation"`
+	Role                 string `json:"role,omitempty" enums:"freelancer,client"`
 }
 
 // LoginRequest is the JSON body for POST /api/v1/auth/login.
@@ -51,10 +53,19 @@ func (r RegisterRequest) Validate() (RegisterParams, map[string]string) {
 	}
 	ValidateNewPassword(fields, r.Password, r.PasswordConfirmation)
 
+	role := r.Role
+	switch role {
+	case "":
+		role = user.RoleFreelancer
+	case user.RoleFreelancer, user.RoleClient:
+	default:
+		fields["role"] = "Sign up as a freelancer or a client"
+	}
+
 	if len(fields) > 0 {
 		return RegisterParams{}, fields
 	}
-	return RegisterParams{Email: email, Name: name, Password: r.Password}, nil
+	return RegisterParams{Email: email, Name: name, Password: r.Password, Role: role}, nil
 }
 
 // ValidateName checks a trimmed display name and returns an error message, or
