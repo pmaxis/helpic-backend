@@ -33,8 +33,9 @@ type limits struct {
 	// resetRequests: password reset emails per inbox, asked from one
 	// address; emailResets: per inbox from anywhere.
 	resetRequests, emailResets ratelimit.Gate
-	// invites: invitation emails a user sends, to clients and to their team;
-	// enough to bring in a company, too few to send spam from our address.
+	// invites: invitation emails a user sends, to clients, to freelancers
+	// and to their team; enough to bring in a company, too few to send spam
+	// from our address.
 	invites ratelimit.Gate
 }
 

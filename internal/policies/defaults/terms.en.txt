@@ -6,7 +6,7 @@ Helpic is a workspace where a freelancer and their clients keep tasks and projec
 
 ## Your account
 
-- Freelancers sign up themselves; clients and their teams join by invitation.
+- Freelancers and clients sign up themselves or join by each other's invitation; a client's team joins by invitation.
 - Give true details and keep your password secret. You are responsible for what happens in your account.
 - If you notice someone else signed in, change your password and sign out the other sessions in the settings.
 

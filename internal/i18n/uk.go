@@ -104,7 +104,9 @@ var uk = map[string]string{
 	"%s wants to work with you on Helpic": "%s хоче працювати з вами в Helpic",
 	"%s uses Helpic to keep client work in one place. Accept the invitation to give them tasks, follow the progress and get their reports.": "%s веде роботу із замовниками в Helpic. Прийміть запрошення, щоб ставити задачі, стежити за прогресом і отримувати звіти.",
 	"Accept the invitation": "Прийняти запрошення",
-	"The link works once, until %s. If you weren't expecting this, ignore this email.": "Посилання одноразове й діє до %s. Якщо ви не чекали цього листа, просто проігноруйте його.",
+	"%s from %s":            "%s з %s",
+	"%s gives tasks to their freelancers in Helpic. Accept the invitation to see the tasks, track your time and send reports in one place.": "%s ставить задачі своїм фрилансерам у Helpic. Прийміть запрошення, щоб бачити задачі, рахувати час і надсилати звіти в одному місці.",
+	"The link works once, until %s. If you weren't expecting this, ignore this email.":                                                      "Посилання одноразове й діє до %s. Якщо ви не чекали цього листа, просто проігноруйте його.",
 	"%s's team":            "Команда %s",
 	"Join %s on Helpic":    "Приєднуйтесь до %s у Helpic",
 	"%s invited you to %s": "%s запрошує вас до %s",
@@ -221,6 +223,8 @@ var uk = map[string]string{
 	"This invitation is invalid, already used or expired":              "Запрошення недійсне, вже використане або прострочене",
 	"This email already has a Helpic account — invite a new one":       "Ця пошта вже має акаунт Helpic — запросіть нову",
 	"This email belongs to a freelancer account":                       "Ця пошта належить акаунту фрилансера",
+	"This email belongs to a client's account":                         "Ця пошта належить акаунту замовника",
+	"You already work with this freelancer":                            "Ви вже працюєте з цим фрилансером",
 	"This isn't one of your clients":                                   "Це не ваш замовник",
 	"This person is already your client":                               "Ця людина вже ваш замовник",
 	"This person is on a client's team; they work through that client": "Ця людина в команді замовника й працює через нього",
@@ -231,6 +235,7 @@ var uk = map[string]string{
 	"The freelancer and whoever set the task stay on it":               "Фрилансер і автор задачі лишаються в ній",
 	"Contractors can't start projects":                                 "Підрядники не створюють проєкти",
 	"Only the company's owner manages the team":                        "Командою керує лише власник компанії",
+	"Only the company's owner invites freelancers":                     "Фрилансерів запрошує лише власник компанії",
 	"The name is too long":                                             "Назва задовга",
 
 	// --- API errors: tasks, projects, boards -----------------------------------------

@@ -825,6 +825,21 @@ definitions:
       token:
         type: string
     type: object
+  clients.FreelancerLookupDTO:
+    properties:
+      account_exists:
+        type: boolean
+      client:
+        $ref: '#/definitions/clients.PartyDTO'
+      company:
+        type: string
+      email:
+        type: string
+      expires_at:
+        type: string
+      name:
+        type: string
+    type: object
   clients.InvitationDTO:
     properties:
       created_at:
@@ -3801,6 +3816,161 @@ paths:
       summary: Confirm a new sign-in email
       tags:
       - account
+  /freelancer-invitations:
+    get:
+      description: 'Clients only, and not a company''s members: the owner invites.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: invitations
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/clients.InvitationDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Pending freelancer invitations
+      tags:
+      - people
+    post:
+      consumes:
+      - application/json
+      description: Clients only, and not a company's members. Emails the invitation
+        link to the freelancer; only they get it.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/clients.InviteRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: invitation
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/clients.InvitationDTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Invite a freelancer
+      tags:
+      - people
+  /freelancer-invitations/{id}:
+    delete:
+      parameters:
+      - description: Invitation ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Revoke a freelancer invitation
+      tags:
+      - people
+  /freelancer-invites/accept:
+    post:
+      consumes:
+      - application/json
+      description: Public. Creates the freelancer account (name, password, confirmation)
+        or signs in to the existing one (password, and a code when it has two-factor
+        on), links it with the client and sets the auth cookie.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/clients.AcceptRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.Response'
+        "400":
+          description: Invalid input, or a wrong code (field code)
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: The password is right; the account also needs a code (TWO_FACTOR_REQUIRED)
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Invalid, used or expired
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many wrong codes for this account
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Accept a freelancer invitation
+      tags:
+      - invitations
+  /freelancer-invites/lookup:
+    post:
+      consumes:
+      - application/json
+      description: 'Public: the page a client''s invitation opens.'
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/clients.LookupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: invitation
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/clients.FreelancerLookupDTO'
+            type: object
+        "404":
+          description: Invalid, used or expired
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Look up a freelancer invitation
+      tags:
+      - invitations
   /freelancers:
     get:
       description: Clients only; a team member sees the company owner's.

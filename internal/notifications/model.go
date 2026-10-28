@@ -17,6 +17,8 @@ const (
 	KindTaskDeleted    = "task_deleted"
 	KindProjectCreated = "project_created"
 	KindClientJoined   = "client_joined"
+	// KindFreelancerJoined: a freelancer accepted the client's invitation.
+	KindFreelancerJoined = "freelancer_joined"
 	// KindMemberJoined: someone joined the client's company.
 	KindMemberJoined = "member_joined"
 	KindReportSent   = "report_sent"

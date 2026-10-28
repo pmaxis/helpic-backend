@@ -8,7 +8,8 @@ import (
 	"github.com/pmaxis/helpic/internal/auth"
 )
 
-// InviteRequest is the JSON body for POST /api/v1/invitations.
+// InviteRequest is the JSON body for POST /api/v1/invitations and
+// /api/v1/freelancer-invitations.
 type InviteRequest struct {
 	Email string `json:"email"`
 	Name  string `json:"name"`
@@ -36,15 +37,17 @@ func (r InviteRequest) Validate() (InviteParams, map[string]string) {
 	return p, fields
 }
 
-// LookupRequest is the JSON body for POST /api/v1/invites/lookup. The token
-// travels in the body, never in a URL that logs and Referer headers keep.
+// LookupRequest is the JSON body for POST /api/v1/invites/lookup and
+// /api/v1/freelancer-invites/lookup. The token travels in the body, never in
+// a URL that logs and Referer headers keep.
 type LookupRequest struct {
 	Token string `json:"token"`
 }
 
-// AcceptRequest is the JSON body for POST /api/v1/invites/accept. A new
-// account needs the name, password and confirmation; an existing one only the
-// password, and a code when it has two-factor on.
+// AcceptRequest is the JSON body for POST /api/v1/invites/accept and
+// /api/v1/freelancer-invites/accept. A new account needs the name, password
+// and confirmation; an existing one only the password, and a code when it
+// has two-factor on.
 type AcceptRequest struct {
 	Token                string `json:"token"`
 	Name                 string `json:"name"`
@@ -53,13 +56,13 @@ type AcceptRequest struct {
 	Code                 string `json:"code,omitempty"`
 }
 
-// AcceptParams is the validated input for creating a client account.
+// AcceptParams is the validated input for creating the invited account.
 type AcceptParams struct {
 	Name     string
 	Password string
 }
 
-// ValidateNew checks the payload for a new client account.
+// ValidateNew checks the payload for a new account.
 func (r AcceptRequest) ValidateNew() (AcceptParams, map[string]string) {
 	fields := map[string]string{}
 	name := strings.TrimSpace(r.Name)
@@ -81,8 +84,8 @@ func toPartyDTO(p Party) PartyDTO {
 	return PartyDTO{ID: p.ID, Name: p.Name, Email: p.Email}
 }
 
-// InvitationDTO is a pending invitation as its freelancer sees it. The link
-// is not included: only the invited address gets it.
+// InvitationDTO is a pending invitation as its sender sees it, a freelancer
+// or a client. The link is not included: only the invited address gets it.
 type InvitationDTO struct {
 	ID        string    `json:"id"`
 	Email     string    `json:"email"`
@@ -99,11 +102,29 @@ func toInvitationDTO(i Invitation) InvitationDTO {
 	}
 }
 
+func toFreelancerInvitationDTO(i FreelancerInvitation) InvitationDTO {
+	return InvitationDTO{
+		ID: i.ID, Email: i.Email, Name: i.Name,
+		Expired: i.Expired(), ExpiresAt: i.ExpiresAt, CreatedAt: i.CreatedAt,
+	}
+}
+
 // LookupDTO is what the public invitation page receives.
 type LookupDTO struct {
 	Email         string    `json:"email"`
 	Name          string    `json:"name"`
 	Freelancer    PartyDTO  `json:"freelancer"`
+	AccountExists bool      `json:"account_exists"`
+	ExpiresAt     time.Time `json:"expires_at"`
+}
+
+// FreelancerLookupDTO is what the public page of a client's invitation
+// receives. Company is the client's company's name, "" without one.
+type FreelancerLookupDTO struct {
+	Email         string    `json:"email"`
+	Name          string    `json:"name"`
+	Client        PartyDTO  `json:"client"`
+	Company       string    `json:"company"`
 	AccountExists bool      `json:"account_exists"`
 	ExpiresAt     time.Time `json:"expires_at"`
 }

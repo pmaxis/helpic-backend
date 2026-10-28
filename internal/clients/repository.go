@@ -224,3 +224,133 @@ func (r *Repository) listLinks(ctx context.Context, q, userID string) ([]Link, e
 	}
 	return out, nil
 }
+
+// --- a client's invitations for freelancers ---------------------------------
+
+const freelancerInvitationColumns = `id, client_id, email, name, expires_at, accepted_at, created_at`
+
+func scanFreelancerInvitation(row pgx.Row) (FreelancerInvitation, error) {
+	var i FreelancerInvitation
+	err := row.Scan(&i.ID, &i.ClientID, &i.Email, &i.Name, &i.ExpiresAt, &i.AcceptedAt, &i.CreatedAt)
+	return i, err
+}
+
+// CreateFreelancerInvitation stores a client's new pending invitation by its
+// link's hash. An expired pending invitation for the same email is replaced;
+// a live one yields ErrAlreadyInvited.
+func (r *Repository) CreateFreelancerInvitation(ctx context.Context, clientID, email, name string, tokenHash []byte, expiresAt time.Time) (FreelancerInvitation, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return FreelancerInvitation{}, fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	if _, err := tx.Exec(ctx, `DELETE FROM freelancer_invitations
+		WHERE client_id = $1 AND email = $2 AND accepted_at IS NULL AND expires_at <= now()`,
+		clientID, email); err != nil {
+		return FreelancerInvitation{}, fmt.Errorf("drop expired invitation: %w", err)
+	}
+
+	inv, err := scanFreelancerInvitation(tx.QueryRow(ctx, `INSERT INTO freelancer_invitations (client_id, email, name, token_hash, expires_at)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING `+freelancerInvitationColumns, clientID, email, name, tokenHash, expiresAt))
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode {
+		return FreelancerInvitation{}, ErrAlreadyInvited
+	}
+	if err != nil {
+		return FreelancerInvitation{}, fmt.Errorf("create invitation: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return FreelancerInvitation{}, fmt.Errorf("commit: %w", err)
+	}
+	return inv, nil
+}
+
+// ListFreelancerInvitations returns the client's invitations that were not
+// accepted yet, newest first. Expired ones are included so they can be re-sent.
+func (r *Repository) ListFreelancerInvitations(ctx context.Context, clientID string) ([]FreelancerInvitation, error) {
+	rows, err := r.db.Query(ctx, `SELECT `+freelancerInvitationColumns+` FROM freelancer_invitations
+		WHERE client_id = $1 AND accepted_at IS NULL
+		ORDER BY created_at DESC`, clientID)
+	if err != nil {
+		return nil, fmt.Errorf("list invitations: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (FreelancerInvitation, error) {
+		return scanFreelancerInvitation(row)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan invitations: %w", err)
+	}
+	return out, nil
+}
+
+// DeleteFreelancerInvitation revokes one of the client's pending invitations.
+func (r *Repository) DeleteFreelancerInvitation(ctx context.Context, clientID, id string) error {
+	tag, err := r.db.Exec(ctx, `DELETE FROM freelancer_invitations
+		WHERE id = $1 AND client_id = $2 AND accepted_at IS NULL`, id, clientID)
+	if err != nil {
+		return fmt.Errorf("delete invitation: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// FreelancerInvitationByToken loads the invitation whose link has this hash,
+// together with the client who sent it and their company's name ("" without
+// one). Returns ErrNotFound for an unknown token.
+func (r *Repository) FreelancerInvitationByToken(ctx context.Context, tokenHash []byte) (FreelancerInvitation, Party, string, error) {
+	var (
+		i       FreelancerInvitation
+		c       Party
+		company string
+	)
+	err := r.db.QueryRow(ctx, `SELECT i.id, i.client_id, i.email, i.name, i.expires_at, i.accepted_at, i.created_at,
+			u.id, u.name, u.email, coalesce(co.name, '')
+		FROM freelancer_invitations i
+		JOIN users u ON u.id = i.client_id
+		LEFT JOIN companies co ON co.owner_id = i.client_id
+		WHERE i.token_hash = $1`, tokenHash).
+		Scan(&i.ID, &i.ClientID, &i.Email, &i.Name, &i.ExpiresAt, &i.AcceptedAt, &i.CreatedAt,
+			&c.ID, &c.Name, &c.Email, &company)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return FreelancerInvitation{}, Party{}, "", ErrNotFound
+	}
+	if err != nil {
+		return FreelancerInvitation{}, Party{}, "", fmt.Errorf("get invitation: %w", err)
+	}
+	return i, c, company, nil
+}
+
+// AcceptFreelancer marks the client's invitation accepted and links its
+// client with the freelancer, atomically. An invitation that was accepted or
+// expired in the meantime yields ErrInvitationInvalid.
+func (r *Repository) AcceptFreelancer(ctx context.Context, invitationID, freelancerID string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var clientID string
+	err = tx.QueryRow(ctx, `UPDATE freelancer_invitations SET accepted_at = now()
+		WHERE id = $1 AND accepted_at IS NULL AND expires_at > now()
+		RETURNING client_id`, invitationID).Scan(&clientID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrInvitationInvalid
+	}
+	if err != nil {
+		return fmt.Errorf("accept invitation: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `INSERT INTO freelancer_clients (freelancer_id, client_id)
+		VALUES ($1, $2) ON CONFLICT DO NOTHING`, freelancerID, clientID); err != nil {
+		return fmt.Errorf("link freelancer: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}

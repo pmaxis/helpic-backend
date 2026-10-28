@@ -24,6 +24,7 @@ var Kinds = []string{
 	KindReportSent,
 	KindReportPaid,
 	KindClientJoined,
+	KindFreelancerJoined,
 	KindMemberJoined,
 }
 
@@ -41,6 +42,7 @@ var DefaultKinds = []string{
 	KindReportSent,
 	KindReportPaid,
 	KindClientJoined,
+	KindFreelancerJoined,
 	KindMemberJoined,
 	KindProjectInvited,
 }
@@ -56,6 +58,8 @@ func Path(n Notification) string {
 		return "/projects/" + n.ProjectID
 	case n.Kind == KindClientJoined:
 		return "/clients"
+	case n.Kind == KindFreelancerJoined:
+		return "/freelancers"
 	case n.Kind == KindMemberJoined:
 		return "/team"
 	default:
@@ -110,7 +114,7 @@ func Phrase(n Notification, locale, who, subject, detail string) string {
 		return t("%s started a project %s", who, subject)
 	case KindProjectInvited:
 		return t("%s invited you to the project %s", who, subject)
-	case KindClientJoined:
+	case KindClientJoined, KindFreelancerJoined:
 		return t("%s accepted your invitation", who)
 	case KindMemberJoined:
 		return t("%s joined your team", who)

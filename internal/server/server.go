@@ -143,7 +143,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	profileSvc := profile.NewService(profile.NewRepository(pool), authSvc, outbox, cfg.AppURL)
 	profileHandler := profile.NewHandler(profileSvc)
 
-	// --- clients: invitations and freelancer–client links ---------------------
+	// --- clients: invitations both ways and freelancer–client links -----------
 	clientsRepo := clients.NewRepository(pool)
 	clientsHandler := clients.NewHandler(clients.NewService(clientsRepo, authSvc, notifier, outbox, cfg.AppURL), clientsRepo, cookie)
 
@@ -354,7 +354,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 				})
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireRole(user.RoleClient))
-					clientsHandler.ClientRoutes(r)
+					clientsHandler.ClientRoutes(r, byUser(lim.invites))
 					teamHandler.ClientRoutes(r, byUser(lim.invites))
 				})
 			})

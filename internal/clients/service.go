@@ -21,8 +21,8 @@ type accounts interface {
 	StartSession(ctx context.Context, u user.User, c auth.Client) (auth.Tokens, error)
 }
 
-// notifier tells the freelancer their invitation was accepted. Implemented by
-// *notifications.Service.
+// notifier tells whoever sent an invitation that it was accepted. Implemented
+// by *notifications.Service.
 type notifier interface {
 	Notify(ctx context.Context, n notifications.Notification)
 }
@@ -185,5 +185,160 @@ func (s *Service) AcceptExisting(ctx context.Context, l Lookup, password, code s
 		return Session{}, err
 	}
 	s.joined(ctx, l, u.ID)
+	return Session{User: u, Tokens: tokens}, nil
+}
+
+// --- a client's invitations for freelancers ---------------------------------
+
+// InviteFreelancer creates the client's invitation for the email. Only a
+// client acting for themselves invites; a member of a company gets
+// ErrNotOwner. The email must not be the client's own, belong to anyone but
+// a freelancer, or to a freelancer they already work with.
+func (s *Service) InviteFreelancer(ctx context.Context, clientID string, p InviteParams) (FreelancerInvitation, error) {
+	member, err := s.repo.IsTeamMember(ctx, clientID)
+	if err != nil {
+		return FreelancerInvitation{}, err
+	}
+	if member {
+		return FreelancerInvitation{}, ErrNotOwner
+	}
+
+	existing, err := s.repo.UserByEmail(ctx, p.Email)
+	switch {
+	case errors.Is(err, user.ErrNotFound):
+	case err != nil:
+		return FreelancerInvitation{}, err
+	case existing.ID == clientID:
+		return FreelancerInvitation{}, ErrSelfInvite
+	case existing.Role != user.RoleFreelancer:
+		return FreelancerInvitation{}, ErrNotFreelancerEmail
+	default:
+		linked, err := s.repo.IsLinked(ctx, existing.ID, clientID)
+		if err != nil {
+			return FreelancerInvitation{}, err
+		}
+		if linked {
+			return FreelancerInvitation{}, ErrAlreadyFreelancer
+		}
+	}
+
+	token, hash, err := auth.NewToken()
+	if err != nil {
+		return FreelancerInvitation{}, err
+	}
+	inv, err := s.repo.CreateFreelancerInvitation(ctx, clientID, p.Email, p.Name, hash, time.Now().Add(InvitationTTL))
+	if err != nil {
+		return FreelancerInvitation{}, err
+	}
+	if err := s.emailFreelancerInvitation(ctx, clientID, inv, token); err != nil {
+		if delErr := s.repo.DeleteFreelancerInvitation(ctx, clientID, inv.ID); delErr != nil {
+			slog.Error("failed to roll back invitation", "error", delErr)
+		}
+		return FreelancerInvitation{}, err
+	}
+	return inv, nil
+}
+
+// FreelancerInvitations lists the client's pending invitations. A member of
+// a company gets ErrNotOwner: the owner's invitations are theirs to see.
+func (s *Service) FreelancerInvitations(ctx context.Context, clientID string) ([]FreelancerInvitation, error) {
+	member, err := s.repo.IsTeamMember(ctx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	if member {
+		return nil, ErrNotOwner
+	}
+	return s.repo.ListFreelancerInvitations(ctx, clientID)
+}
+
+// FreelancerLookup is what the invitation page shows before the freelancer
+// accepts.
+type FreelancerLookup struct {
+	Invitation FreelancerInvitation
+	Client     Party
+	// Company is the client's company's name, "" without one.
+	Company       string
+	AccountExists bool
+}
+
+// FindFreelancerInvite resolves a client's invitation token. Accepted and
+// expired invitations yield ErrInvitationInvalid; one whose email has since
+// become an account that isn't a freelancer's, ErrNotFreelancerEmail.
+func (s *Service) FindFreelancerInvite(ctx context.Context, token string) (FreelancerLookup, error) {
+	inv, client, company, err := s.repo.FreelancerInvitationByToken(ctx, auth.HashToken(token))
+	if errors.Is(err, ErrNotFound) {
+		return FreelancerLookup{}, ErrInvitationInvalid
+	}
+	if err != nil {
+		return FreelancerLookup{}, err
+	}
+	if inv.AcceptedAt != nil || inv.Expired() {
+		return FreelancerLookup{}, ErrInvitationInvalid
+	}
+
+	existing, err := s.repo.UserByEmail(ctx, inv.Email)
+	if err != nil && !errors.Is(err, user.ErrNotFound) {
+		return FreelancerLookup{}, err
+	}
+	if err == nil && existing.Role != user.RoleFreelancer {
+		return FreelancerLookup{}, ErrNotFreelancerEmail
+	}
+	return FreelancerLookup{Invitation: inv, Client: client, Company: company, AccountExists: err == nil}, nil
+}
+
+// freelancerJoined tells the client that the freelancer accepted their
+// invitation.
+func (s *Service) freelancerJoined(ctx context.Context, l FreelancerLookup, freelancerID string) {
+	s.notify.Notify(ctx, notifications.Notification{
+		UserID:  l.Invitation.ClientID,
+		ActorID: freelancerID,
+		Kind:    notifications.KindFreelancerJoined,
+	})
+}
+
+// AcceptNewFreelancer creates the freelancer account for a looked-up
+// invitation and links it with the client.
+func (s *Service) AcceptNewFreelancer(ctx context.Context, l FreelancerLookup, p AcceptParams, c auth.Client) (Session, error) {
+	u, err := s.accounts.Register(ctx, auth.RegisterParams{
+		Email:    l.Invitation.Email,
+		Name:     p.Name,
+		Password: p.Password,
+	}, user.RoleFreelancer)
+	if err != nil {
+		return Session{}, err
+	}
+	if err := s.repo.AcceptFreelancer(ctx, l.Invitation.ID, u.ID); err != nil {
+		// The invitation was used up or withdrawn meanwhile: the account
+		// was only for it.
+		if delErr := s.accounts.Discard(ctx, u.ID); delErr != nil {
+			slog.Error("failed to discard an unused account", "error", delErr)
+		}
+		return Session{}, err
+	}
+	s.freelancerJoined(ctx, l, u.ID)
+	tokens, err := s.accounts.StartSession(ctx, u, c)
+	if err != nil {
+		return Session{}, err
+	}
+	return Session{User: u, Tokens: tokens}, nil
+}
+
+// AcceptExistingFreelancer signs in the existing freelancer account the
+// invitation was sent to and links it with the client. A wrong password
+// yields auth.ErrInvalidCredentials; an account with two-factor on needs the
+// code too (see auth.Service.Login).
+func (s *Service) AcceptExistingFreelancer(ctx context.Context, l FreelancerLookup, password, code string, c auth.Client) (Session, error) {
+	u, tokens, err := s.accounts.Login(ctx, auth.LoginParams{Email: l.Invitation.Email, Password: password, Code: code}, c)
+	if err != nil {
+		return Session{}, err
+	}
+	if u.Role != user.RoleFreelancer {
+		return Session{}, ErrNotFreelancerEmail
+	}
+	if err := s.repo.AcceptFreelancer(ctx, l.Invitation.ID, u.ID); err != nil {
+		return Session{}, err
+	}
+	s.freelancerJoined(ctx, l, u.ID)
 	return Session{User: u, Tokens: tokens}, nil
 }
