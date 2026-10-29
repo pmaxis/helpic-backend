@@ -98,12 +98,12 @@ type DiskDTO struct {
 
 // SystemResponse is the server as it stands.
 type SystemResponse struct {
-	Version   string         `json:"version"`
-	GoVersion string         `json:"go_version"`
-	StartedAt time.Time      `json:"started_at"`
-	Checks    []CheckDTO     `json:"checks"`
-	Jobs      []JobDTO       `json:"jobs"`
-	Files     FilesDTO       `json:"files"`
+	Version   string     `json:"version"`
+	GoVersion string     `json:"go_version"`
+	StartedAt time.Time  `json:"started_at"`
+	Checks    []CheckDTO `json:"checks"`
+	Jobs      []JobDTO   `json:"jobs"`
+	Files     FilesDTO   `json:"files"`
 	// Disk is null when the server can't read it.
 	Disk *DiskDTO `json:"disk"`
 }

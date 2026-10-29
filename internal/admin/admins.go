@@ -96,8 +96,8 @@ type SignInFilter struct {
 	Failed bool
 	// AdminID keeps one admin's; empty for all.
 	AdminID string
-	Page   int
-	Limit  int
+	Page    int
+	Limit   int
 }
 
 // RecordSignIn notes a sign-in when it was to an admin account. For
