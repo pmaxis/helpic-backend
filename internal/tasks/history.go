@@ -34,6 +34,9 @@ const (
 	// "title": the subtask's.
 	EventSubtaskAdded   = "subtask_added"
 	EventSubtaskRemoved = "subtask_removed"
+	// EventCreatedAt is the task's creation date moved; from and to are
+	// RFC 3339 times.
+	EventCreatedAt = "created_at"
 )
 
 // Event is one change in a task's history.
@@ -133,6 +136,9 @@ func (s *Service) recordEdit(ctx context.Context, actorID string, before, after 
 	}
 	if from, to := projectName(before.Project), projectName(after.Project); from != to {
 		s.Record(ctx, after.ID, actorID, EventProject, change(from, to))
+	}
+	if from, to := before.CreatedAt.UTC().Format(time.RFC3339), after.CreatedAt.UTC().Format(time.RFC3339); from != to {
+		s.Record(ctx, after.ID, actorID, EventCreatedAt, change(from, to))
 	}
 }
 

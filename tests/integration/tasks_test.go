@@ -3,11 +3,13 @@ package integration
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func do(t *testing.T, c *http.Client, method, url string, body any) *http.Response {
@@ -409,4 +411,71 @@ func TestTasks_PersonalTasks(t *testing.T) {
 	resp = post(t, client, srv.URL+"/api/v1/tasks", map[string]any{"title": "Mine"})
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
+}
+
+func TestTasks_MoveCreationDate(t *testing.T) {
+	srv, _ := newAPI(t)
+	freelancer := signUpFreelancer(t, srv, "free@example.com")
+	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
+
+	same := func(got any, want string) bool {
+		g, err := time.Parse(time.RFC3339, fmt.Sprint(got))
+		w, _ := time.Parse(time.RFC3339, want)
+		return err == nil && g.Equal(w)
+	}
+
+	// On create the date is the server's.
+	task := newTask(t, srv, client, map[string]any{"freelancer_id": myID(t, srv, freelancer), "title": "Logo", "created_at": "2020-01-01T00:00:00Z"})
+	if same(task["created_at"], "2020-01-01T00:00:00Z") {
+		t.Fatalf("created_at = %v, want now", task["created_at"])
+	}
+	taskURL := srv.URL + "/api/v1/tasks/" + task["id"].(string)
+	edit := func(c *http.Client, createdAt any) *http.Response {
+		return do(t, c, http.MethodPut, taskURL, map[string]any{"title": "Logo", "description": "", "due_on": nil, "created_at": createdAt})
+	}
+
+	// Either side moves it into the past.
+	resp := edit(freelancer, "2025-03-10T09:30:00+02:00")
+	wantStatus(t, resp, http.StatusOK)
+	if got := field(decode(t, resp), "task")["created_at"]; !same(got, "2025-03-10T07:30:00Z") {
+		t.Fatalf("created_at = %v", got)
+	}
+
+	// Null keeps it; the future and nonsense are refused.
+	resp = edit(client, nil)
+	wantStatus(t, resp, http.StatusOK)
+	if got := field(decode(t, resp), "task")["created_at"]; !same(got, "2025-03-10T07:30:00Z") {
+		t.Fatalf("created_at after null = %v", got)
+	}
+	for _, bad := range []string{time.Now().Add(48 * time.Hour).Format(time.RFC3339), "2025-03-10", "soon"} {
+		resp = edit(client, bad)
+		wantStatus(t, resp, http.StatusBadRequest)
+		resp.Body.Close()
+	}
+
+	// Nor after the due date, read in the time's own offset: 00:30 on the 15th
+	// in Kyiv is still the 14th in UTC.
+	due := func(createdAt string) *http.Response {
+		return do(t, freelancer, http.MethodPut, taskURL, map[string]any{"title": "Logo", "description": "", "due_on": "2025-03-14", "created_at": createdAt})
+	}
+	for _, bad := range []string{"2025-03-15T00:30:00+02:00", "2025-03-15T09:00:00Z"} {
+		resp = due(bad)
+		wantStatus(t, resp, http.StatusBadRequest)
+		resp.Body.Close()
+	}
+	resp = due("2025-03-14T23:30:00+02:00")
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	resp = due("2025-03-10T09:30:00+02:00")
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	// The move is in the history.
+	resp = get(t, client, taskURL+"/history")
+	wantStatus(t, resp, http.StatusOK)
+	events, _ := decode(t, resp)["events"].([]any)
+	last := events[len(events)-1].(map[string]any)
+	if last["kind"] != "created_at" || last["data"].(map[string]any)["to"] != "2025-03-10T07:30:00Z" {
+		t.Fatalf("history = %v", events)
+	}
 }

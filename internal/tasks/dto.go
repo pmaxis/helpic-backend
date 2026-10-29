@@ -37,6 +37,10 @@ type Request struct {
 	Title       string  `json:"title"`
 	Description string  `json:"description"`
 	DueOn       *string `json:"due_on"`
+	// CreatedAt moves when the task counts as created, as an RFC 3339 time
+	// no later than now nor, in its own offset, than the due date (edit
+	// only); null keeps it.
+	CreatedAt *string `json:"created_at"`
 	// Price is an amount like "1200.50", set by a freelancer on create only;
 	// PUT /api/v1/tasks/{id}/price changes it later.
 	Price *string `json:"price"`
@@ -56,6 +60,7 @@ type Params struct {
 	Title        string
 	Description  string
 	DueOn        *time.Time
+	CreatedAt    *time.Time
 	PriceCents   *int64
 	Priority     string
 }
@@ -125,6 +130,21 @@ func (r Request) Validate(creatorRole string) (Params, map[string]string) {
 			fields["due_on"] = "Enter a valid date (YYYY-MM-DD)"
 		} else {
 			p.DueOn = &d
+		}
+	}
+	// The creation date is moved on edit only, and never into the future.
+	if creatorRole == "" && r.CreatedAt != nil && strings.TrimSpace(*r.CreatedAt) != "" {
+		c, err := time.Parse(time.RFC3339, strings.TrimSpace(*r.CreatedAt))
+		switch {
+		case err != nil:
+			fields["created_at"] = "Enter a valid date and time"
+		case c.After(time.Now().Add(time.Minute)):
+			fields["created_at"] = "The date can't be in the future"
+		case p.DueOn != nil && c.Format(dateLayout) > p.DueOn.Format(dateLayout):
+			fields["created_at"] = "Can't be after the due date"
+		default:
+			c = c.UTC()
+			p.CreatedAt = &c
 		}
 	}
 	return p, fields

@@ -9497,6 +9497,10 @@ const docTemplate = `{
                 "client_id": {
                     "type": "string"
                 },
+                "created_at": {
+                    "description": "CreatedAt moves when the task counts as created, as an RFC 3339 time\nno later than now nor, in its own offset, than the due date (edit\nonly); null keeps it.",
+                    "type": "string"
+                },
                 "description": {
                     "type": "string"
                 },

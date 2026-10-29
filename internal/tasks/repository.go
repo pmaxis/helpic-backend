@@ -623,8 +623,9 @@ func (r *Repository) Update(ctx context.Context, id, projectID string, p Params)
 		return fmt.Errorf("read task project: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE tasks
-		SET title = $2, description = $3, due_on = $4, project_id = NULLIF($5, '')::uuid
-		WHERE id = $1`, id, p.Title, p.Description, p.DueOn, projectID); err != nil {
+		SET title = $2, description = $3, due_on = $4, project_id = NULLIF($5, '')::uuid,
+			created_at = coalesce($6, created_at)
+		WHERE id = $1`, id, p.Title, p.Description, p.DueOn, projectID, p.CreatedAt); err != nil {
 		return fmt.Errorf("update task: %w", err)
 	}
 	if projectID != oldProject {
