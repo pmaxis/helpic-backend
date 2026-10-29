@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -55,7 +56,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	list, err := h.svc.List(r.Context(), userID, r.URL.Query().Get("task"))
 	if err != nil {
-		writeError(w, err)
+		WriteError(w, err)
 		return
 	}
 	out := make([]DTO, 0, len(list))
@@ -99,7 +100,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err != nil {
-			writeError(w, uploadError(err))
+			WriteError(w, uploadError(err))
 			return
 		}
 		if part.FormName() != "file" {
@@ -107,7 +108,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		}
 		a, err := h.svc.Upload(r.Context(), userID, r.URL.Query().Get("task"), part.FileName(), part)
 		if err != nil {
-			writeError(w, uploadError(err))
+			WriteError(w, uploadError(err))
 			return
 		}
 		response.JSON(w, http.StatusCreated, map[string]DTO{"attachment": ToDTO(a, userID)})
@@ -136,11 +137,16 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	}
 	a, f, err := h.svc.Open(r.Context(), userID, chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, err)
+		WriteError(w, err)
 		return
 	}
 	defer f.Close()
+	Serve(w, r, a, f)
+}
 
+// Serve writes a file Open or OpenOnTask opened: always as a download,
+// except a safe image asked for with ?inline=1.
+func Serve(w http.ResponseWriter, r *http.Request, a Attachment, f *os.File) {
 	disposition := "attachment"
 	if r.URL.Query().Get("inline") != "" && a.IsImage() {
 		disposition = "inline"
@@ -171,7 +177,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.Delete(r.Context(), userID, chi.URLParam(r, "id")); err != nil {
-		writeError(w, err)
+		WriteError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -186,7 +192,8 @@ func uploadError(err error) error {
 	return err
 }
 
-func writeError(w http.ResponseWriter, err error) {
+// WriteError answers with what went wrong with a file.
+func WriteError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound), errors.Is(err, tasks.ErrNotFound):
 		response.Error(w, http.StatusNotFound, response.CodeNotFound, "File not found")

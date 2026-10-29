@@ -127,6 +127,30 @@ func (s *Service) Open(ctx context.Context, userID, id string) (Attachment, *os.
 	if err != nil {
 		return Attachment{}, nil, err
 	}
+	return s.open(a)
+}
+
+// OfTask returns a task's files for whoever holds its public link; the
+// caller has checked the link.
+func (s *Service) OfTask(ctx context.Context, taskID string) ([]Attachment, error) {
+	return s.repo.List(ctx, taskID)
+}
+
+// OpenOnTask opens a file of the task a public link shares: ErrNotFound for
+// a file of any other task, and the checks of Open.
+func (s *Service) OpenOnTask(ctx context.Context, taskID, id string) (Attachment, *os.File, error) {
+	a, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return Attachment{}, nil, err
+	}
+	if a.TaskID != taskID {
+		return Attachment{}, nil, ErrNotFound
+	}
+	return s.open(a)
+}
+
+// open reads a file that passed its check for malware.
+func (s *Service) open(a Attachment) (Attachment, *os.File, error) {
 	switch a.Scan {
 	case ScanPending:
 		return Attachment{}, nil, ErrScanPending
