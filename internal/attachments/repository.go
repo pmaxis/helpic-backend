@@ -66,12 +66,33 @@ func (r *Repository) NewID(ctx context.Context) (string, error) {
 	return id, nil
 }
 
-// Create records a stored file.
-func (r *Repository) Create(ctx context.Context, a Attachment) error {
-	_, err := r.db.Exec(ctx, `INSERT INTO attachments (id, task_id, uploaded_by, file_name, content_type, size_bytes, scan_status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`, a.ID, a.TaskID, a.Uploader.ID, a.FileName, a.ContentType, a.SizeBytes, a.Scan)
+// Create records a stored file, or returns ErrQuota when it would take its
+// uploader past quota bytes (0 = no limit). The uploader's row is locked
+// while the sum is read, so uploads at the same time count one another.
+func (r *Repository) Create(ctx context.Context, a Attachment, quota int64) error {
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	if quota > 0 {
+		var used int64
+		if err := tx.QueryRow(ctx, `SELECT (SELECT coalesce(sum(size_bytes), 0) FROM attachments
+				WHERE uploaded_by = u.id AND scan_status <> 'infected')
+			FROM users u WHERE u.id = $1 FOR UPDATE`, a.Uploader.ID).Scan(&used); err != nil {
+			return fmt.Errorf("sum uploads: %w", err)
+		}
+		if used+a.SizeBytes > quota {
+			return ErrQuota
+		}
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO attachments (id, task_id, uploaded_by, file_name, content_type, size_bytes, scan_status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`, a.ID, a.TaskID, a.Uploader.ID, a.FileName, a.ContentType, a.SizeBytes, a.Scan); err != nil {
 		return fmt.Errorf("create attachment: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit: %w", err)
 	}
 	return nil
 }
@@ -82,17 +103,6 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 		return fmt.Errorf("delete attachment: %w", err)
 	}
 	return nil
-}
-
-// UsedBytes is the size of every file the user has uploaded and still has:
-// an infected file's bytes are gone.
-func (r *Repository) UsedBytes(ctx context.Context, userID string) (int64, error) {
-	var n int64
-	if err := r.db.QueryRow(ctx, `SELECT coalesce(sum(size_bytes), 0) FROM attachments
-		WHERE uploaded_by = $1 AND scan_status <> 'infected'`, userID).Scan(&n); err != nil {
-		return 0, fmt.Errorf("sum uploads: %w", err)
-	}
-	return n, nil
 }
 
 // IDsOfTask lists a task's file IDs, to remove the files with the task.

@@ -94,16 +94,6 @@ func (s *Service) Upload(ctx context.Context, userID, taskID, fileName string, r
 	if err != nil {
 		return Attachment{}, err
 	}
-	if s.quota > 0 {
-		used, err := s.repo.UsedBytes(ctx, userID)
-		if err == nil && used+size > s.quota {
-			err = ErrQuota
-		}
-		if err != nil {
-			_ = s.store.Remove(id)
-			return Attachment{}, err
-		}
-	}
 
 	a := Attachment{
 		ID:          id,
@@ -117,7 +107,7 @@ func (s *Service) Upload(ctx context.Context, userID, taskID, fileName string, r
 	if s.scanner != nil {
 		a.Scan = ScanPending
 	}
-	if err := s.repo.Create(ctx, a); err != nil {
+	if err := s.repo.Create(ctx, a, s.quota); err != nil {
 		_ = s.store.Remove(id)
 		return Attachment{}, err
 	}
