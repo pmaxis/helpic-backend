@@ -782,8 +782,16 @@ func (r *Repository) MoveTo(ctx context.Context, id, fromStatusID, toStatusID, c
 
 // Delete removes the task.
 func (r *Repository) Delete(ctx context.Context, id string) error {
-	if _, err := r.db.Exec(ctx, `DELETE FROM tasks WHERE id = $1`, id); err != nil {
+	// What CanDelete checked, again in the same statement: the task may have
+	// been done, billed or split since it was read. ErrNotEditable then.
+	tag, err := r.db.Exec(ctx, `DELETE FROM tasks t
+		WHERE t.id = $1 AND t.archived_at IS NULL AND t.status <> 'done' AND NOT task_billed(t.id)
+			AND NOT EXISTS (SELECT 1 FROM tasks s WHERE s.parent_id = t.id)`, id)
+	if err != nil {
 		return fmt.Errorf("delete task: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotEditable
 	}
 	return nil
 }
