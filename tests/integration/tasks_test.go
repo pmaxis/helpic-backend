@@ -233,13 +233,13 @@ func TestTasks_ClientSetsAndFreelancerWorks(t *testing.T) {
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 
-	// Started tasks can't be deleted.
-	resp = do(t, client, http.MethodDelete, srv.URL+"/api/v1/tasks/"+id, nil)
-	wantStatus(t, resp, http.StatusConflict)
-	resp.Body.Close()
-
 	resp = post(t, freelancer, srv.URL+"/api/v1/tasks/"+id+"/status", map[string]string{"status": "done"})
 	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	// Done tasks can't be deleted.
+	resp = do(t, client, http.MethodDelete, srv.URL+"/api/v1/tasks/"+id, nil)
+	wantStatus(t, resp, http.StatusConflict)
 	resp.Body.Close()
 
 	// Done tasks stay editable: the client fixes their wording, and the
@@ -318,8 +318,11 @@ func TestTasks_FreelancerCreatesForClient(t *testing.T) {
 	wantStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 
-	// The freelancer edits their own task, then deletes it.
+	// The freelancer edits their own task, starts it, then deletes it.
 	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/tasks/"+id, map[string]any{"title": "Set up hosting and DNS"})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	resp = post(t, freelancer, srv.URL+"/api/v1/tasks/"+id+"/status", map[string]string{"status": "in_progress"})
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 

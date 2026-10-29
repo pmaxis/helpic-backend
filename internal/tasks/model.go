@@ -25,8 +25,7 @@ var (
 	// ErrNotLinked is returned when a task is created for someone the creator
 	// doesn't work with.
 	ErrNotLinked = errors.New("not linked with this freelancer")
-	// ErrNotEditable is returned when deleting a task in a status that no
-	// longer allows it.
+	// ErrNotEditable is returned when deleting a task that is done or billed.
 	ErrNotEditable = errors.New("task cannot be changed in its current status")
 	// ErrEditNotAllowed is returned when someone other than the task's
 	// creator or freelancer edits it.
@@ -186,9 +185,10 @@ func CanEdit(t Task, viewerID string) bool {
 }
 
 // CanDelete reports whether the viewer may delete the task: only its creator,
-// and only before work has started.
+// and only until it's done. A task on a sent report stays, whatever its
+// status: the report bills it.
 func CanDelete(t Task, viewerID string) bool {
-	return !t.Archived() && t.CreatedBy == viewerID && t.Status == StatusNew && t.Subtasks.Total == 0
+	return !t.Archived() && t.CreatedBy == viewerID && t.Status != StatusDone && !t.Billed && t.Subtasks.Total == 0
 }
 
 // CanAddSubtask reports whether the viewer may split the task: anyone who

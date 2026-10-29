@@ -65,6 +65,36 @@ func TestCanEdit(t *testing.T) {
 	}
 }
 
+func TestCanDelete(t *testing.T) {
+	const freelancer, client = "f", "c"
+	shared := func(status, createdBy string) tasks.Task {
+		return tasks.Task{Status: status, CreatedBy: createdBy, Freelancer: tasks.Party{ID: freelancer}, Client: &tasks.Party{ID: client}}
+	}
+	billed := shared(tasks.StatusInProgress, client)
+	billed.Billed = true
+	split := shared(tasks.StatusNew, client)
+	split.Subtasks.Total = 1
+
+	cases := []struct {
+		name   string
+		task   tasks.Task
+		viewer string
+		want   bool
+	}{
+		{"creator deletes a new task", shared(tasks.StatusNew, client), client, true},
+		{"creator deletes a started task", shared(tasks.StatusInProgress, client), client, true},
+		{"a done task stays", shared(tasks.StatusDone, client), client, false},
+		{"a task on a sent report stays", billed, client, false},
+		{"a task with subtasks stays", split, client, false},
+		{"only the creator deletes", shared(tasks.StatusInProgress, client), freelancer, false},
+	}
+	for _, c := range cases {
+		if got := tasks.CanDelete(c.task, c.viewer); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 func TestCanSeePrice(t *testing.T) {
 	const freelancer, owner, member = "f", "o", "m"
 	shared := tasks.Task{CreatedBy: member, Freelancer: tasks.Party{ID: freelancer}, Client: &tasks.Party{ID: owner}}

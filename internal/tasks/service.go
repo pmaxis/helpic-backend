@@ -638,8 +638,8 @@ func labelDiff(before, after []Label) (added, removed []string) {
 	return added, removed
 }
 
-// Delete removes a task its creator added by mistake: only before work on it
-// has started.
+// Delete removes a task its creator added by mistake: any time before it's
+// done, with its comments, files and time.
 func (s *Service) Delete(ctx context.Context, userID, id string) error {
 	t, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
