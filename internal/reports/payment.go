@@ -13,13 +13,25 @@ import (
 )
 
 var (
-	// ErrNotClient is returned when anyone but the report's client marks it
-	// paid.
-	ErrNotClient = errors.New("only the client marks a report paid")
+	// ErrNotParty is returned when anyone but the report's freelancer or
+	// client marks it paid.
+	ErrNotParty = errors.New("only the report's freelancer or client marks it paid")
 	// ErrNotSent is returned when marking paid a report that isn't sent and
 	// unpaid.
 	ErrNotSent = errors.New("only a sent, unpaid report can be marked paid")
 )
+
+// onBothSides reports whether the user is the freelancer or the client of a
+// report that has both.
+func onBothSides(r Report, userID string) bool {
+	return r.Client != nil && (r.Client.ID == userID || r.Freelancer.ID == userID)
+}
+
+// CanMarkPaid reports whether the viewer may mark the report paid: either
+// side of it, while it's sent and unpaid.
+func CanMarkPaid(r Report, viewerID string) bool {
+	return onBothSides(r, viewerID) && r.Status == StatusSent
+}
 
 // taskRecorder adds to a task's history. Implemented by *tasks.Service.
 type taskRecorder interface {
@@ -103,15 +115,20 @@ func (r *Repository) MarkPaid(ctx context.Context, id string, at time.Time) ([]a
 	return archived, nil
 }
 
-// MarkPaid is the client saying they paid a sent report: it becomes paid, its
-// tasks are archived, and the freelancer is told. There's no taking it back.
-func (s *Service) MarkPaid(ctx context.Context, clientID, id string) (Report, error) {
-	r, err := s.repo.Get(ctx, clientID, id)
+// MarkPaid is the client saying they paid a sent report, or the freelancer
+// saying the money came: it becomes paid, its tasks are archived, and the
+// other side is told. There's no taking it back.
+func (s *Service) MarkPaid(ctx context.Context, userID, id string) (Report, error) {
+	r, err := s.repo.Get(ctx, userID, id)
 	if err != nil {
 		return Report{}, err
 	}
-	if r.Client == nil || r.Client.ID != clientID {
-		return Report{}, ErrNotClient
+	if !onBothSides(r, userID) {
+		return Report{}, ErrNotParty
+	}
+	other := r.Freelancer.ID
+	if userID == r.Freelancer.ID {
+		other = r.Client.ID
 	}
 	archived, err := s.repo.MarkPaid(ctx, r.ID, time.Now())
 	if err != nil {
@@ -119,18 +136,18 @@ func (s *Service) MarkPaid(ctx context.Context, clientID, id string) (Report, er
 	}
 	for _, a := range archived {
 		if a.From != "" {
-			s.tasks.Record(ctx, a.ID, clientID, tasks.EventStatus, map[string]any{"from": a.From, "to": a.To, "category": tasks.StatusDone})
+			s.tasks.Record(ctx, a.ID, userID, tasks.EventStatus, map[string]any{"from": a.From, "to": a.To, "category": tasks.StatusDone})
 		}
-		s.tasks.Record(ctx, a.ID, clientID, tasks.EventArchived, map[string]any{"report": r.Title})
+		s.tasks.Record(ctx, a.ID, userID, tasks.EventArchived, map[string]any{"report": r.Title})
 	}
-	s.record(ctx, r.ID, clientID, EventPaid, map[string]any{"tasks": len(archived)})
+	s.record(ctx, r.ID, userID, EventPaid, map[string]any{"tasks": len(archived)})
 	s.notify.Notify(ctx, notifications.Notification{
-		UserID:    r.Freelancer.ID,
-		ActorID:   clientID,
+		UserID:    other,
+		ActorID:   userID,
 		Kind:      notifications.KindReportPaid,
 		ReportID:  r.ID,
 		ProjectID: soleProject(r),
 		Subject:   r.Title,
 	})
-	return s.read(ctx, clientID, id)
+	return s.read(ctx, userID, id)
 }

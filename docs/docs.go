@@ -5355,7 +5355,7 @@ const docTemplate = `{
         },
         "/reports/{id}/paid": {
             "post": {
-                "description": "The report's client only. Its tasks go to the archive for good; the freelancer is notified.",
+                "description": "The report's freelancer or client. Its tasks go to the archive for good; the other side is notified.",
                 "produces": [
                     "application/json"
                 ],
@@ -5389,7 +5389,7 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "Not the report's client",
+                        "description": "Not the report's freelancer or client",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -8924,7 +8924,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "can_mark_paid": {
-                    "description": "CanMarkPaid is true for the client of a sent, unpaid report.",
+                    "description": "CanMarkPaid is true for the freelancer and the client of a sent, unpaid\nreport.",
                     "type": "boolean"
                 },
                 "client": {

@@ -238,16 +238,17 @@ func (h *Handler) Send(w http.ResponseWriter, r *http.Request) {
 	writeReport(w, http.StatusOK, rep, userID, err)
 }
 
-// MarkPaid handles POST /api/v1/reports/{id}/paid: the client paid it.
+// MarkPaid handles POST /api/v1/reports/{id}/paid: the client paid it, or the
+// freelancer got the money.
 //
 //	@Summary		Mark a sent report paid
-//	@Description	The report's client only. Its tasks go to the archive for good; the freelancer is notified.
+//	@Description	The report's freelancer or client. Its tasks go to the archive for good; the other side is notified.
 //	@Tags			reports
 //	@Produce		json
 //	@Param			id	path		string					true	"Report ID"
 //	@Success		200	{object}	map[string]DTO			"report"
 //	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
-//	@Failure		403	{object}	response.ErrorEnvelope	"Not the report's client"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not the report's freelancer or client"
 //	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
 //	@Failure		409	{object}	response.ErrorEnvelope	"Not sent, or already paid"
 //	@Router			/reports/{id}/paid [post]
@@ -317,8 +318,8 @@ func writeReport(w http.ResponseWriter, status int, rep Report, viewerID string,
 		response.Error(w, http.StatusNotFound, response.CodeNotFound, "Report not found")
 	case errors.Is(err, ErrNoClient):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "A personal report has no client to send it to — download it instead")
-	case errors.Is(err, ErrNotClient):
-		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the client marks a report as paid")
+	case errors.Is(err, ErrNotParty):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the report's freelancer or client marks it as paid")
 	case errors.Is(err, ErrNotSent):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "Only a sent report that isn't paid yet can be marked as paid")
 	case errors.Is(err, ErrSent):

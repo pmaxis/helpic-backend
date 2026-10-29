@@ -519,8 +519,8 @@ func (s *Service) failure(t translator, err error) string {
 		return t("The report is gone.")
 	case errors.Is(err, reports.ErrNotSent):
 		return t("The report is already marked paid.")
-	case errors.Is(err, reports.ErrNotClient):
-		return t("Only the report's client marks it paid.")
+	case errors.Is(err, reports.ErrNotParty):
+		return t("Only the report's freelancer or client marks it paid.")
 	default:
 		slog.Error("telegram: action", "error", err)
 		return t("Something went wrong. Please try again.")

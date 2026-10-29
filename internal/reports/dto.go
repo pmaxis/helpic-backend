@@ -200,7 +200,8 @@ type DTO struct {
 	InUAH *InUAHDTO `json:"in_uah"`
 	// CanEdit is true for the freelancer while the report is a draft.
 	CanEdit bool `json:"can_edit"`
-	// CanMarkPaid is true for the client of a sent, unpaid report.
+	// CanMarkPaid is true for the freelancer and the client of a sent, unpaid
+	// report.
 	CanMarkPaid bool `json:"can_mark_paid"`
 	// CanDelete is true for the freelancer while the report is a draft.
 	CanDelete bool      `json:"can_delete"`
@@ -242,7 +243,7 @@ func ToDTO(r Report, viewerID string) DTO {
 		Currency:    r.Currency,
 		CanEdit:     r.Freelancer.ID == viewerID && r.Status == StatusDraft,
 		CanDelete:   r.Freelancer.ID == viewerID && r.Status == StatusDraft,
-		CanMarkPaid: r.Client != nil && r.Client.ID == viewerID && r.Status == StatusSent,
+		CanMarkPaid: CanMarkPaid(r, viewerID),
 		TotalCents:  r.ListTotal,
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,

@@ -43,21 +43,23 @@ func TestReports_PaidAndHistory(t *testing.T) {
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 
-	// Only a sent report is paid, and only by its client.
+	// Only a sent report is paid, by either side.
 	resp = post(t, client, reportURL+"/paid", nil)
 	wantStatus(t, resp, http.StatusNotFound) // the client can't see a draft
+	resp.Body.Close()
+	resp = post(t, freelancer, reportURL+"/paid", nil)
+	wantStatus(t, resp, http.StatusConflict)
 	resp.Body.Close()
 	resp = post(t, freelancer, reportURL+"/send", nil)
 	wantStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
-	resp = post(t, freelancer, reportURL+"/paid", nil)
-	wantStatus(t, resp, http.StatusForbidden)
-	resp.Body.Close()
 
-	resp = get(t, client, reportURL)
-	wantStatus(t, resp, http.StatusOK)
-	if got := field(decode(t, resp), "report"); got["can_mark_paid"] != true {
-		t.Fatalf("client view of a sent report = %v", got)
+	for _, c := range []*http.Client{freelancer, client} {
+		resp = get(t, c, reportURL)
+		wantStatus(t, resp, http.StatusOK)
+		if got := field(decode(t, resp), "report"); got["can_mark_paid"] != true {
+			t.Fatalf("view of a sent report = %v", got)
+		}
 	}
 	resp = post(t, client, reportURL+"/paid", nil)
 	wantStatus(t, resp, http.StatusOK)
@@ -124,21 +126,35 @@ func TestReports_PaidAndHistory(t *testing.T) {
 		t.Fatalf("client's report history = %v", got)
 	}
 
-	// A second report leaves out what was paid for; paying it archives the
-	// rest.
+	// A second report leaves out what was paid for; the freelancer marks it
+	// paid when the money comes, which archives the rest.
 	reportURL, items = report()
 	if len(items) != 1 || items[0].(map[string]any)["title"] != "Landing" {
 		t.Fatalf("second report = %v", items)
 	}
 	resp = post(t, freelancer, reportURL+"/send", nil)
 	wantStatus(t, resp, http.StatusOK)
-	resp.Body.Close()
-	resp = post(t, client, reportURL+"/paid", nil)
+	second := field(decode(t, resp), "report")["title"]
+	resp = post(t, freelancer, reportURL+"/paid", nil)
 	wantStatus(t, resp, http.StatusOK)
-	resp.Body.Close()
+	if got := field(decode(t, resp), "report"); got["status"] != "paid" || got["can_mark_paid"] != false {
+		t.Fatalf("report the freelancer marked paid = %v", got)
+	}
 	b = getBoard(t, srv, freelancer, "?with="+clientID)
 	if len(b.Columns) != 3 || len(column(b, "Done").Tasks) != 0 {
 		t.Fatalf("board after the second payment = %+v", b.Columns)
+	}
+
+	// This time the client hears about it.
+	notes, _ = notifications(t, srv, client)
+	found = false
+	for _, n := range notes {
+		if n.Kind == "report_paid" && n.Subject == second {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("client notifications = %+v", notes)
 	}
 }
 
