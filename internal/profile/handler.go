@@ -19,11 +19,13 @@ type Handler struct {
 	svc *Service
 	// breaches turns away new passwords known from a breach; nil allows them.
 	breaches auth.BreachChecker
+	// cookie is cleared once the account is deleted.
+	cookie auth.CookieConfig
 }
 
 // NewHandler creates a profile Handler.
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, cookie auth.CookieConfig) *Handler {
+	return &Handler{svc: svc, cookie: cookie}
 }
 
 // RefuseBreached turns away a new password when the checker knows it from a
@@ -41,6 +43,7 @@ func (h *Handler) PublicRoutes(r chi.Router) {
 // guard wraps the ones that check the current password, to limit guessing.
 func (h *Handler) Routes(r chi.Router, guard func(http.Handler) http.Handler) {
 	r.Put("/me", h.UpdateName)
+	r.With(guard).Delete("/me", h.DeleteAccount)
 	r.With(guard).Put("/me/email", h.ChangeEmail)
 	r.With(guard).Put("/me/password", h.ChangePassword)
 	r.Put("/me/currency", h.SetCurrency)

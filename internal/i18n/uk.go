@@ -404,4 +404,15 @@ var uk = map[string]string{
 	"Two-factor sign-in was reset": "Двофакторний вхід скинуто",
 	"Helpic's support turned off two-factor sign-in for your account, %s, and signed it out on every device. Signing in takes only the password now; turn two-factor on again under Settings → Security.": "Підтримка Helpic вимкнула двофакторний вхід для вашого акаунта %s і вийшла з нього на всіх пристроях. Тепер для входу потрібен лише пароль; увімкніть двофакторний вхід знову в Налаштування → Безпека.",
 	"If you didn't ask for this, change your password right away and write to Helpic's support.":                                                                                                          "Якщо ви про це не просили, одразу змініть пароль і напишіть у підтримку Helpic.",
+
+	// --- deleting an account --------------------------------------------------------------
+	"Deleted user":                    "Видалений користувач",
+	"Your Helpic account was deleted": "Ваш акаунт Helpic видалено",
+	"Your account was deleted":        "Акаунт видалено",
+	"Your Helpic account, %s, was deleted and signed out on every device.":                                                                              "Ваш акаунт Helpic %s видалено, і з нього вийдено на всіх пристроях.",
+	"Helpic's support deleted your Helpic account, %s, and signed it out on every device.":                                                              "Підтримка Helpic видалила ваш акаунт Helpic %s і вийшла з нього на всіх пристроях.",
+	"The work you shared with others stays with them, under “%s”. Everything else of yours is gone. You can sign up again with this email at any time.": "Спільна робота з іншими людьми лишається в них, під іменем «%s». Усе інше ваше видалено. Зареєструватися з цією адресою знову можна будь-коли.",
+	"An admin account can't be deleted from the settings":                                                                                               "Акаунт адміністратора не можна видалити з налаштувань",
+	"Your company still has people in it. Remove them under Team first, so they don't lose its work without warning.":                                   "У вашій компанії ще є люди. Спершу приберіть їх у розділі «Команда», щоб вони не втратили доступ до її роботи без попередження.",
+	"Their company still has people in it. They have to be removed from the team first.":                                                                "У компанії цього акаунта ще є люди. Спершу їх треба прибрати з команди.",
 }

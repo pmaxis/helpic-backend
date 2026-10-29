@@ -208,10 +208,10 @@ func (r *Repository) TaskOf(ctx context.Context, chatID, messageID int64, userID
 // clients, or the freelancers of a client's company, by name.
 func (r *Repository) Counterparts(ctx context.Context, userID, role string) ([]Target, error) {
 	q := `SELECT u.id::text, coalesce(NULLIF(u.name, ''), u.email) FROM freelancer_clients fc
-		JOIN users u ON u.id = fc.client_id WHERE fc.freelancer_id = $1 ORDER BY lower(u.name), u.email`
+		JOIN users u ON u.id = fc.client_id AND u.deleted_at IS NULL WHERE fc.freelancer_id = $1 ORDER BY lower(u.name), u.email`
 	if role == user.RoleClient {
 		q = `SELECT u.id::text, coalesce(NULLIF(u.name, ''), u.email) FROM freelancer_clients fc
-			JOIN users u ON u.id = fc.freelancer_id WHERE fc.client_id = acting_client($1) ORDER BY lower(u.name), u.email`
+			JOIN users u ON u.id = fc.freelancer_id AND u.deleted_at IS NULL WHERE fc.client_id = acting_client($1) ORDER BY lower(u.name), u.email`
 	}
 	rows, err := r.db.Query(ctx, q, userID)
 	if err != nil {

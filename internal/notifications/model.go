@@ -44,6 +44,10 @@ const (
 
 var ErrNotFound = errors.New("notification not found")
 
+// ErrRecipientGone is returned for a notification to someone who deleted
+// their account: there is nobody to tell.
+var ErrRecipientGone = errors.New("recipient deleted their account")
+
 // Notification is one thing that happened, for one recipient.
 type Notification struct {
 	ID string

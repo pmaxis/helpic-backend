@@ -24,6 +24,8 @@ type Service struct {
 	alertLocale string
 	// uploads are the limits on files, and where they are kept.
 	uploads Uploads
+	// accounts deletes accounts (see UseAccounts).
+	accounts Accounts
 }
 
 // NewService creates an admin Service. loc is the app's time zone, whose days

@@ -239,7 +239,7 @@ func (r *Repository) Participants(ctx context.Context, userID, projectID string)
 func (r *Repository) Candidates(ctx context.Context, projectID string) ([]Person, error) {
 	rows, err := r.db.Query(ctx, `SELECT u.id, u.name, u.email, j.role
 		FROM (`+whoCanJoin+`) j
-		JOIN users u ON u.id = j.id
+		JOIN users u ON u.id = j.id AND u.deleted_at IS NULL
 		WHERE NOT EXISTS (
 			SELECT 1 FROM project_participants pp WHERE pp.project_id = $1::uuid AND pp.user_id = u.id
 		)
@@ -266,7 +266,9 @@ func collectPeople(rows pgx.Rows) ([]Person, error) {
 func (r *Repository) Invite(ctx context.Context, projectID, userID, invitedBy string) (added bool, err error) {
 	var id string
 	err = r.db.QueryRow(ctx, `INSERT INTO project_participants (project_id, user_id, invited_by)
-		SELECT $1::uuid, j.id, $3::uuid FROM (`+whoCanJoin+`) j WHERE j.id = as_uuid($2)
+		SELECT $1::uuid, j.id, $3::uuid FROM (`+whoCanJoin+`) j
+		JOIN users u ON u.id = j.id AND u.deleted_at IS NULL
+		WHERE j.id = as_uuid($2)
 		ON CONFLICT DO NOTHING
 		RETURNING user_id`, projectID, userID, invitedBy).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {

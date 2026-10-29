@@ -152,7 +152,8 @@ func (r *Repository) IsContractor(ctx context.Context, userID string) (bool, err
 }
 
 // ClientPeople lists who can be on the task: freelancers who can take it, the
-// client, then the client's company, and who is on it already.
+// client, then the client's company, and who is on it already. A deleted
+// account is listed only while it is on the task.
 func (r *Repository) ClientPeople(ctx context.Context, taskID string) ([]Person, error) {
 	rows, err := r.db.Query(ctx, `SELECT u.id, u.name, u.email, j.role,
 			EXISTS (SELECT 1 FROM task_participants tp WHERE tp.task_id = t.id AND tp.user_id = u.id)
@@ -184,6 +185,8 @@ func (r *Repository) ClientPeople(ctx context.Context, taskID string) ([]Person,
 		) j ON true
 		JOIN users u ON u.id = j.id
 		WHERE t.id = $1
+		  AND (u.deleted_at IS NULL OR u.id IS NOT DISTINCT FROM t.freelancer_id
+			OR EXISTS (SELECT 1 FROM task_participants tp WHERE tp.task_id = t.id AND tp.user_id = u.id))
 		ORDER BY j.role = 'freelancer' DESC, j.role = 'owner' DESC, lower(u.name), u.email`, taskID)
 	if err != nil {
 		return nil, fmt.Errorf("list client people: %w", err)
@@ -215,7 +218,8 @@ func (r *Repository) ClientSideParticipants(ctx context.Context, taskID, clientI
 	return out, nil
 }
 
-// Readers lists who sees the task (the sees_task SQL function), by name.
+// Readers lists who sees the task (the sees_task SQL function), by name,
+// leaving out deleted accounts.
 func (r *Repository) Readers(ctx context.Context, taskID string) ([]Person, error) {
 	rows, err := r.db.Query(ctx, `SELECT u.id::text, u.name, u.email
 		FROM tasks t
@@ -223,7 +227,7 @@ func (r *Repository) Readers(ctx context.Context, taskID string) ([]Person, erro
 			OR u.id IN (SELECT cm.user_id FROM companies c
 				JOIN company_members cm ON cm.company_id = c.id
 				WHERE c.owner_id = t.client_id)
-		WHERE t.id = $1 AND sees_task(u.id, t.id, t.freelancer_id, t.client_id)
+		WHERE t.id = $1 AND sees_task(u.id, t.id, t.freelancer_id, t.client_id) AND u.deleted_at IS NULL
 		ORDER BY lower(u.name), u.email`, taskID)
 	if err != nil {
 		return nil, fmt.Errorf("list task readers: %w", err)
@@ -417,11 +421,12 @@ func (r *Repository) ProjectClient(ctx context.Context, userID, projectID string
 	return clientID, nil
 }
 
-// FreelancerParticipants lists the freelancers on a project, earliest first.
+// FreelancerParticipants lists the freelancers on a project who can still
+// take a task, earliest first.
 func (r *Repository) FreelancerParticipants(ctx context.Context, projectID string) ([]string, error) {
 	rows, err := r.db.Query(ctx, `SELECT pp.user_id::text
 		FROM project_participants pp
-		JOIN users u ON u.id = pp.user_id AND u.role = 'freelancer'
+		JOIN users u ON u.id = pp.user_id AND u.role = 'freelancer' AND u.deleted_at IS NULL
 		WHERE pp.project_id = $1::uuid
 		ORDER BY pp.created_at, pp.user_id`, projectID)
 	if err != nil {
@@ -434,11 +439,15 @@ func (r *Repository) FreelancerParticipants(ctx context.Context, projectID strin
 	return ids, nil
 }
 
-// Linked reports whether the freelancer works with the client.
+// Linked reports whether the freelancer works with the client, and neither
+// deleted their account.
 func (r *Repository) Linked(ctx context.Context, freelancerID, clientID string) (bool, error) {
 	var ok bool
 	err := r.db.QueryRow(ctx, `SELECT EXISTS (
-		SELECT 1 FROM freelancer_clients WHERE freelancer_id = as_uuid($1) AND client_id = as_uuid($2))`,
+		SELECT 1 FROM freelancer_clients fc
+		JOIN users f ON f.id = fc.freelancer_id AND f.deleted_at IS NULL
+		JOIN users c ON c.id = fc.client_id AND c.deleted_at IS NULL
+		WHERE fc.freelancer_id = as_uuid($1) AND fc.client_id = as_uuid($2))`,
 		freelancerID, clientID).Scan(&ok)
 	if err != nil {
 		return false, fmt.Errorf("check link: %w", err)
@@ -558,11 +567,14 @@ func (r *Repository) CreatePersonal(ctx context.Context, freelancerID, projectID
 }
 
 // Create inserts a task between a linked freelancer and client; when they
-// aren't linked it returns ErrNotLinked.
+// aren't linked, or one deleted their account, it returns ErrNotLinked.
 func (r *Repository) Create(ctx context.Context, freelancerID, clientID, createdBy, projectID, statusID string, p Params) (string, error) {
 	var linked bool
 	err := r.db.QueryRow(ctx, `SELECT EXISTS (
-		SELECT 1 FROM freelancer_clients WHERE freelancer_id = as_uuid($1) AND client_id = as_uuid($2))`,
+		SELECT 1 FROM freelancer_clients fc
+		JOIN users f ON f.id = fc.freelancer_id AND f.deleted_at IS NULL
+		JOIN users c ON c.id = fc.client_id AND c.deleted_at IS NULL
+		WHERE fc.freelancer_id = as_uuid($1) AND fc.client_id = as_uuid($2))`,
 		freelancerID, clientID).Scan(&linked)
 	if err != nil {
 		return "", fmt.Errorf("check link: %w", err)

@@ -64,7 +64,7 @@ func (s *Service) UseMail(m Mailer) {
 
 // Act does action to the account id as the admin adminID, records it with
 // the reason when it changed something, and returns the account as it is
-// now. ErrNotFound for no such account, or an admin's.
+// now. ErrNotFound for no such account, a deleted one, or an admin's.
 func (s *Service) Act(ctx context.Context, adminID, id, action, reason string) (AccountDetail, error) {
 	changed, err := s.repo.Act(ctx, adminID, id, action, reason)
 	if err != nil {
@@ -116,7 +116,7 @@ func (r *Repository) Act(ctx context.Context, adminID, id, action, reason string
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	var target string
-	err = tx.QueryRow(ctx, `SELECT email FROM users WHERE id = $1 AND role <> 'admin' FOR UPDATE`, id).Scan(&target)
+	err = tx.QueryRow(ctx, `SELECT email FROM users WHERE id = $1 AND role <> 'admin' AND deleted_at IS NULL FOR UPDATE`, id).Scan(&target)
 	if errors.Is(err, pgx.ErrNoRows) || isBadUUID(err) {
 		return false, ErrNotFound
 	}

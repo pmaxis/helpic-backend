@@ -103,7 +103,7 @@ definitions:
   admin.ActionDTO:
     properties:
       action:
-        description: Action is block, unblock, end_sessions or reset_two_factor.
+        description: Action is block, unblock, end_sessions, reset_two_factor or delete.
         type: string
       admin_email:
         type: string
@@ -1087,6 +1087,16 @@ definitions:
   profile.CurrencyRequest:
     properties:
       currency:
+        type: string
+    type: object
+  profile.DeleteAccountRequest:
+    properties:
+      code:
+        description: |-
+          Code is asked for when the account has two-factor on: six digits from
+          the app, or a recovery code.
+        type: string
+      current_password:
         type: string
     type: object
   profile.EmailRequest:
@@ -2669,6 +2679,56 @@ paths:
       tags:
       - admin
   /admin/users/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 'As the person could themselves: the work they shared stays with
+        the others under "Deleted user", the rest of theirs is deleted, the email
+        is freed, and the old address is told. Asks for the admin''s two-factor code
+        again and is recorded with the reason. Refused while the client''s company
+        still has people. Admins'' accounts can''t be deleted.'
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/admin.ActionRequest'
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          description: Reason too long, or the code missing or wrong (field code)
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not an admin, or two-factor is off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: No such account
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: The company still has people
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many wrong codes
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Delete an account
+      tags:
+      - admin
     get:
       description: 'One account in full: its team, how much it has done (counts only)
         and the days it used Helpic over the last 26 weeks.'
@@ -4150,6 +4210,48 @@ paths:
       tags:
       - invitations
   /me:
+    delete:
+      consumes:
+      - application/json
+      description: Needs the current password and, with two-factor on, a code from
+        the app or a recovery code (without one, 403 TWO_FACTOR_REQUIRED). The work
+        shared with others stays with them under "Deleted user"; personal work, settings,
+        sessions and links are deleted, and the email is freed. Signs out and emails
+        the old address. Refused while the client's company still has people, and
+        for admins.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/profile.DeleteAccountRequest'
+      responses:
+        "204":
+          description: Deleted and signed out
+        "400":
+          description: Wrong password (field current_password) or code (field code)
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: A code is needed, or an admin's account
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: The company still has people
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many attempts
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Delete your account
+      tags:
+      - account
     get:
       produces:
       - application/json

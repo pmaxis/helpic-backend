@@ -55,7 +55,7 @@ func (r *Repository) DeleteUser(ctx context.Context, id string) error {
 // GetByEmail loads an account by its normalized email. Returns user.ErrNotFound
 // when there is no match.
 func (r *Repository) GetByEmail(ctx context.Context, email string) (user.User, error) {
-	u, err := user.Scan(r.db.QueryRow(ctx, `SELECT `+user.Columns+` FROM users WHERE email = $1`, email))
+	u, err := user.Scan(r.db.QueryRow(ctx, `SELECT `+user.Columns+` FROM users WHERE email = $1 AND deleted_at IS NULL`, email))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return user.User{}, user.ErrNotFound
 	}

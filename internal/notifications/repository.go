@@ -23,16 +23,20 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 
 // Create stores a notification and returns it with its ID, time and the
 // actor's name and email. The bell shows it when the recipient wants its
-// kind there.
+// kind there. ErrRecipientGone when the recipient deleted their account.
 func (r *Repository) Create(ctx context.Context, n Notification) (Notification, error) {
 	err := r.db.QueryRow(ctx, `INSERT INTO notifications (user_id, actor_id, kind, task_id, project_id, report_id, subject, detail, in_app)
-		VALUES ($1, NULLIF($2, '')::uuid, $3, NULLIF($4, '')::uuid, NULLIF($5, '')::uuid, NULLIF($6, '')::uuid, $7, $8,
-			coalesce((SELECT $3 = ANY(p.kinds) FROM app_notification_prefs p WHERE p.user_id = $1), true))
+		SELECT $1, NULLIF($2, '')::uuid, $3, NULLIF($4, '')::uuid, NULLIF($5, '')::uuid, NULLIF($6, '')::uuid, $7, $8,
+			coalesce((SELECT $3 = ANY(p.kinds) FROM app_notification_prefs p WHERE p.user_id = $1), true)
+		FROM users WHERE id = $1 AND deleted_at IS NULL
 		RETURNING id, created_at,
 			coalesce((SELECT name FROM users WHERE id = as_uuid($2)), ''),
 			coalesce((SELECT email FROM users WHERE id = as_uuid($2)), '')`,
 		n.UserID, n.ActorID, n.Kind, n.TaskID, n.ProjectID, n.ReportID, n.Subject, n.Detail).
 		Scan(&n.ID, &n.CreatedAt, &n.ActorName, &n.ActorEmail)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Notification{}, ErrRecipientGone
+	}
 	if err != nil {
 		return Notification{}, fmt.Errorf("create notification: %w", err)
 	}

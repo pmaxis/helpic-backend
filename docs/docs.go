@@ -1071,6 +1071,75 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "delete": {
+                "description": "As the person could themselves: the work they shared stays with the others under \"Deleted user\", the rest of theirs is deleted, the email is freed, and the old address is told. Asks for the admin's two-factor code again and is recorded with the reason. Refused while the client's company still has people. Admins' accounts can't be deleted.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Delete an account",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/admin.ActionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Deleted"
+                    },
+                    "400": {
+                        "description": "Reason too long, or the code missing or wrong (field code)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not an admin, or two-factor is off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "No such account",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "The company still has people",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many wrong codes",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
             }
         },
         "/admin/users/{id}/sessions": {
@@ -3279,6 +3348,62 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Needs the current password and, with two-factor on, a code from the app or a recovery code (without one, 403 TWO_FACTOR_REQUIRED). The work shared with others stays with them under \"Deleted user\"; personal work, settings, sessions and links are deleted, and the email is freed. Signs out and emails the old address. Refused while the client's company still has people, and for admins.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Delete your account",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/profile.DeleteAccountRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Deleted and signed out"
+                    },
+                    "400": {
+                        "description": "Wrong password (field current_password) or code (field code)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "A code is needed, or an admin's account",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "The company still has people",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many attempts",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -7120,7 +7245,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "action": {
-                    "description": "Action is block, unblock, end_sessions or reset_two_factor.",
+                    "description": "Action is block, unblock, end_sessions, reset_two_factor or delete.",
                     "type": "string"
                 },
                 "admin_email": {
@@ -8545,6 +8670,18 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "currency": {
+                    "type": "string"
+                }
+            }
+        },
+        "profile.DeleteAccountRequest": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code is asked for when the account has two-factor on: six digits from\nthe app, or a recovery code.",
+                    "type": "string"
+                },
+                "current_password": {
                     "type": "string"
                 }
             }

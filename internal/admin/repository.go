@@ -76,9 +76,9 @@ func (r *Repository) MarkActive(ctx context.Context, userID string, day time.Tim
 func (r *Repository) Totals(ctx context.Context, today time.Time) (Totals, error) {
 	var t Totals
 	err := r.db.QueryRow(ctx, `SELECT
-			(SELECT count(*) FROM users WHERE role <> 'admin'),
-			(SELECT count(*) FROM users WHERE role = 'freelancer'),
-			(SELECT count(*) FROM users WHERE role = 'client'),
+			(SELECT count(*) FROM users WHERE role <> 'admin' AND deleted_at IS NULL),
+			(SELECT count(*) FROM users WHERE role = 'freelancer' AND deleted_at IS NULL),
+			(SELECT count(*) FROM users WHERE role = 'client' AND deleted_at IS NULL),
 			(SELECT count(*) FROM pending_signups WHERE expires_at > now()),
 			(SELECT count(*) FROM users WHERE two_factor_secret IS NOT NULL AND role <> 'admin'),
 			(SELECT count(*) FROM user_activity WHERE day = $1::date),
@@ -198,7 +198,7 @@ func (r *Repository) Accounts(ctx context.Context, f AccountFilter, today time.T
 	const list = `WITH list AS (
 			SELECT ` + accountColumns + `
 			FROM users u
-			WHERE u.role <> 'admin'
+			WHERE u.role <> 'admin' AND u.deleted_at IS NULL
 			  AND ($2 = '' OR u.email ILIKE '%' || $2 || '%' OR u.name ILIKE '%' || $2 || '%')
 			  AND ($3 = '' OR u.role = $3)
 		)
@@ -259,7 +259,7 @@ func (r *Repository) AccountDetail(ctx context.Context, id string, today, since 
 		LEFT JOIN companies own ON own.owner_id = u.id
 		LEFT JOIN company_members m ON m.user_id = u.id
 		LEFT JOIN companies mc ON mc.id = m.company_id
-		WHERE u.id = $2 AND u.role <> 'admin'`, date(today), id, date(since)),
+		WHERE u.id = $2 AND u.role <> 'admin' AND u.deleted_at IS NULL`, date(today), id, date(since)),
 		&d.Locale, &d.Currency, &teamName, &teamRole, &teamMembers, &d.Partners, &d.ReportsSent, &d.ReportsPaid,
 		&d.SecondsLogged, &d.Comments, &d.Files, &d.FilesBytes, &d.Telegram, &d.Sessions, &d.LastSignIn, &days)
 	if errors.Is(err, pgx.ErrNoRows) {

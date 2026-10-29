@@ -22,9 +22,11 @@ var (
 	ErrNotFreelancer = errors.New("only a freelancer has an hourly rate")
 )
 
-// sessions signs the user's other devices out. Implemented by *auth.Service.
+// sessions signs the user's other devices out and checks their two-factor
+// codes. Implemented by *auth.Service.
 type sessions interface {
 	EndOtherSessions(ctx context.Context, userID, keepID string) error
+	ConfirmCode(ctx context.Context, userID, code string) error
 }
 
 // Service holds the account-change rules: changing the email or the password
@@ -35,6 +37,8 @@ type Service struct {
 	// mail sends confirmation links and notices; appURL is the frontend.
 	mail   auth.Mailer
 	appURL string
+	// accounts deletes the account (see UseAccounts).
+	accounts accounts
 }
 
 // NewService creates a profile Service.

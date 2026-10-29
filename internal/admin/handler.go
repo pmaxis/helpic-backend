@@ -56,6 +56,7 @@ func (h *Handler) Routes(r chi.Router, more ...func(chi.Router)) {
 		r.Get("/stats", h.Stats)
 		r.Get("/users", h.Users)
 		r.Get("/users/{id}", h.User)
+		r.Delete("/users/{id}", h.DeleteUser)
 		r.Get("/logs", h.Logs)
 		r.Get("/actions", h.Actions)
 		r.Post("/users/{id}/block", h.act(ActionBlock))
@@ -563,7 +564,7 @@ type ActionDTO struct {
 	// AdminID and TargetID are null once the account is gone; the emails stay.
 	AdminID    *string `json:"admin_id"`
 	AdminEmail string  `json:"admin_email"`
-	// Action is block, unblock, end_sessions or reset_two_factor.
+	// Action is block, unblock, end_sessions, reset_two_factor or delete.
 	Action      string  `json:"action"`
 	TargetID    *string `json:"target_id"`
 	TargetEmail string  `json:"target_email"`

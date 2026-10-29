@@ -15,6 +15,7 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 
 	_ "github.com/pmaxis/helpic/docs" // the generated Swagger spec (make swagger)
+	"github.com/pmaxis/helpic/internal/account"
 	"github.com/pmaxis/helpic/internal/admin"
 	"github.com/pmaxis/helpic/internal/alerts"
 	"github.com/pmaxis/helpic/internal/applog"
@@ -141,7 +142,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	userRepo := user.NewRepository(pool)
 	userHandler := user.NewHandler(user.NewService(userRepo))
 	profileSvc := profile.NewService(profile.NewRepository(pool), authSvc, outbox, cfg.AppURL)
-	profileHandler := profile.NewHandler(profileSvc)
+	profileHandler := profile.NewHandler(profileSvc, cookie)
 
 	// --- clients: invitations both ways and freelancer–client links -----------
 	clientsRepo := clients.NewRepository(pool)
@@ -183,6 +184,10 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	}
 	attachmentsHandler := attachments.NewHandler(attachmentsSvc)
 
+	// --- deleting an account, by its owner or an admin ------------------------
+	accounts := account.NewService(pool, outbox, uploads)
+	profileSvc.UseAccounts(accounts)
+
 	// --- the discussion on a task ----------------------------------------------
 	commentsSvc := comments.NewService(comments.NewRepository(pool), tasksSvc)
 	commentsHandler := comments.NewHandler(commentsSvc)
@@ -221,6 +226,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	adminSvc.UseMail(outbox)
 	adminSvc.UseOutbox(outbox)
 	adminSvc.UseSignupLinks(authSvc)
+	adminSvc.UseAccounts(accounts)
 	adminSvc.UseUploads(admin.Uploads{MaxFileBytes: cfg.MaxUploadBytes, QuotaBytes: cfg.UploadQuotaBytes, Dir: cfg.UploadsDir})
 	appLogs := applog.NewRepository(pool)
 	adminHandler := admin.NewHandler(adminSvc, appLogs)

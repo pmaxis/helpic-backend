@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"slices"
 )
@@ -28,13 +29,17 @@ func NewService(repo *Repository) *Service {
 }
 
 // Notify records a notification. Nothing is sent when there is no recipient
-// (personal work) or the recipient is the actor. A failure is logged, never
-// returned: notifying must not undo the change it reports.
+// (personal work), the recipient is the actor or deleted their account. A
+// failure is logged, never returned: notifying must not undo the change it
+// reports.
 func (s *Service) Notify(ctx context.Context, n Notification) {
 	if n.UserID == "" || n.UserID == n.ActorID {
 		return
 	}
 	stored, err := s.repo.Create(ctx, n)
+	if errors.Is(err, ErrRecipientGone) {
+		return
+	}
 	if err != nil {
 		slog.Error("failed to store notification", "kind", n.Kind, "error", err)
 		return

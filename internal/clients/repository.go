@@ -190,7 +190,7 @@ func (r *Repository) ListClients(ctx context.Context, freelancerID string) ([]Li
 			 WHERE t.freelancer_id = fc.freelancer_id AND t.client_id = fc.client_id
 			   AND t.status IN ('new', 'in_progress'))
 		FROM freelancer_clients fc
-		JOIN users u ON u.id = fc.client_id
+		JOIN users u ON u.id = fc.client_id AND u.deleted_at IS NULL
 		WHERE fc.freelancer_id = $1
 		ORDER BY fc.created_at DESC`, freelancerID)
 }
@@ -204,7 +204,7 @@ func (r *Repository) ListFreelancers(ctx context.Context, clientID string) ([]Li
 			   AND t.status IN ('new', 'in_progress')
 			   AND sees_task($1, t.id, t.freelancer_id, t.client_id))
 		FROM freelancer_clients fc
-		JOIN users u ON u.id = fc.freelancer_id
+		JOIN users u ON u.id = fc.freelancer_id AND u.deleted_at IS NULL
 		WHERE fc.client_id = acting_client($1)
 		ORDER BY fc.created_at DESC`, clientID)
 }

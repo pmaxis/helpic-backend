@@ -103,11 +103,15 @@ func (r *Repository) Get(ctx context.Context, userID, id string) (Report, error)
 	return rep, nil
 }
 
-// Linked reports whether the freelancer and the client work together.
+// Linked reports whether the freelancer and the client work together, and
+// neither deleted their account.
 func (r *Repository) Linked(ctx context.Context, freelancerID, clientID string) (bool, error) {
 	var ok bool
 	err := r.db.QueryRow(ctx, `SELECT EXISTS (
-		SELECT 1 FROM freelancer_clients WHERE freelancer_id = $1 AND client_id = as_uuid($2))`,
+		SELECT 1 FROM freelancer_clients fc
+		JOIN users f ON f.id = fc.freelancer_id AND f.deleted_at IS NULL
+		JOIN users c ON c.id = fc.client_id AND c.deleted_at IS NULL
+		WHERE fc.freelancer_id = $1 AND fc.client_id = as_uuid($2))`,
 		freelancerID, clientID).Scan(&ok)
 	if err != nil {
 		return false, fmt.Errorf("check link: %w", err)
