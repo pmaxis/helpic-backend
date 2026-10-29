@@ -91,7 +91,7 @@ func (h *Handler) EndSession(w http.ResponseWriter, r *http.Request) {
 type LimitDTO struct {
 	// Scope is the limit: sign-in, sign-up, refresh, login-failures,
 	// login-failures-email, password-checks, two-factor-codes, reset,
-	// reset-email or invites.
+	// reset-email, invites or shared.
 	Scope string `json:"scope"`
 	Key   string `json:"key"`
 	// Kind is what the key is: ip, email, email_ip or user.

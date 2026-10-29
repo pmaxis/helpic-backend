@@ -227,6 +227,13 @@ func CanArchive(t Task, viewerID string) bool {
 	return !t.Archived() && t.Client == nil && t.Freelancer.ID == viewerID
 }
 
+// CanShare reports whether the viewer may turn the task's public link on
+// or off: whoever may edit it — its creator or its freelancer. Archived
+// work can be shown too, and a link already out can always be taken back.
+func CanShare(t Task, viewerID string) bool {
+	return t.CreatedBy == viewerID || t.Freelancer.ID == viewerID
+}
+
 // Party is one side of a task.
 type Party struct {
 	ID    string `json:"id"`

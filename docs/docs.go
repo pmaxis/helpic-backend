@@ -5465,6 +5465,107 @@ const docTemplate = `{
                 }
             }
         },
+        "/shared/{token}": {
+            "get": {
+                "description": "No sign-in: the link is the proof. The task, its subtasks and its files.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "shares"
+                ],
+                "summary": "A shared task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The link's token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/shares.SharedResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such link, or it was turned off",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many requests",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/shared/{token}/files/{id}": {
+            "get": {
+                "description": "No sign-in. Always as a download, except PNG/JPEG/GIF/WebP images with inline=1; a file still being checked for viruses, or found infected, answers 409.",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "shares"
+                ],
+                "summary": "A file of a shared task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The link's token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "File ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "1 to show a safe image in place",
+                        "name": "inline",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The file",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Being checked for viruses, or infected",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many requests",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/tasks": {
             "get": {
                 "description": "Open ones first, then by due date.",
@@ -6237,6 +6338,143 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks/{id}/share": {
+            "get": {
+                "description": "Its creator or its freelancer only. share is null when the task has none.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "shares"
+                ],
+                "summary": "A task's public link",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/shares.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not the creator or the freelancer",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Turns on a link anyone may open, without an account, to read the task, its subtasks and its files; not its people, price, time or comments. Its creator or its freelancer only, archived or not. A task that has a link keeps it (200).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "shares"
+                ],
+                "summary": "Share a task by a link",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Already on",
+                        "schema": {
+                            "$ref": "#/definitions/shares.Response"
+                        }
+                    },
+                    "201": {
+                        "description": "Turned on",
+                        "schema": {
+                            "$ref": "#/definitions/shares.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not the creator or the freelancer",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "The link opens nothing from now on; sharing again makes a new one. Its creator or its freelancer only.",
+                "tags": [
+                    "shares"
+                ],
+                "summary": "Turn a task's link off",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No content"
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not the creator or the freelancer",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -7549,7 +7787,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "scope": {
-                    "description": "Scope is the limit: sign-in, sign-up, refresh, login-failures,\nlogin-failures-email, password-checks, two-factor-codes, reset,\nreset-email or invites.",
+                    "description": "Scope is the limit: sign-in, sign-up, refresh, login-failures,\nlogin-failures-email, password-checks, two-factor-codes, reset,\nreset-email, invites or shared.",
                     "type": "string"
                 }
             }
@@ -9168,6 +9406,125 @@ const docTemplate = `{
                 }
             }
         },
+        "shares.DTO": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "url": {
+                    "description": "URL is the page the link opens, to copy and send.",
+                    "type": "string"
+                }
+            }
+        },
+        "shares.FileDTO": {
+            "type": "object",
+            "properties": {
+                "content_type": {
+                    "type": "string"
+                },
+                "file_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_image": {
+                    "type": "boolean"
+                },
+                "scan": {
+                    "description": "Scan: \"pending\" doesn't download yet, \"infected\" never does.",
+                    "type": "string",
+                    "enum": [
+                        "pending",
+                        "clean",
+                        "infected",
+                        "unscanned"
+                    ]
+                },
+                "size_bytes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "shares.Response": {
+            "type": "object",
+            "properties": {
+                "share": {
+                    "$ref": "#/definitions/shares.DTO"
+                }
+            }
+        },
+        "shares.SharedResponse": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "$ref": "#/definitions/shares.TaskDTO"
+                }
+            }
+        },
+        "shares.SubtaskDTO": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "new",
+                        "in_progress",
+                        "done"
+                    ]
+                },
+                "status_name": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "shares.TaskDTO": {
+            "type": "object",
+            "properties": {
+                "archived": {
+                    "description": "Archived is true once the task is closed: paid, or put away.",
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "due_on": {
+                    "description": "DueOn is YYYY-MM-DD, or null.",
+                    "type": "string"
+                },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/shares.FileDTO"
+                    }
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "new",
+                        "in_progress",
+                        "done"
+                    ]
+                },
+                "status_name": {
+                    "type": "string"
+                },
+                "subtasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/shares.SubtaskDTO"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "tasks.ArchiveResponse": {
             "type": "object",
             "properties": {
@@ -9225,6 +9582,10 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "can_set_price": {
+                    "type": "boolean"
+                },
+                "can_share": {
+                    "description": "CanShare is true for whoever may turn the task's public link on or\noff: its creator or its freelancer, archived or not.",
                     "type": "boolean"
                 },
                 "can_track_time": {

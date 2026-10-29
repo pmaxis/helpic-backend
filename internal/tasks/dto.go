@@ -318,9 +318,12 @@ type DTO struct {
 	Billed bool `json:"billed"`
 	// CanArchive is true on the viewer's own personal task, which they may
 	// put in the archive by hand.
-	CanArchive bool      `json:"can_archive"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	CanArchive bool `json:"can_archive"`
+	// CanShare is true for whoever may turn the task's public link on or
+	// off: its creator or its freelancer, archived or not.
+	CanShare  bool      `json:"can_share"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 	// ArchivedAt is set once the task is archived: off the boards and closed
 	// to changes. ArchivedBy is the paid report that archived it, null when
 	// its owner did.
@@ -374,6 +377,7 @@ func ToDTO(t Task, role, viewerID string) DTO {
 		CanTrackTime:  CanTrackTime(t, viewerID),
 		Billed:        t.Billed,
 		CanArchive:    CanArchive(t, viewerID),
+		CanShare:      CanShare(t, viewerID),
 		CreatedAt:     t.CreatedAt,
 		UpdatedAt:     t.UpdatedAt,
 		ArchivedAt:    t.ArchivedAt,

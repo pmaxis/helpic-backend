@@ -38,6 +38,7 @@ import (
 	"github.com/pmaxis/helpic/internal/reminders"
 	"github.com/pmaxis/helpic/internal/reports"
 	"github.com/pmaxis/helpic/internal/response"
+	"github.com/pmaxis/helpic/internal/shares"
 	"github.com/pmaxis/helpic/internal/tasks"
 	"github.com/pmaxis/helpic/internal/team"
 	"github.com/pmaxis/helpic/internal/telegram"
@@ -185,6 +186,9 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	}
 	attachmentsHandler := attachments.NewHandler(attachmentsSvc)
 
+	// --- a task shown by a link, to anyone holding it ---------------------------
+	sharesHandler := shares.NewHandler(shares.NewService(shares.NewRepository(pool), tasksSvc, attachmentsSvc, cfg.AppURL))
+
 	// --- deleting an account, by its owner or an admin ------------------------
 	accounts := account.NewService(pool, outbox, uploads)
 	profileSvc.UseAccounts(accounts)
@@ -330,6 +334,10 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			profileHandler.PublicRoutes(r)
 		})
 		policiesHandler.PublicRoutes(r)
+		r.Group(func(r chi.Router) {
+			r.Use(byIP(lim.shared))
+			sharesHandler.PublicRoutes(r)
+		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware)
@@ -344,7 +352,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 			// The work: freelancers and clients only, never admins.
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireRole(user.RoleFreelancer, user.RoleClient))
-				tasksHandler.Routes(r)
+				tasksHandler.Routes(r, sharesHandler.TaskRoutes)
 				attachmentsHandler.Routes(r)
 				commentsHandler.Routes(r)
 				timelogHandler.Routes(r)

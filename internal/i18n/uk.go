@@ -273,6 +273,8 @@ var uk = map[string]string{
 	"Only the board's freelancer and the client's team change its labels":                                      "Мітки дошки змінює лише її фрилансер і команда замовника",
 	"Some of the project's tasks have no freelancer yet. Assign them or delete them first.":                    "Деякі задачі проєкту ще без виконавця. Спершу призначте його або видаліть ці задачі.",
 	"Only whoever created the task, or its freelancer, can edit it":                                            "Змінювати задачу може лише її автор або фрилансер",
+	"Only whoever created the task, or its freelancer, can share it":                                           "Поділитися задачею може лише її автор або фрилансер",
+	"This link doesn't open anything: it was turned off, or it's mistyped":                                     "За цим посиланням нічого немає: його вимкнули або в ньому помилка",
 	"Only the project's creator can change it":                                                                 "Змінювати проєкт може лише його автор",
 	"Only the project's author can change its participants":                                                    "Учасників проєкту змінює лише його автор",
 	"This person can't be invited to the project":                                                              "Цю людину не можна запросити до проєкту",

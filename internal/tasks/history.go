@@ -37,6 +37,10 @@ const (
 	// EventCreatedAt is the task's creation date moved; from and to are
 	// RFC 3339 times.
 	EventCreatedAt = "created_at"
+	// EventShared and EventUnshared are the task's public link turned on and
+	// off.
+	EventShared   = "shared"
+	EventUnshared = "unshared"
 )
 
 // Event is one change in a task's history.

@@ -37,6 +37,9 @@ type limits struct {
 	// and to their team; enough to bring in a company, too few to send spam
 	// from our address.
 	invites ratelimit.Gate
+	// shared: shared tasks and their files opened per address; a page and
+	// its pictures at once, and guessing a link gets nowhere anyway.
+	shared ratelimit.Gate
 }
 
 func newLimits(pool *pgxpool.Pool, on bool) limits {
@@ -54,12 +57,13 @@ func newLimits(pool *pgxpool.Pool, on bool) limits {
 		resetRequests:  ratelimit.NewStore(pool, ratelimit.ScopeReset, 3, 10*time.Minute),
 		emailResets:    ratelimit.NewStore(pool, ratelimit.ScopeResetEmail, 10, 30*time.Minute),
 		invites:        ratelimit.NewStore(pool, ratelimit.ScopeInvites, 20, 15*time.Minute),
+		shared:         ratelimit.NewStore(pool, ratelimit.ScopeShared, 120, time.Second),
 	}
 }
 
 // sweep forgets full buckets, so the maps don't grow without end.
 func (l limits) sweep(ctx context.Context) error {
-	for _, lim := range []ratelimit.Gate{l.signIn, l.signUp, l.refresh, l.loginFailures, l.emailFailures, l.passwordChecks, l.twoFactorCodes, l.resetRequests, l.emailResets, l.invites} {
+	for _, lim := range []ratelimit.Gate{l.signIn, l.signUp, l.refresh, l.loginFailures, l.emailFailures, l.passwordChecks, l.twoFactorCodes, l.resetRequests, l.emailResets, l.invites, l.shared} {
 		if lim != nil {
 			if err := lim.Sweep(ctx); err != nil {
 				return err

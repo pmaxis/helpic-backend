@@ -316,7 +316,7 @@ definitions:
         description: |-
           Scope is the limit: sign-in, sign-up, refresh, login-failures,
           login-failures-email, password-checks, two-factor-codes, reset,
-          reset-email or invites.
+          reset-email, invites or shared.
         type: string
     type: object
   admin.LogDTO:
@@ -1431,6 +1431,87 @@ definitions:
       error:
         $ref: '#/definitions/response.APIError'
     type: object
+  shares.DTO:
+    properties:
+      created_at:
+        type: string
+      url:
+        description: URL is the page the link opens, to copy and send.
+        type: string
+    type: object
+  shares.FileDTO:
+    properties:
+      content_type:
+        type: string
+      file_name:
+        type: string
+      id:
+        type: string
+      is_image:
+        type: boolean
+      scan:
+        description: 'Scan: "pending" doesn''t download yet, "infected" never does.'
+        enum:
+        - pending
+        - clean
+        - infected
+        - unscanned
+        type: string
+      size_bytes:
+        type: integer
+    type: object
+  shares.Response:
+    properties:
+      share:
+        $ref: '#/definitions/shares.DTO'
+    type: object
+  shares.SharedResponse:
+    properties:
+      task:
+        $ref: '#/definitions/shares.TaskDTO'
+    type: object
+  shares.SubtaskDTO:
+    properties:
+      status:
+        enum:
+        - new
+        - in_progress
+        - done
+        type: string
+      status_name:
+        type: string
+      title:
+        type: string
+    type: object
+  shares.TaskDTO:
+    properties:
+      archived:
+        description: 'Archived is true once the task is closed: paid, or put away.'
+        type: boolean
+      description:
+        type: string
+      due_on:
+        description: DueOn is YYYY-MM-DD, or null.
+        type: string
+      files:
+        items:
+          $ref: '#/definitions/shares.FileDTO'
+        type: array
+      status:
+        enum:
+        - new
+        - in_progress
+        - done
+        type: string
+      status_name:
+        type: string
+      subtasks:
+        items:
+          $ref: '#/definitions/shares.SubtaskDTO'
+        type: array
+      title:
+        type: string
+    type: object
   tasks.ArchiveResponse:
     properties:
       limit:
@@ -1485,6 +1566,11 @@ definitions:
           left out for them.
         type: boolean
       can_set_price:
+        type: boolean
+      can_share:
+        description: |-
+          CanShare is true for whoever may turn the task's public link on or
+          off: its creator or its freelancer, archived or not.
         type: boolean
       can_track_time:
         description: CanTrackTime is true for the task's freelancer, who writes time
@@ -5680,6 +5766,76 @@ paths:
       summary: Send a draft to its client
       tags:
       - reports
+  /shared/{token}:
+    get:
+      description: 'No sign-in: the link is the proof. The task, its subtasks and
+        its files.'
+      parameters:
+      - description: The link's token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/shares.SharedResponse'
+        "404":
+          description: No such link, or it was turned off
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many requests
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A shared task
+      tags:
+      - shares
+  /shared/{token}/files/{id}:
+    get:
+      description: No sign-in. Always as a download, except PNG/JPEG/GIF/WebP images
+        with inline=1; a file still being checked for viruses, or found infected,
+        answers 409.
+      parameters:
+      - description: The link's token
+        in: path
+        name: token
+        required: true
+        type: string
+      - description: File ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 1 to show a safe image in place
+        in: query
+        name: inline
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: The file
+          schema:
+            type: file
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Being checked for viruses, or infected
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many requests
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A file of a shared task
+      tags:
+      - shares
   /tasks:
     get:
       description: Open ones first, then by due date.
@@ -6211,6 +6367,102 @@ paths:
       summary: Set a task's priority
       tags:
       - tasks
+  /tasks/{id}/share:
+    delete:
+      description: The link opens nothing from now on; sharing again makes a new one.
+        Its creator or its freelancer only.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not the creator or the freelancer
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Turn a task's link off
+      tags:
+      - shares
+    get:
+      description: Its creator or its freelancer only. share is null when the task
+        has none.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/shares.Response'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not the creator or the freelancer
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A task's public link
+      tags:
+      - shares
+    post:
+      description: Turns on a link anyone may open, without an account, to read the
+        task, its subtasks and its files; not its people, price, time or comments.
+        Its creator or its freelancer only, archived or not. A task that has a link
+        keeps it (200).
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Already on
+          schema:
+            $ref: '#/definitions/shares.Response'
+        "201":
+          description: Turned on
+          schema:
+            $ref: '#/definitions/shares.Response'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not the creator or the freelancer
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Share a task by a link
+      tags:
+      - shares
   /tasks/{id}/status:
     post:
       consumes:

@@ -23,8 +23,9 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// Routes mounts the endpoints. Must be called inside an authenticated group.
-func (h *Handler) Routes(r chi.Router) {
+// Routes mounts the endpoints, and more of other packages under /tasks.
+// Must be called inside an authenticated group.
+func (h *Handler) Routes(r chi.Router, more ...func(chi.Router)) {
 	r.Route("/tasks", func(r chi.Router) {
 		r.Get("/", h.List)
 		r.Post("/", h.Create)
@@ -42,6 +43,9 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Post("/{id}/participants", h.AddParticipant)
 		r.Delete("/{id}/participants/{userID}", h.RemoveParticipant)
 		r.Post("/{id}/archive", h.Archive)
+		for _, m := range more {
+			m(r)
+		}
 	})
 	r.Get("/archive", h.ListArchive)
 }

@@ -89,8 +89,8 @@ type Before func(ctx context.Context, tx pgx.Tx, d Deleted) error
 // comments, files, time and history on them; reports; the hourly rates their
 // prices come from. What goes is the person's own: personal tasks, projects,
 // reports, labels and statuses; their notifications, sessions, devices,
-// Telegram, settings and pending invitations; their place in a client's
-// company. A running timer stops.
+// Telegram, settings, pending invitations and the links they shared tasks
+// by; their place in a client's company. A running timer stops.
 func (s *Service) Delete(ctx context.Context, userID string, bySupport bool, before Before) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -159,6 +159,8 @@ func (s *Service) Delete(ctx context.Context, userID string, bySupport bool, bef
 		`DELETE FROM telegram_link_codes WHERE user_id = $1`,
 		`DELETE FROM telegram_messages WHERE user_id = $1`,
 		`DELETE FROM telegram_drafts WHERE user_id = $1`,
+		// Links they gave out to shared work: whoever got one loses it.
+		`DELETE FROM task_shares WHERE created_by = $1`,
 		`DELETE FROM email_notification_prefs WHERE user_id = $1`,
 		`DELETE FROM app_notification_prefs WHERE user_id = $1`,
 		`DELETE FROM user_activity WHERE user_id = $1`,

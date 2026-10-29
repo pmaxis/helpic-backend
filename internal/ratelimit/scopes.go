@@ -13,6 +13,7 @@ const (
 	ScopeReset              = "reset"
 	ScopeResetEmail         = "reset-email"
 	ScopeInvites            = "invites"
+	ScopeShared             = "shared"
 )
 
 // What a bucket's key is.
@@ -43,7 +44,7 @@ func KeyOf(scope string) string {
 // ScopesKeyedBy lists the scopes whose keys are kind.
 func ScopesKeyedBy(kind string) []string {
 	var out []string
-	for _, s := range []string{ScopeSignIn, ScopeSignUp, ScopeRefresh, ScopeLoginFailures, ScopeLoginFailuresEmail, ScopePasswordChecks, ScopeTwoFactorCodes, ScopeReset, ScopeResetEmail, ScopeInvites} {
+	for _, s := range []string{ScopeSignIn, ScopeSignUp, ScopeRefresh, ScopeLoginFailures, ScopeLoginFailuresEmail, ScopePasswordChecks, ScopeTwoFactorCodes, ScopeReset, ScopeResetEmail, ScopeInvites, ScopeShared} {
 		if KeyOf(s) == kind {
 			out = append(out, s)
 		}
