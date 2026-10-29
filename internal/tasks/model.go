@@ -85,6 +85,9 @@ var (
 	// ErrSubtaskProject is returned for moving a subtask to another project
 	// than its parent's: it moves with its parent.
 	ErrSubtaskProject = errors.New("a subtask stays in its parent's project")
+	// ErrDueBeforeCreated is returned for moving a task's due date to a day
+	// before the one it was created on.
+	ErrDueBeforeCreated = errors.New("the due date is before the creation date")
 )
 
 // Person is someone on the task's client side who can be on the task: the

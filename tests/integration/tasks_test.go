@@ -478,4 +478,19 @@ func TestTasks_MoveCreationDate(t *testing.T) {
 	if last["kind"] != "created_at" || last["data"].(map[string]any)["to"] != "2025-03-10T07:30:00Z" {
 		t.Fatalf("history = %v", events)
 	}
+
+	// Nor does the due date move before the creation day on its own.
+	dueOn := func(d any) *http.Response {
+		return do(t, client, http.MethodPut, taskURL, map[string]any{"title": "Logo", "description": "", "due_on": d})
+	}
+	resp = dueOn("2025-03-09")
+	wantStatus(t, resp, http.StatusBadRequest)
+	if fields := field(field(decode(t, resp), "error"), "fields"); fields["due_on"] == nil {
+		t.Fatalf("fields = %v, want due_on", fields)
+	}
+	for _, ok := range []any{"2025-03-10", nil} {
+		resp = dueOn(ok)
+		wantStatus(t, resp, http.StatusOK)
+		resp.Body.Close()
+	}
 }

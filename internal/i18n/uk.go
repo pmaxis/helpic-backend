@@ -260,6 +260,7 @@ var uk = map[string]string{
 	"Enter a valid date and time":        "Вкажіть коректні дату й час",
 	"The date can't be in the future":    "Дата не може бути в майбутньому",
 	"Can't be after the due date":        "Не може бути пізніше за дедлайн",
+	"Can't be before the creation date":  "Не може бути раніше за дату створення",
 	"Enter an amount like 1200 or 99.50": "Вкажіть суму, наприклад 1200 або 99.50",
 	"Only the freelancer sets the price": "Ціну встановлює лише фрилансер",
 	"Only the client and their team choose who does the task":                                                 "Виконавця задачі обирає лише замовник і його команда",

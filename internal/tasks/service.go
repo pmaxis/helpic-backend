@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"slices"
+	"time"
 
 	"github.com/pmaxis/helpic/internal/notifications"
 
@@ -25,6 +26,13 @@ type Service struct {
 	repo     *Repository
 	notify   notifier
 	onDelete []DeleteHook
+	loc      *time.Location
+}
+
+// UseLocation sets the time zone a task's creation day is read in, against
+// its due date; UTC without it.
+func (s *Service) UseLocation(loc *time.Location) {
+	s.loc = loc
 }
 
 // OnDelete registers a hook run around deleting a task.
@@ -451,6 +459,18 @@ func (s *Service) Update(ctx context.Context, userID, id string, p Params) (Task
 	}
 	if !CanEdit(t, userID) {
 		return Task{}, ErrEditNotAllowed
+	}
+	// A due date that moves can't go before the day the task was created; a
+	// moved creation date was checked against it already. A task made with
+	// a past due date keeps it until the due date changes.
+	if p.CreatedAt == nil && p.DueOn != nil && isoDate(p.DueOn) != isoDate(t.DueOn) {
+		loc := s.loc
+		if loc == nil {
+			loc = time.UTC
+		}
+		if t.CreatedAt.In(loc).Format(dateLayout) > p.DueOn.Format(dateLayout) {
+			return Task{}, ErrDueBeforeCreated
+		}
 	}
 
 	// A nil ProjectID keeps the current project; "" takes the task out of it,

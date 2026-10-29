@@ -173,6 +173,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 		return nil, err
 	}
 	attachmentsSvc := attachments.NewService(attachments.NewRepository(pool), uploads, tasksSvc, cfg.MaxUploadBytes, cfg.UploadQuotaBytes)
+	tasksSvc.UseLocation(cfg.Location)
 	tasksSvc.OnDelete(attachmentsSvc.TaskDeleted)
 	var clamdCheck func(context.Context) error
 	if cfg.ClamAVAddress != "" {

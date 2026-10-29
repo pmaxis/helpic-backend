@@ -633,6 +633,8 @@ func writeTask(w http.ResponseWriter, status int, t Task, role, viewerID string,
 		response.Error(w, http.StatusConflict, response.CodeConflict, "The task has subtasks: delete them first")
 	case errors.Is(err, ErrSubtaskProject):
 		response.ValidationError(w, map[string]string{"project_id": "A subtask stays in its parent's project: move the parent instead"})
+	case errors.Is(err, ErrDueBeforeCreated):
+		response.ValidationError(w, map[string]string{"due_on": "Can't be before the creation date"})
 	case err != nil:
 		response.Internal(w, err)
 	default:
