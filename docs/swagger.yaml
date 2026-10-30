@@ -1250,6 +1250,33 @@ definitions:
       name:
         type: string
     type: object
+  reports.CommentDTO:
+    properties:
+      author:
+        $ref: '#/definitions/reports.PartyDTO'
+      body:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      item_id:
+        description: |-
+          ItemID is the line it's about; null for the report as a whole, or
+          once the line was dropped. ItemTitle names that line's task, "" for
+          the report as a whole.
+        type: string
+      item_title:
+        type: string
+    type: object
+  reports.CommentRequest:
+    properties:
+      body:
+        type: string
+      item_id:
+        description: ItemID is the line it's about; "" for the report as a whole.
+        type: string
+    type: object
   reports.CreateRequest:
     properties:
       client_id:
@@ -1282,8 +1309,15 @@ definitions:
         description: |-
           Branding is how the freelancer's report looks: its logo (at
           /reports/{id}/logo), accent color and business details.
+      can_comment:
+        description: |-
+          CanComment is true for either side while the report is discussed:
+          sent, or a draft taken back to correct, until paid.
+        type: boolean
       can_delete:
-        description: CanDelete is true for the freelancer while the report is a draft.
+        description: |-
+          CanDelete is true for the freelancer while the report is a draft the
+          client never had.
         type: boolean
       can_edit:
         description: CanEdit is true for the freelancer while the report is a draft.
@@ -1293,10 +1327,15 @@ definitions:
           CanMarkPaid is true for the freelancer and the client of a sent, unpaid
           report.
         type: boolean
+      can_recall:
+        description: CanRecall is true for the freelancer of a sent, unpaid report.
+        type: boolean
       client:
         allOf:
         - $ref: '#/definitions/reports.PartyDTO'
         description: Client is null for a report on personal work.
+      comment_count:
+        type: integer
       created_at:
         type: string
       currency:
@@ -1321,6 +1360,11 @@ definitions:
         type: array
       kind:
         type: string
+      open_questions:
+        description: |-
+          OpenQuestions counts the lines with a question waiting; CommentCount
+          is the whole discussion.
+        type: integer
       paid_at:
         type: string
       projects:
@@ -1328,6 +1372,10 @@ definitions:
         items:
           $ref: '#/definitions/reports.ProjectRef'
         type: array
+      recalled_at:
+        description: RecalledAt is when the freelancer last took it back to correct
+          it.
+        type: string
       sent_at:
         type: string
       status:
@@ -1376,6 +1424,9 @@ definitions:
     type: object
   reports.ItemDTO:
     properties:
+      comment_count:
+        description: CommentCount is what was said about the line.
+        type: integer
       completed_on:
         type: string
       id:
@@ -1397,6 +1448,10 @@ definitions:
         type: integer
       project_name:
         type: string
+      question_open:
+        description: QuestionOpen is true while the client's question on the line
+          waits.
+        type: boolean
       seconds:
         description: Seconds is the time a task billed by the hour took; null for
           a fixed price.
@@ -5731,6 +5786,89 @@ paths:
       summary: Edit a draft
       tags:
       - reports
+  /reports/{id}/comments:
+    get:
+      description: What its freelancer and client said about its lines and the report
+        as a whole, oldest first.
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: comments
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/reports.CommentDTO'
+              type: array
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A report's discussion
+      tags:
+      - reports
+    post:
+      consumes:
+      - application/json
+      description: Its freelancer or client, while it's sent or taken back to correct.
+        On a line (item_id) or the report as a whole; the client's comment on a line
+        asks a question about it, open until either side resolves it. The other side
+        is notified.
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/reports.CommentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: comment
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/reports.CommentDTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not the report's freelancer or client
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Not sent, or paid
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Comment on a report
+      tags:
+      - reports
   /reports/{id}/history:
     get:
       description: Its client sees only the sending and the payment.
@@ -5855,6 +5993,48 @@ paths:
       summary: Rewrite a task's notes in a draft
       tags:
       - reports
+  /reports/{id}/items/{itemID}/resolve:
+    post:
+      description: Either side of the report, while it's discussed.
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Report item ID
+        in: path
+        name: itemID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: report
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/reports.DTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not the report's freelancer or client
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Not sent, or paid
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Resolve the question on a line
+      tags:
+      - reports
   /reports/{id}/logo:
     get:
       description: Its freelancer's while it's a draft; the one it was sent with after.
@@ -5919,6 +6099,45 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Mark a sent report paid
+      tags:
+      - reports
+  /reports/{id}/recall:
+    post:
+      description: Its freelancer, while it's unpaid. It's a draft again — prices
+        follow the tasks again — and the client no longer sees it until it's sent
+        again. The client is notified; the discussion stays.
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: report
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/reports.DTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Not sent, or paid
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Take a sent report back to correct it
       tags:
       - reports
   /reports/{id}/send:

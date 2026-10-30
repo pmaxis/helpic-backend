@@ -72,6 +72,10 @@ type Item struct {
 	// Notes say what was done in the task, for a detailed report. They start
 	// as the task's description; the freelancer rewrites them in the draft.
 	Notes string
+	// QuestionOpen is set while the client's question on the line waits to
+	// be resolved; Comments counts what was said about it.
+	QuestionOpen bool
+	Comments     int
 }
 
 // ProjectRef is a project a report covers, named as it was when the report
@@ -88,17 +92,19 @@ type Report struct {
 	// Client is nil for a report on personal work.
 	Client *Party
 	// Projects the report covers; none means all of them.
-	Projects  []ProjectRef
-	Title     string
-	Summary   string
-	Kind      string
-	From      time.Time
-	To        time.Time
-	Status    string
-	SentAt    *time.Time
-	PaidAt    *time.Time
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Projects []ProjectRef
+	Title    string
+	Summary  string
+	Kind     string
+	From     time.Time
+	To       time.Time
+	Status   string
+	SentAt   *time.Time
+	PaidAt   *time.Time
+	// RecalledAt is when the freelancer last took it back to correct it.
+	RecalledAt *time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 	// Currency is the freelancer's while it's a draft, frozen once sent.
 	Currency string
 	// Branding is the freelancer's look: live while it's a draft, kept as
@@ -108,7 +114,11 @@ type Report struct {
 	// are filled whenever a report is read; Items when loading one report.
 	ItemCount int
 	ListTotal *int64
-	Items     []Item
+	// OpenQuestions counts the lines with a question waiting; Comments is
+	// the whole discussion.
+	OpenQuestions int
+	Comments      int
+	Items         []Item
 	// InUAH is the total in hryvnias, for a client who pays in them; nil
 	// for a report in hryvnias, without prices, or without a rate. Filled
 	// when loading one report.

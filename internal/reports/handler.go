@@ -32,6 +32,9 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Get("/{id}/history", h.History)
 		r.Get("/{id}/logo", h.Logo)
 		r.Post("/{id}/paid", h.MarkPaid)
+		r.Get("/{id}/comments", h.Comments)
+		r.Post("/{id}/comments", h.AddComment)
+		r.Post("/{id}/items/{itemID}/resolve", h.Resolve)
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireRole(user.RoleFreelancer))
@@ -41,6 +44,7 @@ func (h *Handler) Routes(r chi.Router) {
 			r.Put("/{id}/items/{itemID}", h.UpdateItem)
 			r.Delete("/{id}/items/{itemID}", h.RemoveItem)
 			r.Post("/{id}/send", h.Send)
+			r.Post("/{id}/recall", h.Recall)
 		})
 	})
 }
@@ -319,6 +323,117 @@ func (h *Handler) Logo(w http.ResponseWriter, r *http.Request) {
 	branding.ServeLogo(w, r, l)
 }
 
+// Comments handles GET /api/v1/reports/{id}/comments.
+//
+//	@Summary		A report's discussion
+//	@Description	What its freelancer and client said about its lines and the report as a whole, oldest first.
+//	@Tags			reports
+//	@Produce		json
+//	@Param			id	path		string					true	"Report ID"
+//	@Success		200	{object}	map[string][]CommentDTO	"comments"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/reports/{id}/comments [get]
+func (h *Handler) Comments(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	list, err := h.svc.Comments(r.Context(), userID, chi.URLParam(r, "id"))
+	if err != nil {
+		writeReport(w, 0, Report{}, "", err)
+		return
+	}
+	out := make([]CommentDTO, 0, len(list))
+	for _, c := range list {
+		out = append(out, ToCommentDTO(c))
+	}
+	response.JSON(w, http.StatusOK, map[string][]CommentDTO{"comments": out})
+}
+
+// AddComment handles POST /api/v1/reports/{id}/comments.
+//
+//	@Summary		Comment on a report
+//	@Description	Its freelancer or client, while it's sent or taken back to correct. On a line (item_id) or the report as a whole; the client's comment on a line asks a question about it, open until either side resolves it. The other side is notified.
+//	@Tags			reports
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Report ID"
+//	@Param			body	body		CommentRequest			true	"Request body"
+//	@Success		201		{object}	map[string]CommentDTO	"comment"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not the report's freelancer or client"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409		{object}	response.ErrorEnvelope	"Not sent, or paid"
+//	@Router			/reports/{id}/comments [post]
+func (h *Handler) AddComment(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req CommentRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	itemID, body, fields := req.Validate()
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	c, err := h.svc.Comment(r.Context(), userID, chi.URLParam(r, "id"), itemID, body)
+	if err != nil {
+		writeReport(w, 0, Report{}, "", err)
+		return
+	}
+	response.JSON(w, http.StatusCreated, map[string]CommentDTO{"comment": ToCommentDTO(c)})
+}
+
+// Resolve handles POST /api/v1/reports/{id}/items/{itemID}/resolve.
+//
+//	@Summary		Resolve the question on a line
+//	@Description	Either side of the report, while it's discussed.
+//	@Tags			reports
+//	@Produce		json
+//	@Param			id		path		string					true	"Report ID"
+//	@Param			itemID	path		string					true	"Report item ID"
+//	@Success		200		{object}	map[string]DTO			"report"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not the report's freelancer or client"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409		{object}	response.ErrorEnvelope	"Not sent, or paid"
+//	@Router			/reports/{id}/items/{itemID}/resolve [post]
+func (h *Handler) Resolve(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	rep, err := h.svc.Resolve(r.Context(), userID, chi.URLParam(r, "id"), chi.URLParam(r, "itemID"))
+	writeReport(w, http.StatusOK, rep, userID, err)
+}
+
+// Recall handles POST /api/v1/reports/{id}/recall.
+//
+//	@Summary		Take a sent report back to correct it
+//	@Description	Its freelancer, while it's unpaid. It's a draft again — prices follow the tasks again — and the client no longer sees it until it's sent again. The client is notified; the discussion stays.
+//	@Tags			reports
+//	@Produce		json
+//	@Param			id	path		string					true	"Report ID"
+//	@Success		200	{object}	map[string]DTO			"report"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409	{object}	response.ErrorEnvelope	"Not sent, or paid"
+//	@Router			/reports/{id}/recall [post]
+func (h *Handler) Recall(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	rep, err := h.svc.Recall(r.Context(), userID, chi.URLParam(r, "id"))
+	writeReport(w, http.StatusOK, rep, userID, err)
+}
+
 // Delete handles DELETE /api/v1/reports/{id}.
 //
 //	@Summary		Delete a report
@@ -354,6 +469,10 @@ func writeReport(w http.ResponseWriter, status int, rep Report, viewerID string,
 		response.Error(w, http.StatusConflict, response.CodeConflict, "Only a sent report that isn't paid yet can be marked as paid")
 	case errors.Is(err, ErrSent):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "This report was already sent and can't be changed")
+	case errors.Is(err, ErrClosed):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "The report's discussion is open once it's sent, until it's paid")
+	case errors.Is(err, ErrNotRecallable):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "Only a sent report that isn't paid yet can be taken back")
 	case errors.Is(err, ErrKept):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "A sent report stays with your client. Only a draft can be deleted.")
 	case err != nil:

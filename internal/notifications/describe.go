@@ -23,6 +23,8 @@ var Kinds = []string{
 	KindProjectInvited,
 	KindReportSent,
 	KindReportPaid,
+	KindReportComment,
+	KindReportRecalled,
 	KindClientJoined,
 	KindFreelancerJoined,
 	KindMemberJoined,
@@ -41,6 +43,8 @@ var DefaultKinds = []string{
 	KindCommentMention,
 	KindReportSent,
 	KindReportPaid,
+	KindReportComment,
+	KindReportRecalled,
 	KindClientJoined,
 	KindFreelancerJoined,
 	KindMemberJoined,
@@ -50,6 +54,9 @@ var DefaultKinds = []string{
 // Path is where in the app the notification leads: what it is about.
 func Path(n Notification) string {
 	switch {
+	// The client no longer sees a report taken back, until it's sent again.
+	case n.Kind == KindReportRecalled:
+		return "/reports"
 	case n.ReportID != "":
 		return "/reports/" + n.ReportID
 	case n.TaskID != "":
@@ -122,6 +129,10 @@ func Phrase(n Notification, locale, who, subject, detail string) string {
 		return t("%s sent you a report %s", who, subject)
 	case KindReportPaid:
 		return t("%s marked %s as paid", who, subject)
+	case KindReportComment:
+		return t("%s commented on the report %s", who, subject)
+	case KindReportRecalled:
+		return t("%s took back the report %s to correct it", who, subject)
 	case KindCommentAdded:
 		return t("%s commented on %s", who, subject)
 	case KindCommentMention:
@@ -136,7 +147,7 @@ func Phrase(n Notification, locale, who, subject, detail string) string {
 // Quotes reports whether the notification's detail is a comment's text,
 // quoted under it.
 func Quotes(n Notification) bool {
-	return (n.Kind == KindCommentAdded || n.Kind == KindCommentMention) && n.Detail != ""
+	return (n.Kind == KindCommentAdded || n.Kind == KindCommentMention || n.Kind == KindReportComment) && n.Detail != ""
 }
 
 // DueDate shows a reminder's YYYY-MM-DD due date: "17 Oct 2026", "17 жовтня 2026".

@@ -14,6 +14,7 @@ const (
 	maxTitle   = 200
 	maxSummary = 20000
 	maxNotes   = 20000
+	maxComment = 5000
 	// maxProjects caps the projects one report covers.
 	maxProjects = 50
 	// maxPeriod keeps a report to a sensible span.
@@ -132,7 +133,25 @@ func (r ItemRequest) Validate() (string, map[string]string) {
 	return notes, nil
 }
 
+// CommentRequest is the JSON body for POST /api/v1/reports/{id}/comments.
+type CommentRequest struct {
+	// ItemID is the line it's about; "" for the report as a whole.
+	ItemID string `json:"item_id"`
+	Body   string `json:"body"`
+}
+
 // Validate returns the trimmed line ID and text, and per-field errors.
+func (r CommentRequest) Validate() (string, string, map[string]string) {
+	body := strings.TrimSpace(r.Body)
+	switch {
+	case body == "":
+		return "", "", map[string]string{"body": "Write something first"}
+	case utf8.RuneCountInString(body) > maxComment:
+		return "", "", map[string]string{"body": "The comment is too long"}
+	}
+	return strings.TrimSpace(r.ItemID), body, nil
+}
+
 // Validate returns the trimmed comment, and per-field errors.
 // Validate returns the review and the trimmed comment, and per-field errors.
 func checkKind(fields map[string]string, kind string) {
@@ -176,6 +195,10 @@ type ItemDTO struct {
 	Seconds *int64 `json:"seconds"`
 	// Notes say what was done in the task (shown in a detailed report).
 	Notes string `json:"notes"`
+	// QuestionOpen is true while the client's question on the line waits.
+	QuestionOpen bool `json:"question_open"`
+	// CommentCount is what was said about the line.
+	CommentCount int `json:"comment_count"`
 }
 
 // DTO is a report as the viewer sees it. Items are present on a single report.
@@ -185,18 +208,24 @@ type DTO struct {
 	// Client is null for a report on personal work.
 	Client *PartyDTO `json:"client"`
 	// Projects the report covers, named as they were; empty means all.
-	Projects  []ProjectRef `json:"projects"`
-	Title     string       `json:"title"`
-	Summary   string       `json:"summary"`
-	Kind      string       `json:"kind"`
-	From      string       `json:"from"`
-	To        string       `json:"to"`
-	Status    string       `json:"status"`
-	SentAt    *time.Time   `json:"sent_at"`
-	PaidAt    *time.Time   `json:"paid_at"`
-	ItemCount int          `json:"item_count"`
-	Items     []ItemDTO    `json:"items,omitempty"`
-	Currency  string       `json:"currency"`
+	Projects []ProjectRef `json:"projects"`
+	Title    string       `json:"title"`
+	Summary  string       `json:"summary"`
+	Kind     string       `json:"kind"`
+	From     string       `json:"from"`
+	To       string       `json:"to"`
+	Status   string       `json:"status"`
+	SentAt   *time.Time   `json:"sent_at"`
+	PaidAt   *time.Time   `json:"paid_at"`
+	// RecalledAt is when the freelancer last took it back to correct it.
+	RecalledAt *time.Time `json:"recalled_at"`
+	ItemCount  int        `json:"item_count"`
+	// OpenQuestions counts the lines with a question waiting; CommentCount
+	// is the whole discussion.
+	OpenQuestions int       `json:"open_questions"`
+	CommentCount  int       `json:"comment_count"`
+	Items         []ItemDTO `json:"items,omitempty"`
+	Currency      string    `json:"currency"`
 	// Branding is how the freelancer's report looks: its logo (at
 	// /reports/{id}/logo), accent color and business details.
 	Branding branding.DTO `json:"branding"`
@@ -211,8 +240,14 @@ type DTO struct {
 	// CanMarkPaid is true for the freelancer and the client of a sent, unpaid
 	// report.
 	CanMarkPaid bool `json:"can_mark_paid"`
-	// CanDelete is true for the freelancer while the report is a draft.
-	CanDelete bool      `json:"can_delete"`
+	// CanDelete is true for the freelancer while the report is a draft the
+	// client never had.
+	CanDelete bool `json:"can_delete"`
+	// CanComment is true for either side while the report is discussed:
+	// sent, or a draft taken back to correct, until paid.
+	CanComment bool `json:"can_comment"`
+	// CanRecall is true for the freelancer of a sent, unpaid report.
+	CanRecall bool      `json:"can_recall"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -236,26 +271,31 @@ type ListResponse struct {
 // ToDTO maps a report for the viewer.
 func ToDTO(r Report, viewerID string) DTO {
 	d := DTO{
-		ID:          r.ID,
-		Freelancer:  PartyDTO(r.Freelancer),
-		Projects:    r.Projects,
-		Title:       r.Title,
-		Summary:     r.Summary,
-		Kind:        r.Kind,
-		From:        r.From.Format(dateLayout),
-		To:          r.To.Format(dateLayout),
-		Status:      r.Status,
-		SentAt:      r.SentAt,
-		PaidAt:      r.PaidAt,
-		ItemCount:   r.ItemCount,
-		Currency:    r.Currency,
-		Branding:    branding.ToDTO(r.Branding),
-		CanEdit:     r.Freelancer.ID == viewerID && r.Status == StatusDraft,
-		CanDelete:   r.Freelancer.ID == viewerID && r.Status == StatusDraft,
-		CanMarkPaid: CanMarkPaid(r, viewerID),
-		TotalCents:  r.ListTotal,
-		CreatedAt:   r.CreatedAt,
-		UpdatedAt:   r.UpdatedAt,
+		ID:            r.ID,
+		Freelancer:    PartyDTO(r.Freelancer),
+		Projects:      r.Projects,
+		Title:         r.Title,
+		Summary:       r.Summary,
+		Kind:          r.Kind,
+		From:          r.From.Format(dateLayout),
+		To:            r.To.Format(dateLayout),
+		Status:        r.Status,
+		SentAt:        r.SentAt,
+		PaidAt:        r.PaidAt,
+		ItemCount:     r.ItemCount,
+		Currency:      r.Currency,
+		Branding:      branding.ToDTO(r.Branding),
+		CanEdit:       r.Freelancer.ID == viewerID && r.Status == StatusDraft,
+		CanDelete:     CanDelete(r, viewerID),
+		CanMarkPaid:   CanMarkPaid(r, viewerID),
+		CanComment:    CanDiscuss(r, viewerID),
+		CanRecall:     CanRecall(r, viewerID),
+		RecalledAt:    r.RecalledAt,
+		OpenQuestions: r.OpenQuestions,
+		CommentCount:  r.Comments,
+		TotalCents:    r.ListTotal,
+		CreatedAt:     r.CreatedAt,
+		UpdatedAt:     r.UpdatedAt,
 	}
 	if d.Projects == nil {
 		d.Projects = []ProjectRef{}
@@ -271,13 +311,37 @@ func ToDTO(r Report, viewerID string) DTO {
 		d.Items = make([]ItemDTO, 0, len(r.Items))
 		for _, it := range r.Items {
 			item := ItemDTO{ID: it.ID, Title: it.Title, ParentTitle: it.ParentTitle, ProjectName: it.ProjectName, StatusName: it.StatusName,
-				CompletedOn: it.CompletedOn.Format(dateLayout), PriceCents: it.PriceCents, PriceInUAHCents: it.PriceInUAH, Seconds: it.Seconds, Notes: it.Notes}
+				CompletedOn: it.CompletedOn.Format(dateLayout), PriceCents: it.PriceCents, PriceInUAHCents: it.PriceInUAH, Seconds: it.Seconds, Notes: it.Notes,
+				QuestionOpen: it.QuestionOpen, CommentCount: it.Comments}
 			if it.TaskID != "" {
 				id := it.TaskID
 				item.TaskID = &id
 			}
 			d.Items = append(d.Items, item)
 		}
+	}
+	return d
+}
+
+// CommentDTO is one message in a report's discussion.
+type CommentDTO struct {
+	ID string `json:"id"`
+	// ItemID is the line it's about; null for the report as a whole, or
+	// once the line was dropped. ItemTitle names that line's task, "" for
+	// the report as a whole.
+	ItemID    *string   `json:"item_id"`
+	ItemTitle string    `json:"item_title"`
+	Author    PartyDTO  `json:"author"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ToCommentDTO maps a comment.
+func ToCommentDTO(c Comment) CommentDTO {
+	d := CommentDTO{ID: c.ID, ItemTitle: c.ItemTitle, Author: PartyDTO(c.Author), Body: c.Body, CreatedAt: c.CreatedAt}
+	if c.ItemID != "" {
+		id := c.ItemID
+		d.ItemID = &id
 	}
 	return d
 }

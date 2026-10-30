@@ -23,6 +23,12 @@ const (
 	KindMemberJoined = "member_joined"
 	KindReportSent   = "report_sent"
 	KindReportPaid   = "report_paid"
+	// KindReportComment: a comment on a sent report, by its other side;
+	// Detail is its start.
+	KindReportComment = "report_comment"
+	// KindReportRecalled: the freelancer took a sent report back to
+	// correct it; the client sees it again once it's sent again.
+	KindReportRecalled = "report_recalled"
 	// KindAttachmentAdded: a file was added to a task; Detail is its name.
 	KindAttachmentAdded = "attachment_added"
 	// KindCommentAdded: a comment on a task; Detail is its start.

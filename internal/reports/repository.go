@@ -23,7 +23,7 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 const selectReport = `SELECT r.id, r.title, r.summary, r.kind, r.period_from, r.period_to, r.status, r.sent_at, r.paid_at,
-		r.created_at, r.updated_at,
+		r.recalled_at, r.created_at, r.updated_at,
 		coalesce((SELECT json_agg(json_build_object('id', coalesce(rp.project_id::text, ''), 'name', rp.name) ORDER BY rp.position)
 			FROM report_projects rp WHERE rp.report_id = r.id), '[]'),
 		f.id, f.name, f.email, c.id, c.name, c.email, coalesce(r.currency, f.currency),
@@ -32,6 +32,8 @@ const selectReport = `SELECT r.id, r.title, r.summary, r.kind, r.period_from, r.
 		CASE WHEN r.status = 'draft' THEN f.business_details ELSE coalesce(r.business_details, '') END,
 		coalesce(CASE WHEN r.status = 'draft' THEN f.brand_logo_id ELSE r.brand_logo_id END::text, ''),
 		(SELECT count(*) FROM report_items i WHERE i.report_id = r.id),
+		(SELECT count(*) FROM report_items i WHERE i.report_id = r.id AND i.question_open),
+		(SELECT count(*) FROM report_comments c WHERE c.report_id = r.id),
 		-- the sum of its prices: live while a draft, frozen once sent; NULL when none has one
 		(SELECT sum(CASE WHEN r.status = 'draft' THEN t.price_cents ELSE i.price_cents END)
 			FROM report_items i LEFT JOIN tasks t ON t.id = i.task_id WHERE i.report_id = r.id)
@@ -49,9 +51,9 @@ func scanReport(row pgx.Row) (Report, error) {
 		projects                []byte
 	)
 	err := row.Scan(&r.ID, &r.Title, &r.Summary, &r.Kind, &r.From, &r.To, &r.Status, &r.SentAt, &r.PaidAt,
-		&r.CreatedAt, &r.UpdatedAt, &projects,
+		&r.RecalledAt, &r.CreatedAt, &r.UpdatedAt, &projects,
 		&r.Freelancer.ID, &r.Freelancer.Name, &r.Freelancer.Email,
-		&clientID, &cName, &cEmail, &r.Currency, &r.Branding.Color, &r.Branding.Details, &r.Branding.LogoID, &r.ItemCount, &r.ListTotal)
+		&clientID, &cName, &cEmail, &r.Currency, &r.Branding.Color, &r.Branding.Details, &r.Branding.LogoID, &r.ItemCount, &r.OpenQuestions, &r.Comments, &r.ListTotal)
 	if err != nil {
 		return r, err
 	}
@@ -89,6 +91,7 @@ func (r *Repository) Get(ctx context.Context, userID, id string) (Report, error)
 	}
 	// A draft shows the tasks' current prices and time; a sent report its frozen ones.
 	rows, err := r.db.Query(ctx, `SELECT i.id, coalesce(i.task_id::text, ''), i.title, i.parent_title, i.project_name, i.status_name, i.completed_on, i.notes,
+			i.question_open, (SELECT count(*) FROM report_comments c WHERE c.item_id = i.id),
 			CASE WHEN $2 = 'draft' THEN t.price_cents ELSE i.price_cents END,
 			CASE WHEN $2 = 'draft' THEN CASE WHEN t.billing = 'hourly' THEN task_seconds(t.id) END ELSE i.seconds END
 		FROM report_items i LEFT JOIN tasks t ON t.id = i.task_id
@@ -98,7 +101,8 @@ func (r *Repository) Get(ctx context.Context, userID, id string) (Report, error)
 	}
 	rep.Items, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (Item, error) {
 		var it Item
-		err := row.Scan(&it.ID, &it.TaskID, &it.Title, &it.ParentTitle, &it.ProjectName, &it.StatusName, &it.CompletedOn, &it.Notes, &it.PriceCents, &it.Seconds)
+		err := row.Scan(&it.ID, &it.TaskID, &it.Title, &it.ParentTitle, &it.ProjectName, &it.StatusName, &it.CompletedOn, &it.Notes,
+			&it.QuestionOpen, &it.Comments, &it.PriceCents, &it.Seconds)
 		return it, err
 	})
 	if err != nil {

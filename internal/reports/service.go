@@ -300,7 +300,8 @@ func soleProject(r Report) string {
 }
 
 // Delete removes one of the freelancer's drafts. A sent or paid report stays,
-// so the client keeps the copy they were sent.
+// so the client keeps the copy they were sent — as does one taken back to
+// correct, with its discussion.
 func (s *Service) Delete(ctx context.Context, freelancerID, id string) error {
 	r, err := s.repo.Get(ctx, freelancerID, id)
 	if err != nil {
@@ -309,7 +310,7 @@ func (s *Service) Delete(ctx context.Context, freelancerID, id string) error {
 	if r.Freelancer.ID != freelancerID {
 		return ErrNotFound
 	}
-	if r.Status != StatusDraft {
+	if !CanDelete(r, freelancerID) {
 		return ErrKept
 	}
 	return s.repo.Delete(ctx, id)

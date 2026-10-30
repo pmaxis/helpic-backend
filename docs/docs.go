@@ -5363,6 +5363,125 @@ const docTemplate = `{
                 }
             }
         },
+        "/reports/{id}/comments": {
+            "get": {
+                "description": "What its freelancer and client said about its lines and the report as a whole, oldest first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "A report's discussion",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "comments",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/reports.CommentDTO"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Its freelancer or client, while it's sent or taken back to correct. On a line (item_id) or the report as a whole; the client's comment on a line asks a question about it, open until either side resolves it. The other side is notified.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Comment on a report",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/reports.CommentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "comment",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/reports.CommentDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not the report's freelancer or client",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Not sent, or paid",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/reports/{id}/history": {
             "get": {
                 "description": "Its client sees only the sending and the payment.",
@@ -5550,6 +5669,69 @@ const docTemplate = `{
                 }
             }
         },
+        "/reports/{id}/items/{itemID}/resolve": {
+            "post": {
+                "description": "Either side of the report, while it's discussed.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Resolve the question on a line",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Report item ID",
+                        "name": "itemID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/reports.DTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not the report's freelancer or client",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Not sent, or paid",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/reports/{id}/logo": {
             "get": {
                 "description": "Its freelancer's while it's a draft; the one it was sent with after.",
@@ -5641,6 +5823,62 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Not sent, or already paid",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/{id}/recall": {
+            "post": {
+                "description": "Its freelancer, while it's unpaid. It's a draft again — prices follow the tasks again — and the client no longer sees it until it's sent again. The client is notified; the discussion stays.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Take a sent report back to correct it",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/reports.DTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Not sent, or paid",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -9389,6 +9627,42 @@ const docTemplate = `{
                 }
             }
         },
+        "reports.CommentDTO": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "$ref": "#/definitions/reports.PartyDTO"
+                },
+                "body": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "item_id": {
+                    "description": "ItemID is the line it's about; null for the report as a whole, or\nonce the line was dropped. ItemTitle names that line's task, \"\" for\nthe report as a whole.",
+                    "type": "string"
+                },
+                "item_title": {
+                    "type": "string"
+                }
+            }
+        },
+        "reports.CommentRequest": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "item_id": {
+                    "description": "ItemID is the line it's about; \"\" for the report as a whole.",
+                    "type": "string"
+                }
+            }
+        },
         "reports.CreateRequest": {
             "type": "object",
             "properties": {
@@ -9435,8 +9709,12 @@ const docTemplate = `{
                         }
                     ]
                 },
+                "can_comment": {
+                    "description": "CanComment is true for either side while the report is discussed:\nsent, or a draft taken back to correct, until paid.",
+                    "type": "boolean"
+                },
                 "can_delete": {
-                    "description": "CanDelete is true for the freelancer while the report is a draft.",
+                    "description": "CanDelete is true for the freelancer while the report is a draft the\nclient never had.",
                     "type": "boolean"
                 },
                 "can_edit": {
@@ -9447,6 +9725,10 @@ const docTemplate = `{
                     "description": "CanMarkPaid is true for the freelancer and the client of a sent, unpaid\nreport.",
                     "type": "boolean"
                 },
+                "can_recall": {
+                    "description": "CanRecall is true for the freelancer of a sent, unpaid report.",
+                    "type": "boolean"
+                },
                 "client": {
                     "description": "Client is null for a report on personal work.",
                     "allOf": [
@@ -9454,6 +9736,9 @@ const docTemplate = `{
                             "$ref": "#/definitions/reports.PartyDTO"
                         }
                     ]
+                },
+                "comment_count": {
+                    "type": "integer"
                 },
                 "created_at": {
                     "type": "string"
@@ -9490,6 +9775,10 @@ const docTemplate = `{
                 "kind": {
                     "type": "string"
                 },
+                "open_questions": {
+                    "description": "OpenQuestions counts the lines with a question waiting; CommentCount\nis the whole discussion.",
+                    "type": "integer"
+                },
                 "paid_at": {
                     "type": "string"
                 },
@@ -9499,6 +9788,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/reports.ProjectRef"
                     }
+                },
+                "recalled_at": {
+                    "description": "RecalledAt is when the freelancer last took it back to correct it.",
+                    "type": "string"
                 },
                 "sent_at": {
                     "type": "string"
@@ -9564,6 +9857,10 @@ const docTemplate = `{
         "reports.ItemDTO": {
             "type": "object",
             "properties": {
+                "comment_count": {
+                    "description": "CommentCount is what was said about the line.",
+                    "type": "integer"
+                },
                 "completed_on": {
                     "type": "string"
                 },
@@ -9588,6 +9885,10 @@ const docTemplate = `{
                 },
                 "project_name": {
                     "type": "string"
+                },
+                "question_open": {
+                    "description": "QuestionOpen is true while the client's question on the line waits.",
+                    "type": "boolean"
                 },
                 "seconds": {
                     "description": "Seconds is the time a task billed by the hour took; null for a fixed price.",
