@@ -5812,6 +5812,80 @@ const docTemplate = `{
                 }
             }
         },
+        "/reports/{id}/keep": {
+            "post": {
+                "description": "Its freelancer, while the client asks for changes to it — the other answer is taking it back to correct it. Why goes to the report's discussion; the client is notified and reviews it again.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Keep a report as it is, instead of the changes asked for",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/reports.KeepRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/reports.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "No changes asked for",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/reports/{id}/logo": {
             "get": {
                 "description": "Its freelancer's while it's a draft; the one it was sent with after.",
@@ -5947,6 +6021,80 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Not sent, or paid",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/{id}/review": {
+            "put": {
+                "description": "Its client, while it's sent and unpaid. Asking for changes says what in a comment, added to the report's discussion. The freelancer is notified; taking the report back to correct it starts the review over.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Approve a report or ask for changes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/reports.ReviewRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/reports.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not the report's client",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -9875,6 +10023,10 @@ const docTemplate = `{
                         }
                     ]
                 },
+                "can_answer": {
+                    "description": "CanAnswer is true for the freelancer while the client asks for\nchanges: correct it (take it back) or keep it as it is.",
+                    "type": "boolean"
+                },
                 "can_comment": {
                     "description": "CanComment is true for either side while the report is discussed:\nsent, or a draft taken back to correct, until paid.",
                     "type": "boolean"
@@ -9893,6 +10045,10 @@ const docTemplate = `{
                 },
                 "can_recall": {
                     "description": "CanRecall is true for the freelancer of a sent, unpaid report.",
+                    "type": "boolean"
+                },
+                "can_review": {
+                    "description": "CanReview is true for the client of a sent, unpaid report.",
                     "type": "boolean"
                 },
                 "client": {
@@ -9957,6 +10113,24 @@ const docTemplate = `{
                 },
                 "recalled_at": {
                     "description": "RecalledAt is when the freelancer last took it back to correct it.",
+                    "type": "string"
+                },
+                "review": {
+                    "description": "Review is what the client made of it once sent: null until they say.",
+                    "type": "string",
+                    "enum": [
+                        "approved",
+                        "changes_requested"
+                    ]
+                },
+                "review_answer": {
+                    "type": "string"
+                },
+                "review_note": {
+                    "description": "ReviewNote is what the client said to change, while changes are asked\nfor; ReviewAnswer is why the freelancer kept it as it was, until the\nclient reviews it again. Both \"\" otherwise.",
+                    "type": "string"
+                },
+                "reviewed_at": {
                     "type": "string"
                 },
                 "sent_at": {
@@ -10079,6 +10253,15 @@ const docTemplate = `{
                 }
             }
         },
+        "reports.KeepRequest": {
+            "type": "object",
+            "properties": {
+                "comment": {
+                    "description": "Comment says why the report is right as it is; it goes to the\nreport's discussion.",
+                    "type": "string"
+                }
+            }
+        },
         "reports.ListResponse": {
             "type": "object",
             "properties": {
@@ -10112,6 +10295,22 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                }
+            }
+        },
+        "reports.ReviewRequest": {
+            "type": "object",
+            "properties": {
+                "comment": {
+                    "description": "Comment says what to change; asking for changes needs one. It goes to\nthe report's discussion.",
+                    "type": "string"
+                },
+                "review": {
+                    "type": "string",
+                    "enum": [
+                        "approved",
+                        "changes_requested"
+                    ]
                 }
             }
         },

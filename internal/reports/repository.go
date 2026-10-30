@@ -23,7 +23,7 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 const selectReport = `SELECT r.id, r.title, r.summary, r.kind, r.period_from, r.period_to, r.status, r.sent_at, r.paid_at,
-		r.recalled_at, r.created_at, r.updated_at,
+		r.recalled_at, coalesce(r.client_review, ''), r.client_reviewed_at, r.client_review_note, r.review_answer, r.created_at, r.updated_at,
 		coalesce((SELECT json_agg(json_build_object('id', coalesce(rp.project_id::text, ''), 'name', rp.name) ORDER BY rp.position)
 			FROM report_projects rp WHERE rp.report_id = r.id), '[]'),
 		f.id, f.name, f.email, c.id, c.name, c.email, coalesce(r.currency, f.currency),
@@ -51,7 +51,7 @@ func scanReport(row pgx.Row) (Report, error) {
 		projects                []byte
 	)
 	err := row.Scan(&r.ID, &r.Title, &r.Summary, &r.Kind, &r.From, &r.To, &r.Status, &r.SentAt, &r.PaidAt,
-		&r.RecalledAt, &r.CreatedAt, &r.UpdatedAt, &projects,
+		&r.RecalledAt, &r.Review, &r.ReviewedAt, &r.ReviewNote, &r.ReviewAnswer, &r.CreatedAt, &r.UpdatedAt, &projects,
 		&r.Freelancer.ID, &r.Freelancer.Name, &r.Freelancer.Email,
 		&clientID, &cName, &cEmail, &r.Currency, &r.Branding.Color, &r.Branding.Details, &r.Branding.LogoID, &r.ItemCount, &r.OpenQuestions, &r.Comments, &r.ListTotal)
 	if err != nil {

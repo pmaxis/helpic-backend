@@ -29,6 +29,14 @@ const (
 	// KindReportRecalled: the freelancer took a sent report back to
 	// correct it; the client sees it again once it's sent again.
 	KindReportRecalled = "report_recalled"
+	// KindReportApproved: the client approved a sent report;
+	// KindReportChangesRequested: they asked for changes to it, Detail is
+	// the start of what they wrote.
+	KindReportApproved         = "report_approved"
+	KindReportChangesRequested = "report_changes_requested"
+	// KindReportChangesDeclined: the freelancer kept the report as it was
+	// instead of the changes asked for; Detail is the start of why.
+	KindReportChangesDeclined = "report_changes_declined"
 	// KindAttachmentAdded: a file was added to a task; Detail is its name.
 	KindAttachmentAdded = "attachment_added"
 	// KindFileApproved: the client's side approved a file on a task;

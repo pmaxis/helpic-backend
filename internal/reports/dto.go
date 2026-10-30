@@ -152,8 +152,49 @@ func (r CommentRequest) Validate() (string, string, map[string]string) {
 	return strings.TrimSpace(r.ItemID), body, nil
 }
 
+// ReviewRequest is the JSON body for PUT /api/v1/reports/{id}/review.
+type ReviewRequest struct {
+	Review string `json:"review" enums:"approved,changes_requested"`
+	// Comment says what to change; asking for changes needs one. It goes to
+	// the report's discussion.
+	Comment string `json:"comment"`
+}
+
+// KeepRequest is the JSON body for POST /api/v1/reports/{id}/keep.
+type KeepRequest struct {
+	// Comment says why the report is right as it is; it goes to the
+	// report's discussion.
+	Comment string `json:"comment"`
+}
+
 // Validate returns the trimmed comment, and per-field errors.
+func (r KeepRequest) Validate() (string, map[string]string) {
+	comment := strings.TrimSpace(r.Comment)
+	switch {
+	case comment == "":
+		return "", map[string]string{"comment": "Say why it stays as it is"}
+	case utf8.RuneCountInString(comment) > maxComment:
+		return "", map[string]string{"comment": "The comment is too long"}
+	}
+	return comment, nil
+}
+
 // Validate returns the review and the trimmed comment, and per-field errors.
+func (r ReviewRequest) Validate() (string, string, map[string]string) {
+	comment := strings.TrimSpace(r.Comment)
+	fields := map[string]string{}
+	switch {
+	case r.Review != ReviewApproved && r.Review != ReviewChangesRequested:
+		fields["review"] = "Approve the report or ask for changes"
+	case r.Review == ReviewChangesRequested && comment == "":
+		fields["comment"] = "Say what to change"
+	}
+	if utf8.RuneCountInString(comment) > maxComment {
+		fields["comment"] = "The comment is too long"
+	}
+	return r.Review, comment, fields
+}
+
 func checkKind(fields map[string]string, kind string) {
 	if kind != KindBasic && kind != KindDetailed {
 		fields["kind"] = "Choose a basic or a detailed report"
@@ -219,7 +260,15 @@ type DTO struct {
 	PaidAt   *time.Time   `json:"paid_at"`
 	// RecalledAt is when the freelancer last took it back to correct it.
 	RecalledAt *time.Time `json:"recalled_at"`
-	ItemCount  int        `json:"item_count"`
+	// Review is what the client made of it once sent: null until they say.
+	Review     *string    `json:"review" enums:"approved,changes_requested"`
+	ReviewedAt *time.Time `json:"reviewed_at"`
+	// ReviewNote is what the client said to change, while changes are asked
+	// for; ReviewAnswer is why the freelancer kept it as it was, until the
+	// client reviews it again. Both "" otherwise.
+	ReviewNote   string `json:"review_note"`
+	ReviewAnswer string `json:"review_answer"`
+	ItemCount    int    `json:"item_count"`
 	// OpenQuestions counts the lines with a question waiting; CommentCount
 	// is the whole discussion.
 	OpenQuestions int       `json:"open_questions"`
@@ -247,7 +296,12 @@ type DTO struct {
 	// sent, or a draft taken back to correct, until paid.
 	CanComment bool `json:"can_comment"`
 	// CanRecall is true for the freelancer of a sent, unpaid report.
-	CanRecall bool      `json:"can_recall"`
+	CanRecall bool `json:"can_recall"`
+	// CanReview is true for the client of a sent, unpaid report.
+	CanReview bool `json:"can_review"`
+	// CanAnswer is true for the freelancer while the client asks for
+	// changes: correct it (take it back) or keep it as it is.
+	CanAnswer bool      `json:"can_answer"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -291,6 +345,11 @@ func ToDTO(r Report, viewerID string) DTO {
 		CanComment:    CanDiscuss(r, viewerID),
 		CanRecall:     CanRecall(r, viewerID),
 		RecalledAt:    r.RecalledAt,
+		ReviewedAt:    r.ReviewedAt,
+		CanReview:     CanReview(r, viewerID),
+		CanAnswer:     CanAnswer(r, viewerID),
+		ReviewNote:    r.ReviewNote,
+		ReviewAnswer:  r.ReviewAnswer,
 		OpenQuestions: r.OpenQuestions,
 		CommentCount:  r.Comments,
 		TotalCents:    r.ListTotal,
@@ -299,6 +358,9 @@ func ToDTO(r Report, viewerID string) DTO {
 	}
 	if d.Projects == nil {
 		d.Projects = []ProjectRef{}
+	}
+	if r.Review != "" {
+		d.Review = &r.Review
 	}
 	if r.InUAH != nil {
 		d.InUAH = &InUAHDTO{Rate: r.InUAH.Rate, RateOn: r.InUAH.RateOn.Format(dateLayout), TotalCents: r.InUAH.TotalCents}

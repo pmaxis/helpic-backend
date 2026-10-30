@@ -24,6 +24,9 @@ var uk = map[string]string{
 	"%s sent you a report %s":                  "Новий звіт від %s: %s",
 	"%s commented on the report %s":            "Новий коментар від %s до звіту %s",
 	"%s took back the report %s to correct it": "%s: звіт %s відкликано на виправлення",
+	"%s approved the report %s":                "%s: звіт %s погоджено",
+	"%s asked for changes to the report %s":    "%s: просить правки у звіті %s",
+	"%s kept the report %s as it is":           "%s: звіт %s лишається без змін",
 	"%s started a project %s":                  "Новий проєкт від %s: %s",
 	"%s invited you to the project %s":         "%s: вас запрошено до проєкту %s",
 	"%s on Helpic":                             "%s у Helpic",
@@ -308,6 +311,9 @@ var uk = map[string]string{
 	"Point at a spot on the image":                                           "Вкажіть місце на зображенні",
 	"Comments can only point at an image on this task":                       "Коментар може вказувати лише на зображення цієї задачі",
 	"Write something first":                                                  "Спершу напишіть щось",
+	"Approve the report or ask for changes":                                  "Погодьте звіт або попросіть правки",
+	"Say what to change":                                                     "Напишіть, що треба змінити",
+	"Say why it stays as it is":                                              "Поясніть, чому звіт лишається без змін",
 	"The comment is too long":                                                "Коментар задовгий",
 	"Only the author can change a comment":                                   "Змінювати коментар може лише автор",
 	"Choose a file to upload":                                                "Оберіть файл для завантаження",
@@ -358,8 +364,11 @@ var uk = map[string]string{
 	"PDF export is not available on this server": "Експорт у PDF на цьому сервері недоступний",
 	"Could not generate the PDF":                 "Не вдалося створити PDF",
 
-	"The report's discussion is open once it's sent, until it's paid": "Обговорення звіту відкрите, щойно його надіслано, і до оплати",
-	"Only a sent report that isn't paid yet can be taken back":        "Відкликати можна лише надісланий і ще не оплачений звіт",
+	"The report's discussion is open once it's sent, until it's paid":                 "Обговорення звіту відкрите, щойно його надіслано, і до оплати",
+	"Only a sent report that isn't paid yet can be taken back":                        "Відкликати можна лише надісланий і ще не оплачений звіт",
+	"Only the report's client approves it or asks for changes":                        "Погоджує звіт або просить правки лише його замовник",
+	"Only a sent report that isn't paid yet can be approved or sent back for changes": "Погодити чи попросити правки можна лише у надісланому й ще не оплаченому звіті",
+	"The client hasn't asked for changes to this report":                              "Замовник не просив правок у цьому звіті",
 
 	// --- API errors: how reports look ---------------------------------------------------
 	"Choose a color like #1d4ed8":                    "Оберіть колір на зразок #1d4ed8",

@@ -103,8 +103,16 @@ type Report struct {
 	PaidAt   *time.Time
 	// RecalledAt is when the freelancer last took it back to correct it.
 	RecalledAt *time.Time
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// Review is what the client made of it once sent: "" until they say,
+	// ReviewApproved or ReviewChangesRequested; ReviewedAt is when.
+	Review     string
+	ReviewedAt *time.Time
+	// ReviewNote is what the client said to change; ReviewAnswer is why the
+	// freelancer kept the report as it was, until the client reviews it again.
+	ReviewNote   string
+	ReviewAnswer string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 	// Currency is the freelancer's while it's a draft, frozen once sent.
 	Currency string
 	// Branding is the freelancer's look: live while it's a draft, kept as

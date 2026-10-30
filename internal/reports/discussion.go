@@ -128,6 +128,7 @@ func (r *Repository) Recall(ctx context.Context, id string, at time.Time) error 
 
 	var logo *string
 	err = tx.QueryRow(ctx, `UPDATE reports r SET status = 'draft', sent_at = NULL, recalled_at = $2,
+			client_review = NULL, client_reviewed_at = NULL, client_review_note = '', review_answer = '',
 			currency = NULL, brand_color = NULL, business_details = NULL, brand_logo_id = NULL
 		FROM reports old WHERE old.id = r.id AND r.id = $1 AND r.status = 'sent'
 		RETURNING old.brand_logo_id::text`, id, at).Scan(&logo)

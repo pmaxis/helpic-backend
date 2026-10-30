@@ -35,6 +35,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Get("/{id}/comments", h.Comments)
 		r.Post("/{id}/comments", h.AddComment)
 		r.Post("/{id}/items/{itemID}/resolve", h.Resolve)
+		r.Put("/{id}/review", h.Review)
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireRole(user.RoleFreelancer))
@@ -45,6 +46,7 @@ func (h *Handler) Routes(r chi.Router) {
 			r.Delete("/{id}/items/{itemID}", h.RemoveItem)
 			r.Post("/{id}/send", h.Send)
 			r.Post("/{id}/recall", h.Recall)
+			r.Post("/{id}/keep", h.Keep)
 		})
 	})
 }
@@ -412,6 +414,74 @@ func (h *Handler) Resolve(w http.ResponseWriter, r *http.Request) {
 	writeReport(w, http.StatusOK, rep, userID, err)
 }
 
+// Review handles PUT /api/v1/reports/{id}/review.
+//
+//	@Summary		Approve a report or ask for changes
+//	@Description	Its client, while it's sent and unpaid. Asking for changes says what in a comment, added to the report's discussion. The freelancer is notified; taking the report back to correct it starts the review over.
+//	@Tags			reports
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Report ID"
+//	@Param			body	body		ReviewRequest			true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"report"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not the report's client"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409		{object}	response.ErrorEnvelope	"Not sent, or paid"
+//	@Router			/reports/{id}/review [put]
+func (h *Handler) Review(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req ReviewRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	review, comment, fields := req.Validate()
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	rep, err := h.svc.Review(r.Context(), userID, chi.URLParam(r, "id"), review, comment)
+	writeReport(w, http.StatusOK, rep, userID, err)
+}
+
+// Keep handles POST /api/v1/reports/{id}/keep.
+//
+//	@Summary		Keep a report as it is, instead of the changes asked for
+//	@Description	Its freelancer, while the client asks for changes to it — the other answer is taking it back to correct it. Why goes to the report's discussion; the client is notified and reviews it again.
+//	@Tags			reports
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Report ID"
+//	@Param			body	body		KeepRequest				true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"report"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409		{object}	response.ErrorEnvelope	"No changes asked for"
+//	@Router			/reports/{id}/keep [post]
+func (h *Handler) Keep(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req KeepRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	comment, fields := req.Validate()
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	rep, err := h.svc.KeepAsIs(r.Context(), userID, chi.URLParam(r, "id"), comment)
+	writeReport(w, http.StatusOK, rep, userID, err)
+}
+
 // Recall handles POST /api/v1/reports/{id}/recall.
 //
 //	@Summary		Take a sent report back to correct it
@@ -473,6 +543,12 @@ func writeReport(w http.ResponseWriter, status int, rep Report, viewerID string,
 		response.Error(w, http.StatusConflict, response.CodeConflict, "The report's discussion is open once it's sent, until it's paid")
 	case errors.Is(err, ErrNotRecallable):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "Only a sent report that isn't paid yet can be taken back")
+	case errors.Is(err, ErrNotReviewer):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the report's client approves it or asks for changes")
+	case errors.Is(err, ErrNotReviewable):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "Only a sent report that isn't paid yet can be approved or sent back for changes")
+	case errors.Is(err, ErrNoChangesAsked):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "The client hasn't asked for changes to this report")
 	case errors.Is(err, ErrKept):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "A sent report stays with your client. Only a draft can be deleted.")
 	case err != nil:

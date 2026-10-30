@@ -23,12 +23,19 @@ const (
 	EventQuestion    = "question" // task: the client asked about the line
 	EventResolved    = "resolved" // task: the question on the line was resolved
 	EventRecalled    = "recalled" // the freelancer took it back to correct it
+	// EventApproved: the client approved it; EventChangesRequested: they
+	// asked for changes to it.
+	EventApproved         = "approved"
+	EventChangesRequested = "changes_requested"
+	// EventChangesDeclined: the freelancer kept it as it was, saying why.
+	EventChangesDeclined = "changes_declined"
 )
 
 // clientEvents are what a client sees of a report's history: from the moment
 // it reached them, and what was said about it. Drafting stays the
 // freelancer's.
-var clientEvents = map[string]bool{EventSent: true, EventPaid: true, EventQuestion: true, EventResolved: true, EventRecalled: true}
+var clientEvents = map[string]bool{EventSent: true, EventPaid: true, EventQuestion: true, EventResolved: true, EventRecalled: true,
+	EventApproved: true, EventChangesRequested: true, EventChangesDeclined: true}
 
 // Event is one change in a report's history.
 type Event struct {
