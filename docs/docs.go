@@ -1475,6 +1475,12 @@ const docTemplate = `{
                         "required": true
                     },
                     {
+                        "type": "string",
+                        "description": "A file of the task this is a new version of",
+                        "name": "replaces",
+                        "in": "query"
+                    },
+                    {
                         "type": "file",
                         "description": "The file",
                         "name": "file",
@@ -1604,6 +1610,80 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/attachments/{id}/review": {
+            "put": {
+                "description": "Someone on the task's client side, on a file's latest version: \"approved\", \"changes_requested\", or \"\" to take it back. The freelancer is told.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "attachments"
+                ],
+                "summary": "Approve a file, or ask for changes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Attachment ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/attachments.ReviewRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "attachment",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/attachments.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not the client's side",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Archived, or not the latest version",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -2528,7 +2608,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Markdown. Mentioning someone who sees the task, as @[Name](user ID), tells them; anyone else's mention stays plain text.",
+                "description": "Markdown. Mentioning someone who sees the task, as @[Name](user ID), tells them; anyone else's mention stays plain text. A pin puts it on a spot of one of the task's images.",
                 "consumes": [
                     "application/json"
                 ],
@@ -8599,6 +8679,10 @@ const docTemplate = `{
                     "description": "CanDelete is true for the uploader.",
                     "type": "boolean"
                 },
+                "can_review": {
+                    "description": "CanReview is true for the task's client side on the latest version.",
+                    "type": "boolean"
+                },
                 "content_type": {
                     "type": "string"
                 },
@@ -8615,6 +8699,23 @@ const docTemplate = `{
                     "description": "IsImage marks a picture the browser may preview.",
                     "type": "boolean"
                 },
+                "latest": {
+                    "type": "boolean"
+                },
+                "review": {
+                    "description": "Review is what the client's side thinks of the version: \"approved\",\n\"changes_requested\", or null.",
+                    "type": "string",
+                    "enum": [
+                        "approved",
+                        "changes_requested"
+                    ]
+                },
+                "reviewed_at": {
+                    "type": "string"
+                },
+                "reviewed_by": {
+                    "$ref": "#/definitions/attachments.UploaderDTO"
+                },
                 "scan": {
                     "description": "Scan is the check for malware: \"pending\" doesn't download yet,\n\"infected\" never does (Threat names what was found); \"clean\" and\n\"unscanned\" (stored without a scanner) download.",
                     "type": "string",
@@ -8624,6 +8725,10 @@ const docTemplate = `{
                         "infected",
                         "unscanned"
                     ]
+                },
+                "series_id": {
+                    "description": "SeriesID is shared by every version of the file (the first one's\nID); Version counts them from 1; Latest is the version shown.",
+                    "type": "string"
                 },
                 "size_bytes": {
                     "type": "integer"
@@ -8636,6 +8741,9 @@ const docTemplate = `{
                 },
                 "uploaded_by": {
                     "$ref": "#/definitions/attachments.UploaderDTO"
+                },
+                "version": {
+                    "type": "integer"
                 }
             }
         },
@@ -8650,6 +8758,20 @@ const docTemplate = `{
                 },
                 "max_size_bytes": {
                     "type": "integer"
+                }
+            }
+        },
+        "attachments.ReviewRequest": {
+            "type": "object",
+            "properties": {
+                "review": {
+                    "description": "Review is \"approved\", \"changes_requested\", or \"\" to take it back.",
+                    "type": "string",
+                    "enum": [
+                        "approved",
+                        "changes_requested",
+                        ""
+                    ]
                 }
             }
         },
@@ -9196,6 +9318,14 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "pin": {
+                    "description": "Pin is the spot on an image the comment is about; null for the task\nas a whole. Its attachment_id is null once the image was deleted.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/comments.PinDTO"
+                        }
+                    ]
+                },
                 "task_id": {
                     "type": "string"
                 },
@@ -9218,11 +9348,47 @@ const docTemplate = `{
                 }
             }
         },
+        "comments.PinDTO": {
+            "type": "object",
+            "properties": {
+                "attachment_id": {
+                    "type": "string"
+                },
+                "x": {
+                    "type": "number"
+                },
+                "y": {
+                    "type": "number"
+                }
+            }
+        },
+        "comments.PinRequest": {
+            "type": "object",
+            "properties": {
+                "attachment_id": {
+                    "type": "string"
+                },
+                "x": {
+                    "type": "number"
+                },
+                "y": {
+                    "type": "number"
+                }
+            }
+        },
         "comments.Request": {
             "type": "object",
             "properties": {
                 "body": {
                     "type": "string"
+                },
+                "pin": {
+                    "description": "Pin puts a new comment on a spot of one of the task's images; an\nedit keeps the comment where it was.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/comments.PinRequest"
+                        }
+                    ]
                 }
             }
         },

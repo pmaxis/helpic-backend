@@ -19,6 +19,8 @@ var Kinds = []string{
 	KindCommentAdded,
 	KindCommentMention,
 	KindAttachmentAdded,
+	KindFileApproved,
+	KindFileChangesRequested,
 	KindProjectCreated,
 	KindProjectInvited,
 	KindReportSent,
@@ -41,6 +43,8 @@ var DefaultKinds = []string{
 	KindTaskOverdue,
 	KindCommentAdded,
 	KindCommentMention,
+	KindFileApproved,
+	KindFileChangesRequested,
 	KindReportSent,
 	KindReportPaid,
 	KindReportComment,
@@ -139,6 +143,10 @@ func Phrase(n Notification, locale, who, subject, detail string) string {
 		return t("%s mentioned you in %s", who, subject)
 	case KindAttachmentAdded:
 		return t("%s attached “%s” to %s", who, detail, subject)
+	case KindFileApproved:
+		return t("%s approved “%s” on %s", who, detail, subject)
+	case KindFileChangesRequested:
+		return t("%s asked for changes to “%s” on %s", who, detail, subject)
 	default:
 		return t("%s changed %s", who, subject)
 	}

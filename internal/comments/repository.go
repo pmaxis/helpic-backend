@@ -19,12 +19,20 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
-const selectComment = `SELECT c.id, c.task_id, c.body, c.created_at, c.updated_at, u.id, u.name, u.email
+const selectComment = `SELECT c.id, c.task_id, c.body, c.created_at, c.updated_at, u.id, u.name, u.email,
+		coalesce(c.attachment_id::text, ''), c.pin_x, c.pin_y
 	FROM comments c JOIN users u ON u.id = c.author_id`
 
 func scan(row pgx.Row) (Comment, error) {
-	var c Comment
-	err := row.Scan(&c.ID, &c.TaskID, &c.Body, &c.CreatedAt, &c.UpdatedAt, &c.Author.ID, &c.Author.Name, &c.Author.Email)
+	var (
+		c        Comment
+		pinOn    string
+		pinX, pY *float64
+	)
+	err := row.Scan(&c.ID, &c.TaskID, &c.Body, &c.CreatedAt, &c.UpdatedAt, &c.Author.ID, &c.Author.Name, &c.Author.Email, &pinOn, &pinX, &pY)
+	if pinX != nil && pY != nil {
+		c.Pin = &Pin{AttachmentID: pinOn, X: *pinX, Y: *pY}
+	}
 	return c, err
 }
 
@@ -53,11 +61,29 @@ func (r *Repository) Get(ctx context.Context, id string) (Comment, error) {
 	return c, nil
 }
 
-// Create adds a comment and returns its ID.
-func (r *Repository) Create(ctx context.Context, taskID, authorID, body string) (string, error) {
-	var id string
-	err := r.db.QueryRow(ctx, `INSERT INTO comments (task_id, author_id, body) VALUES ($1, $2, $3) RETURNING id`,
-		taskID, authorID, body).Scan(&id)
+// Create adds a comment, pinned to a spot on an image when pin isn't nil,
+// and returns its ID; ErrNotPinnable when the pin's file isn't an image of
+// the task.
+func (r *Repository) Create(ctx context.Context, taskID, authorID, body string, pin *Pin) (string, error) {
+	var (
+		id       string
+		pinOn    *string
+		pinX, pY *float64
+	)
+	if pin != nil {
+		pinOn, pinX, pY = &pin.AttachmentID, &pin.X, &pin.Y
+		var ok bool
+		if err := r.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM attachments WHERE id = as_uuid($1) AND task_id = $2
+			AND content_type IN ('image/png', 'image/jpeg', 'image/gif', 'image/webp'))`, pin.AttachmentID, taskID).Scan(&ok); err != nil {
+			return "", fmt.Errorf("check pinned image: %w", err)
+		}
+		if !ok {
+			return "", ErrNotPinnable
+		}
+	}
+	err := r.db.QueryRow(ctx, `INSERT INTO comments (task_id, author_id, body, attachment_id, pin_x, pin_y)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		taskID, authorID, body, pinOn, pinX, pY).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("create comment: %w", err)
 	}

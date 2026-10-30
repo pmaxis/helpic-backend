@@ -2,6 +2,7 @@ package comments
 
 import (
 	"errors"
+	"maps"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -91,7 +92,7 @@ func (h *Handler) People(w http.ResponseWriter, r *http.Request) {
 // Create handles POST /api/v1/comments?task={id}.
 //
 //	@Summary		Comment on a task
-//	@Description	Markdown. Mentioning someone who sees the task, as @[Name](user ID), tells them; anyone else's mention stays plain text.
+//	@Description	Markdown. Mentioning someone who sees the task, as @[Name](user ID), tells them; anyone else's mention stays plain text. A pin puts it on a spot of one of the task's images.
 //	@Tags			comments
 //	@Accept			json
 //	@Produce		json
@@ -107,11 +108,20 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	body, ok := readBody(w, r)
-	if !ok {
+	var req Request
+	if !request.Decode(w, r, &req) {
 		return
 	}
-	c, err := h.svc.Create(r.Context(), userID, r.URL.Query().Get("task"), body)
+	body, fields := req.Validate()
+	pin, pinFields := req.ValidatePin()
+	if len(fields)+len(pinFields) > 0 {
+		all := map[string]string{}
+		maps.Copy(all, fields)
+		maps.Copy(all, pinFields)
+		response.ValidationError(w, all)
+		return
+	}
+	c, err := h.svc.CreatePinned(r.Context(), userID, r.URL.Query().Get("task"), body, pin)
 	writeComment(w, http.StatusCreated, c, userID, err)
 }
 
@@ -189,6 +199,8 @@ func writeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound), errors.Is(err, tasks.ErrNotFound):
 		response.Error(w, http.StatusNotFound, response.CodeNotFound, "Comment not found")
+	case errors.Is(err, ErrNotPinnable):
+		response.ValidationError(w, map[string]string{"pin": "Comments can only point at an image on this task"})
 	case errors.Is(err, ErrNotAuthor):
 		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the author can change a comment")
 	case errors.Is(err, tasks.ErrArchived):

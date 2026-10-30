@@ -55,6 +55,12 @@ func (s *Service) People(ctx context.Context, userID, taskID string) ([]tasks.Pe
 // Create adds the user's comment to the task and tells the other side; whoever
 // it mentions is told they were, instead.
 func (s *Service) Create(ctx context.Context, userID, taskID, body string) (Comment, error) {
+	return s.CreatePinned(ctx, userID, taskID, body, nil)
+}
+
+// CreatePinned is Create for a comment on a spot of one of the task's
+// images; a nil pin makes it a comment on the task as a whole.
+func (s *Service) CreatePinned(ctx context.Context, userID, taskID, body string, pin *Pin) (Comment, error) {
 	t, err := s.tasks.Get(ctx, userID, taskID)
 	if err != nil {
 		return Comment{}, err
@@ -66,7 +72,7 @@ func (s *Service) Create(ctx context.Context, userID, taskID, body string) (Comm
 	if err != nil {
 		return Comment{}, err
 	}
-	id, err := s.repo.Create(ctx, t.ID, userID, body)
+	id, err := s.repo.Create(ctx, t.ID, userID, body, pin)
 	if err != nil {
 		return Comment{}, err
 	}

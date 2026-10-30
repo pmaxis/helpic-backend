@@ -31,6 +31,11 @@ const (
 	KindReportRecalled = "report_recalled"
 	// KindAttachmentAdded: a file was added to a task; Detail is its name.
 	KindAttachmentAdded = "attachment_added"
+	// KindFileApproved: the client's side approved a file on a task;
+	// KindFileChangesRequested: they asked for changes to it. Detail is the
+	// file's name.
+	KindFileApproved         = "file_approved"
+	KindFileChangesRequested = "file_changes_requested"
 	// KindCommentAdded: a comment on a task; Detail is its start.
 	KindCommentAdded = "comment_added"
 	// KindCommentMention: a comment on a task mentions the user, who isn't

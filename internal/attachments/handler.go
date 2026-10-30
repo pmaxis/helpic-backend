@@ -36,6 +36,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Post("/", h.Upload)
 		r.Get("/{id}", h.Download)
 		r.Delete("/{id}", h.Delete)
+		r.Put("/{id}/review", h.Review)
 	})
 }
 
@@ -54,14 +55,16 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	list, err := h.svc.List(r.Context(), userID, r.URL.Query().Get("task"))
+	list, canReview, err := h.svc.List(r.Context(), userID, r.URL.Query().Get("task"))
 	if err != nil {
 		WriteError(w, err)
 		return
 	}
 	out := make([]DTO, 0, len(list))
 	for _, a := range list {
-		out = append(out, ToDTO(a, userID))
+		d := ToDTO(a, userID)
+		d.CanReview = canReview && a.Latest
+		out = append(out, d)
 	}
 	response.JSON(w, http.StatusOK, ListResponse{Attachments: out, MaxSizeBytes: h.svc.MaxSize()})
 }
@@ -74,13 +77,14 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 //	@Tags			attachments
 //	@Accept			multipart/form-data
 //	@Produce		json
-//	@Param			task	query		string					true	"Task ID"
-//	@Param			file	formData	file					true	"The file"
-//	@Success		201		{object}	map[string]DTO			"attachment"
-//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
-//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
-//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
-//	@Failure		413		{object}	response.ErrorEnvelope	"Too large"
+//	@Param			task		query		string					true	"Task ID"
+//	@Param			replaces	query		string					false	"A file of the task this is a new version of"
+//	@Param			file		formData	file					true	"The file"
+//	@Success		201			{object}	map[string]DTO			"attachment"
+//	@Failure		400			{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401			{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404			{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		413			{object}	response.ErrorEnvelope	"Too large"
 //	@Router			/attachments [post]
 func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	userID, ok := request.User(w, r)
@@ -106,7 +110,8 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		if part.FormName() != "file" {
 			continue
 		}
-		a, err := h.svc.Upload(r.Context(), userID, r.URL.Query().Get("task"), part.FileName(), part)
+		q := r.URL.Query()
+		a, err := h.svc.Upload(r.Context(), userID, q.Get("task"), part.FileName(), q.Get("replaces"), part)
 		if err != nil {
 			WriteError(w, uploadError(err))
 			return
@@ -160,6 +165,44 @@ func Serve(w http.ResponseWriter, r *http.Request, a Attachment, f *os.File) {
 	http.ServeContent(w, r, "", a.CreatedAt, f)
 }
 
+// Review handles PUT /api/v1/attachments/{id}/review.
+//
+//	@Summary		Approve a file, or ask for changes
+//	@Description	Someone on the task's client side, on a file's latest version: "approved", "changes_requested", or "" to take it back. The freelancer is told.
+//	@Tags			attachments
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Attachment ID"
+//	@Param			body	body		ReviewRequest			true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"attachment"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not the client's side"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409		{object}	response.ErrorEnvelope	"Archived, or not the latest version"
+//	@Router			/attachments/{id}/review [put]
+func (h *Handler) Review(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req ReviewRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	review, fields := req.Validate()
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	a, err := h.svc.Review(r.Context(), userID, chi.URLParam(r, "id"), review)
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]DTO{"attachment": ToDTO(a, userID)})
+}
+
 // Delete handles DELETE /api/v1/attachments/{id}.
 //
 //	@Summary		Delete a file
@@ -199,6 +242,10 @@ func WriteError(w http.ResponseWriter, err error) {
 		response.Error(w, http.StatusNotFound, response.CodeNotFound, "File not found")
 	case errors.Is(err, tasks.ErrArchived):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "This task is archived: its files stay as they are")
+	case errors.Is(err, ErrNotReviewer):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the client's side approves a file or asks for changes")
+	case errors.Is(err, ErrNotLatest):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "A newer version replaced this file: review that one")
 	case errors.Is(err, ErrNotAllowed):
 		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only whoever uploaded a file can delete it")
 	case errors.Is(err, ErrTooLarge):

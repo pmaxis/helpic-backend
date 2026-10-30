@@ -544,6 +544,9 @@ definitions:
       can_delete:
         description: CanDelete is true for the uploader.
         type: boolean
+      can_review:
+        description: CanReview is true for the task's client side on the latest version.
+        type: boolean
       content_type:
         type: string
       created_at:
@@ -555,6 +558,20 @@ definitions:
       is_image:
         description: IsImage marks a picture the browser may preview.
         type: boolean
+      latest:
+        type: boolean
+      review:
+        description: |-
+          Review is what the client's side thinks of the version: "approved",
+          "changes_requested", or null.
+        enum:
+        - approved
+        - changes_requested
+        type: string
+      reviewed_at:
+        type: string
+      reviewed_by:
+        $ref: '#/definitions/attachments.UploaderDTO'
       scan:
         description: |-
           Scan is the check for malware: "pending" doesn't download yet,
@@ -566,6 +583,11 @@ definitions:
         - infected
         - unscanned
         type: string
+      series_id:
+        description: |-
+          SeriesID is shared by every version of the file (the first one's
+          ID); Version counts them from 1; Latest is the version shown.
+        type: string
       size_bytes:
         type: integer
       task_id:
@@ -574,6 +596,8 @@ definitions:
         type: string
       uploaded_by:
         $ref: '#/definitions/attachments.UploaderDTO'
+      version:
+        type: integer
     type: object
   attachments.ListResponse:
     properties:
@@ -583,6 +607,16 @@ definitions:
         type: array
       max_size_bytes:
         type: integer
+    type: object
+  attachments.ReviewRequest:
+    properties:
+      review:
+        description: Review is "approved", "changes_requested", or "" to take it back.
+        enum:
+        - approved
+        - changes_requested
+        - ""
+        type: string
     type: object
   attachments.UploaderDTO:
     properties:
@@ -951,6 +985,12 @@ definitions:
         type: boolean
       id:
         type: string
+      pin:
+        allOf:
+        - $ref: '#/definitions/comments.PinDTO'
+        description: |-
+          Pin is the spot on an image the comment is about; null for the task
+          as a whole. Its attachment_id is null once the image was deleted.
       task_id:
         type: string
       updated_at:
@@ -965,10 +1005,34 @@ definitions:
       name:
         type: string
     type: object
+  comments.PinDTO:
+    properties:
+      attachment_id:
+        type: string
+      x:
+        type: number
+      "y":
+        type: number
+    type: object
+  comments.PinRequest:
+    properties:
+      attachment_id:
+        type: string
+      x:
+        type: number
+      "y":
+        type: number
+    type: object
   comments.Request:
     properties:
       body:
         type: string
+      pin:
+        allOf:
+        - $ref: '#/definitions/comments.PinRequest'
+        description: |-
+          Pin puts a new comment on a spot of one of the task's images; an
+          edit keeps the comment where it was.
     type: object
   notifications.ActorDTO:
     properties:
@@ -3171,6 +3235,10 @@ paths:
         name: task
         required: true
         type: string
+      - description: A file of the task this is a new version of
+        in: query
+        name: replaces
+        type: string
       - description: The file
         in: formData
         name: file
@@ -3265,6 +3333,57 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Download a file
+      tags:
+      - attachments
+  /attachments/{id}/review:
+    put:
+      consumes:
+      - application/json
+      description: 'Someone on the task''s client side, on a file''s latest version:
+        "approved", "changes_requested", or "" to take it back. The freelancer is
+        told.'
+      parameters:
+      - description: Attachment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/attachments.ReviewRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: attachment
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/attachments.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not the client's side
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Archived, or not the latest version
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Approve a file, or ask for changes
       tags:
       - attachments
   /auth/login:
@@ -3886,7 +4005,8 @@ paths:
       consumes:
       - application/json
       description: Markdown. Mentioning someone who sees the task, as @[Name](user
-        ID), tells them; anyone else's mention stays plain text.
+        ID), tells them; anyone else's mention stays plain text. A pin puts it on
+        a spot of one of the task's images.
       parameters:
       - description: Task ID
         in: query

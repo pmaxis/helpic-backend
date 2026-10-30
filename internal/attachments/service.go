@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -62,17 +63,21 @@ func NewService(repo *Repository, store *Store, tasks taskAccess, maxSize, quota
 // MaxSize is the largest file accepted, in bytes.
 func (s *Service) MaxSize() int64 { return s.maxSize }
 
-// List returns the files on a task the user takes part in.
-func (s *Service) List(ctx context.Context, userID, taskID string) ([]Attachment, error) {
-	if _, err := s.tasks.Get(ctx, userID, taskID); err != nil {
-		return nil, err
+// List returns the files on a task the user takes part in, and whether
+// they may review them.
+func (s *Service) List(ctx context.Context, userID, taskID string) ([]Attachment, bool, error) {
+	t, err := s.tasks.Get(ctx, userID, taskID)
+	if err != nil {
+		return nil, false, err
 	}
-	return s.repo.List(ctx, taskID)
+	list, err := s.repo.List(ctx, taskID)
+	return list, CanReview(t, userID), err
 }
 
-// Upload stores a file on the task. Its type is read from the bytes, never
-// taken from the browser.
-func (s *Service) Upload(ctx context.Context, userID, taskID, fileName string, r io.Reader) (Attachment, error) {
+// Upload stores a file on the task — a new version of one of its files when
+// replaces names it. Its type is read from the bytes, never taken from the
+// browser.
+func (s *Service) Upload(ctx context.Context, userID, taskID, fileName, replaces string, r io.Reader) (Attachment, error) {
 	t, err := s.tasks.Get(ctx, userID, taskID)
 	if err != nil {
 		return Attachment{}, err
@@ -83,6 +88,14 @@ func (s *Service) Upload(ctx context.Context, userID, taskID, fileName string, r
 	id, err := s.repo.NewID(ctx)
 	if err != nil {
 		return Attachment{}, err
+	}
+	series := id
+	if replaces != "" {
+		prev, err := s.repo.Get(ctx, replaces)
+		if err != nil || prev.TaskID != t.ID {
+			return Attachment{}, ErrNotFound
+		}
+		series = prev.SeriesID
 	}
 
 	br := bufio.NewReaderSize(r, 512)
@@ -103,6 +116,7 @@ func (s *Service) Upload(ctx context.Context, userID, taskID, fileName string, r
 		ContentType: sniff(head),
 		SizeBytes:   size,
 		Scan:        ScanUnscanned,
+		SeriesID:    series,
 	}
 	if s.scanner != nil {
 		a.Scan = ScanPending
@@ -114,9 +128,60 @@ func (s *Service) Upload(ctx context.Context, userID, taskID, fileName string, r
 	if s.scanner != nil {
 		go s.scanSoon(id)
 	}
-	s.tasks.Record(ctx, t.ID, userID, tasks.EventAttachmentAdded, map[string]any{"name": a.FileName})
+	added, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return Attachment{}, err
+	}
+	data := map[string]any{"name": a.FileName}
+	if added.Version > 1 {
+		data["version"] = added.Version
+	}
+	s.tasks.Record(ctx, t.ID, userID, tasks.EventAttachmentAdded, data)
 	s.tasks.Tell(ctx, userID, t, notifications.KindAttachmentAdded, a.FileName, true)
-	return s.repo.Get(ctx, id)
+	return added, nil
+}
+
+// CanReview reports whether the user may review the task's files: someone
+// on its client's side, never its freelancer, nor on a personal task.
+func CanReview(t tasks.Task, userID string) bool {
+	return t.Client != nil && t.Freelancer.ID != userID && !t.Archived()
+}
+
+// Review records what the client's side thinks of a file's latest version:
+// approved, or that it needs changes; "" takes that back. The freelancer is
+// told, and the task's history keeps it.
+func (s *Service) Review(ctx context.Context, userID, id, review string) (Attachment, error) {
+	a, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return Attachment{}, err
+	}
+	t, err := s.tasks.Get(ctx, userID, a.TaskID)
+	if err != nil {
+		return Attachment{}, ErrNotFound
+	}
+	if t.Archived() {
+		return Attachment{}, tasks.ErrArchived
+	}
+	if !CanReview(t, userID) {
+		return Attachment{}, ErrNotReviewer
+	}
+	if !a.Latest {
+		return Attachment{}, ErrNotLatest
+	}
+	if review == a.Review {
+		return a, nil
+	}
+	if err := s.repo.SetReview(ctx, a.ID, review, userID, time.Now()); err != nil {
+		return Attachment{}, err
+	}
+	s.tasks.Record(ctx, t.ID, userID, tasks.EventFileReviewed, map[string]any{"name": a.FileName, "version": a.Version, "review": review})
+	switch review {
+	case ReviewApproved:
+		s.tasks.Tell(ctx, userID, t, notifications.KindFileApproved, a.FileName, true)
+	case ReviewChangesRequested:
+		s.tasks.Tell(ctx, userID, t, notifications.KindFileChangesRequested, a.FileName, true)
+	}
+	return s.repo.Get(ctx, a.ID)
 }
 
 // Open returns a file of a task the user takes part in, for reading:
@@ -130,10 +195,11 @@ func (s *Service) Open(ctx context.Context, userID, id string) (Attachment, *os.
 	return s.open(a)
 }
 
-// OfTask returns a task's files for whoever holds its public link; the
-// caller has checked the link.
+// OfTask returns a task's files for whoever holds its public link, each at
+// its latest version; the caller has checked the link.
 func (s *Service) OfTask(ctx context.Context, taskID string) ([]Attachment, error) {
-	return s.repo.List(ctx, taskID)
+	list, err := s.repo.List(ctx, taskID)
+	return slices.DeleteFunc(list, func(a Attachment) bool { return !a.Latest }), err
 }
 
 // OpenOnTask opens a file of the task a public link shares: ErrNotFound for

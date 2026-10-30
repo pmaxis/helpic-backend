@@ -2,6 +2,9 @@
 // sides of a task see and download them; whoever uploaded a file may delete
 // it. The bytes live on disk, one file per attachment, named by its ID. With
 // a virus scanner set up, a new file downloads only once it was checked.
+//
+// A file can get new versions, each a file of its own in the same series;
+// the client's side approves the latest version or asks for changes to it.
 package attachments
 
 import (
@@ -24,6 +27,17 @@ var (
 	ErrScanPending = errors.New("file is being checked")
 	// ErrInfected is returned for a file that had malware in it.
 	ErrInfected = errors.New("file had malware")
+	// ErrNotReviewer is returned when anyone but the task's client side
+	// reviews a file: the freelancer, or on a personal task.
+	ErrNotReviewer = errors.New("only the client side reviews a file")
+	// ErrNotLatest is returned for reviewing a version a newer one replaced.
+	ErrNotLatest = errors.New("a newer version replaced this file")
+)
+
+// What the client's side thinks of a version.
+const (
+	ReviewApproved         = "approved"
+	ReviewChangesRequested = "changes_requested"
 )
 
 // Where a file is in its check for malware.
@@ -57,6 +71,17 @@ type Attachment struct {
 	// infected file.
 	Scan   string
 	Threat string
+	// SeriesID is the first version's ID, shared by all versions of the
+	// file; Version counts them from 1. Latest is whether no newer version
+	// replaced this one.
+	SeriesID string
+	Version  int
+	Latest   bool
+	// Review is "" until the client's side approves the version or asks for
+	// changes; Reviewer is who did, ReviewedAt when.
+	Review     string
+	Reviewer   *Uploader
+	ReviewedAt *time.Time
 }
 
 // inlineTypes are the images a browser may show in place; anything else is

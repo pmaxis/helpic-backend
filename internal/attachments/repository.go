@@ -22,19 +22,31 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 const selectAttachment = `SELECT a.id, a.task_id, a.file_name, a.content_type, a.size_bytes, a.created_at,
-		a.scan_status, a.threat, u.id, u.name, u.email
-	FROM attachments a JOIN users u ON u.id = a.uploaded_by`
+		a.scan_status, a.threat, u.id, u.name, u.email,
+		a.series_id, a.version, NOT EXISTS (SELECT 1 FROM attachments n WHERE n.series_id = a.series_id AND n.version > a.version),
+		coalesce(a.review, ''), rv.id, rv.name, rv.email, a.reviewed_at
+	FROM attachments a JOIN users u ON u.id = a.uploaded_by
+	LEFT JOIN users rv ON rv.id = a.reviewed_by`
 
 func scan(row pgx.Row) (Attachment, error) {
-	var a Attachment
+	var (
+		a                     Attachment
+		rvID, rvName, rvEmail *string
+	)
 	err := row.Scan(&a.ID, &a.TaskID, &a.FileName, &a.ContentType, &a.SizeBytes, &a.CreatedAt,
-		&a.Scan, &a.Threat, &a.Uploader.ID, &a.Uploader.Name, &a.Uploader.Email)
+		&a.Scan, &a.Threat, &a.Uploader.ID, &a.Uploader.Name, &a.Uploader.Email,
+		&a.SeriesID, &a.Version, &a.Latest, &a.Review, &rvID, &rvName, &rvEmail, &a.ReviewedAt)
+	if rvID != nil {
+		a.Reviewer = &Uploader{ID: *rvID, Name: *rvName, Email: *rvEmail}
+	}
 	return a, err
 }
 
-// List returns a task's files, oldest first.
+// List returns a task's files, oldest first: each series where its first
+// version came, its versions in order.
 func (r *Repository) List(ctx context.Context, taskID string) ([]Attachment, error) {
-	rows, err := r.db.Query(ctx, selectAttachment+` WHERE a.task_id = $1 ORDER BY a.created_at, a.id`, taskID)
+	rows, err := r.db.Query(ctx, selectAttachment+` WHERE a.task_id = $1
+		ORDER BY (SELECT min(f.created_at) FROM attachments f WHERE f.series_id = a.series_id), a.series_id, a.version`, taskID)
 	if err != nil {
 		return nil, fmt.Errorf("list attachments: %w", err)
 	}
@@ -87,12 +99,35 @@ func (r *Repository) Create(ctx context.Context, a Attachment, quota int64) erro
 			return ErrQuota
 		}
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO attachments (id, task_id, uploaded_by, file_name, content_type, size_bytes, scan_status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`, a.ID, a.TaskID, a.Uploader.ID, a.FileName, a.ContentType, a.SizeBytes, a.Scan); err != nil {
+	// A new version comes after the series' latest; the series' rows are
+	// locked, so two new versions at once don't take the same number.
+	version := 1
+	if a.SeriesID != a.ID {
+		if _, err := tx.Exec(ctx, `SELECT 1 FROM attachments WHERE series_id = $1 FOR UPDATE`, a.SeriesID); err != nil {
+			return fmt.Errorf("lock series: %w", err)
+		}
+		if err := tx.QueryRow(ctx, `SELECT coalesce(max(version), 0) + 1 FROM attachments WHERE series_id = $1`, a.SeriesID).Scan(&version); err != nil {
+			return fmt.Errorf("next version: %w", err)
+		}
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO attachments (id, task_id, uploaded_by, file_name, content_type, size_bytes, scan_status, series_id, version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, a.ID, a.TaskID, a.Uploader.ID, a.FileName, a.ContentType, a.SizeBytes, a.Scan, a.SeriesID, version); err != nil {
 		return fmt.Errorf("create attachment: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
+}
+
+// SetReview records what the reviewer thinks of a version; "" takes it back.
+func (r *Repository) SetReview(ctx context.Context, id, review, reviewerID string, at time.Time) error {
+	_, err := r.db.Exec(ctx, `UPDATE attachments SET review = NULLIF($2, ''),
+			reviewed_by = CASE WHEN $2 = '' THEN NULL ELSE $3::uuid END,
+			reviewed_at = CASE WHEN $2 = '' THEN NULL ELSE $4::timestamptz END
+		WHERE id = $1`, id, review, reviewerID, at)
+	if err != nil {
+		return fmt.Errorf("review attachment: %w", err)
 	}
 	return nil
 }

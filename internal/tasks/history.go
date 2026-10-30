@@ -27,6 +27,9 @@ const (
 	EventLabels            = "labels"
 	EventAttachmentAdded   = "attachment_added"
 	EventAttachmentRemoved = "attachment_removed"
+	// EventFileReviewed: name, version, and review — "approved",
+	// "changes_requested", or "" when taken back.
+	EventFileReviewed = "file_reviewed"
 	// EventArchived carries "report": the paid report's title, or nothing
 	// when the owner archived a personal task.
 	EventArchived = "archived"
