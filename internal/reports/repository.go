@@ -27,6 +27,10 @@ const selectReport = `SELECT r.id, r.title, r.summary, r.kind, r.period_from, r.
 		coalesce((SELECT json_agg(json_build_object('id', coalesce(rp.project_id::text, ''), 'name', rp.name) ORDER BY rp.position)
 			FROM report_projects rp WHERE rp.report_id = r.id), '[]'),
 		f.id, f.name, f.email, c.id, c.name, c.email, coalesce(r.currency, f.currency),
+		-- the freelancer's look: live while a draft, kept once sent
+		CASE WHEN r.status = 'draft' THEN f.brand_color ELSE r.brand_color END,
+		CASE WHEN r.status = 'draft' THEN f.business_details ELSE coalesce(r.business_details, '') END,
+		coalesce(CASE WHEN r.status = 'draft' THEN f.brand_logo_id ELSE r.brand_logo_id END::text, ''),
 		(SELECT count(*) FROM report_items i WHERE i.report_id = r.id),
 		-- the sum of its prices: live while a draft, frozen once sent; NULL when none has one
 		(SELECT sum(CASE WHEN r.status = 'draft' THEN t.price_cents ELSE i.price_cents END)
@@ -47,7 +51,7 @@ func scanReport(row pgx.Row) (Report, error) {
 	err := row.Scan(&r.ID, &r.Title, &r.Summary, &r.Kind, &r.From, &r.To, &r.Status, &r.SentAt, &r.PaidAt,
 		&r.CreatedAt, &r.UpdatedAt, &projects,
 		&r.Freelancer.ID, &r.Freelancer.Name, &r.Freelancer.Email,
-		&clientID, &cName, &cEmail, &r.Currency, &r.ItemCount, &r.ListTotal)
+		&clientID, &cName, &cEmail, &r.Currency, &r.Branding.Color, &r.Branding.Details, &r.Branding.LogoID, &r.ItemCount, &r.ListTotal)
 	if err != nil {
 		return r, err
 	}
@@ -219,7 +223,8 @@ func (r *Repository) RemoveItem(ctx context.Context, reportID, itemID string) er
 }
 
 // Send marks a draft sent, at the given time, and freezes its prices, the
-// time of its hourly tasks and its currency as they are now.
+// time of its hourly tasks, its currency and the freelancer's look as they
+// are now.
 func (r *Repository) Send(ctx context.Context, id string, at time.Time) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -227,7 +232,8 @@ func (r *Repository) Send(ctx context.Context, id string, at time.Time) error {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	tag, err := tx.Exec(ctx, `UPDATE reports r SET status = 'sent', sent_at = $2, currency = f.currency
+	tag, err := tx.Exec(ctx, `UPDATE reports r SET status = 'sent', sent_at = $2, currency = f.currency,
+			brand_color = f.brand_color, business_details = f.business_details, brand_logo_id = f.brand_logo_id
 		FROM users f WHERE f.id = r.freelancer_id AND r.id = $1 AND r.status = 'draft'`, id, at)
 	if err != nil {
 		return fmt.Errorf("send report: %w", err)

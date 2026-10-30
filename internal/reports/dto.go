@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/pmaxis/helpic/internal/branding"
 )
 
 const (
@@ -130,6 +132,9 @@ func (r ItemRequest) Validate() (string, map[string]string) {
 	return notes, nil
 }
 
+// Validate returns the trimmed line ID and text, and per-field errors.
+// Validate returns the trimmed comment, and per-field errors.
+// Validate returns the review and the trimmed comment, and per-field errors.
 func checkKind(fields map[string]string, kind string) {
 	if kind != KindBasic && kind != KindDetailed {
 		fields["kind"] = "Choose a basic or a detailed report"
@@ -192,6 +197,9 @@ type DTO struct {
 	ItemCount int          `json:"item_count"`
 	Items     []ItemDTO    `json:"items,omitempty"`
 	Currency  string       `json:"currency"`
+	// Branding is how the freelancer's report looks: its logo (at
+	// /reports/{id}/logo), accent color and business details.
+	Branding branding.DTO `json:"branding"`
 	// TotalCents sums the items' prices, on a list too; null when none
 	// has a price.
 	TotalCents *int64 `json:"total_cents"`
@@ -241,6 +249,7 @@ func ToDTO(r Report, viewerID string) DTO {
 		PaidAt:      r.PaidAt,
 		ItemCount:   r.ItemCount,
 		Currency:    r.Currency,
+		Branding:    branding.ToDTO(r.Branding),
 		CanEdit:     r.Freelancer.ID == viewerID && r.Status == StatusDraft,
 		CanDelete:   r.Freelancer.ID == viewerID && r.Status == StatusDraft,
 		CanMarkPaid: CanMarkPaid(r, viewerID),

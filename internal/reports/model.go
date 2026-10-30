@@ -10,6 +10,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/pmaxis/helpic/internal/branding"
 )
 
 // Report statuses.
@@ -99,6 +101,9 @@ type Report struct {
 	UpdatedAt time.Time
 	// Currency is the freelancer's while it's a draft, frozen once sent.
 	Currency string
+	// Branding is the freelancer's look: live while it's a draft, kept as
+	// it was once sent.
+	Branding branding.Branding
 	// ItemCount and ListTotal (the sum of the prices, nil when none has one)
 	// are filled whenever a report is read; Items when loading one report.
 	ItemCount int

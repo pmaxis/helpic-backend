@@ -349,6 +349,16 @@ var uk = map[string]string{
 	"PDF export is not available on this server": "Експорт у PDF на цьому сервері недоступний",
 	"Could not generate the PDF":                 "Не вдалося створити PDF",
 
+	// --- API errors: how reports look ---------------------------------------------------
+	"Choose a color like #1d4ed8":                    "Оберіть колір на зразок #1d4ed8",
+	"Business details are too long":                  "Реквізити задовгі",
+	"Keep business details to 15 lines":              "Реквізити — не більше 15 рядків",
+	"Choose an image for the logo":                   "Оберіть зображення для логотипа",
+	"The logo must be a PNG or JPEG image":           "Логотип має бути зображенням PNG або JPEG",
+	"The logo must be at most 4000 pixels on a side": "Логотип має бути не більше 4000 пікселів з кожного боку",
+	"The logo must be at most 512 KB":                "Логотип має бути не більше 512 КБ",
+	"No logo":                                        "Логотипа немає",
+
 	// --- API errors: notifications and Telegram ---------------------------------------
 	"Unknown notification kind":                            "Невідомий тип сповіщення",
 	"Telegram is not connected":                            "Telegram не підключено",

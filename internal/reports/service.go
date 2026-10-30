@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/pmaxis/helpic/internal/branding"
 	"github.com/pmaxis/helpic/internal/i18n"
 	"github.com/pmaxis/helpic/internal/notifications"
 	"github.com/pmaxis/helpic/internal/rates"
@@ -22,12 +23,18 @@ type rateFinder interface {
 	On(ctx context.Context, currency string, at time.Time) (rates.Rate, bool, error)
 }
 
+// logoFinder reads a logo's file. Implemented by *branding.Repository.
+type logoFinder interface {
+	Logo(ctx context.Context, id string) (branding.Logo, error)
+}
+
 // Service holds the report rules: the freelancer makes, edits and sends a
 // report; the client reads it once sent.
 type Service struct {
 	repo   *Repository
 	notify notifier
 	tasks  taskRecorder
+	logos  logoFinder
 	// zone is the IANA name completed days are counted in.
 	zone string
 	// rates puts totals in hryvnias; nil leaves them out.
@@ -35,13 +42,13 @@ type Service struct {
 }
 
 // NewService creates a reports Service; tasks records a paid report's moves
-// in its tasks' history. zone is the app time zone, where a completed day is
-// a day; "" is UTC.
-func NewService(repo *Repository, notify notifier, tasks taskRecorder, zone string) *Service {
+// in its tasks' history, logos reads the logos reports show. zone is the app
+// time zone, where a completed day is a day; "" is UTC.
+func NewService(repo *Repository, notify notifier, tasks taskRecorder, logos logoFinder, zone string) *Service {
 	if zone == "" {
 		zone = "UTC"
 	}
-	return &Service{repo: repo, notify: notify, tasks: tasks, zone: zone}
+	return &Service{repo: repo, notify: notify, tasks: tasks, logos: logos, zone: zone}
 }
 
 // ShowInUAH adds the total in hryvnias to a report in another currency, at
@@ -58,6 +65,20 @@ func (s *Service) List(ctx context.Context, userID string) ([]Report, error) {
 // Get returns a report the user may see.
 func (s *Service) Get(ctx context.Context, userID, id string) (Report, error) {
 	return s.read(ctx, userID, id)
+}
+
+// Logo returns the logo on a report the user may see: its freelancer's
+// while it's a draft, the one it was sent with after. branding.ErrNotFound
+// for a report without one.
+func (s *Service) Logo(ctx context.Context, userID, id string) (branding.Logo, error) {
+	r, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return branding.Logo{}, err
+	}
+	if r.Branding.LogoID == "" {
+		return branding.Logo{}, branding.ErrNotFound
+	}
+	return s.logos.Logo(ctx, r.Branding.LogoID)
 }
 
 // read loads a report the user may see as it's shown: with its total in

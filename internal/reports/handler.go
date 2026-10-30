@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/pmaxis/helpic/internal/branding"
 	"github.com/pmaxis/helpic/internal/middleware"
 	"github.com/pmaxis/helpic/internal/request"
 	"github.com/pmaxis/helpic/internal/response"
@@ -29,6 +30,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Get("/", h.List)
 		r.Get("/{id}", h.Get)
 		r.Get("/{id}/history", h.History)
+		r.Get("/{id}/logo", h.Logo)
 		r.Post("/{id}/paid", h.MarkPaid)
 
 		r.Group(func(r chi.Router) {
@@ -287,6 +289,34 @@ func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 		out = append(out, ToEventDTO(e))
 	}
 	response.JSON(w, http.StatusOK, map[string][]EventDTO{"events": out})
+}
+
+// Logo handles GET /api/v1/reports/{id}/logo.
+//
+//	@Summary		A report's logo
+//	@Description	Its freelancer's while it's a draft; the one it was sent with after.
+//	@Tags			reports
+//	@Produce		png,jpeg
+//	@Param			id	path		string					true	"Report ID"
+//	@Success		200	{file}		file					"The image"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found, or no logo"
+//	@Router			/reports/{id}/logo [get]
+func (h *Handler) Logo(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	l, err := h.svc.Logo(r.Context(), userID, chi.URLParam(r, "id"))
+	if errors.Is(err, ErrNotFound) {
+		writeReport(w, 0, Report{}, "", err)
+		return
+	}
+	if err != nil {
+		branding.WriteLogoError(w, err)
+		return
+	}
+	branding.ServeLogo(w, r, l)
 }
 
 // Delete handles DELETE /api/v1/reports/{id}.

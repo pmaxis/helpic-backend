@@ -3480,6 +3480,203 @@
                 }
             }
         },
+        "/me/branding": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "branding"
+                ],
+                "summary": "How your reports look",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/branding.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not a freelancer",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "The accent color (\"#rrggbb\", null for none) and the business details printed at the end of a report. Drafts show them at once; sent reports keep the ones they were sent with.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "branding"
+                ],
+                "summary": "Change how your reports look",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/branding.Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/branding.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not a freelancer",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/branding/logo": {
+            "get": {
+                "produces": [
+                    "image/png",
+                    "image/jpeg"
+                ],
+                "tags": [
+                    "branding"
+                ],
+                "summary": "Your logo",
+                "responses": {
+                    "200": {
+                        "description": "The image",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "No logo",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "A PNG or JPEG of up to 512 KB and 4000 pixels a side, in place of the one you had.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "branding"
+                ],
+                "summary": "Put a logo on your reports",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "The logo",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/branding.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Not an image",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not a freelancer",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "413": {
+                        "description": "Too large",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Reports you sent keep theirs.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "branding"
+                ],
+                "summary": "Take the logo off your reports",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/branding.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not a freelancer",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/me/currency": {
             "put": {
                 "description": "What a freelancer bills in: USD, EUR, GBP, UAH, PLN or CAD. Refused while a task still has a price, so amounts are not relabeled.",
@@ -5339,6 +5536,48 @@
                     },
                     "409": {
                         "description": "Already sent",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/{id}/logo": {
+            "get": {
+                "description": "Its freelancer's while it's a draft; the one it was sent with after.",
+                "produces": [
+                    "image/png",
+                    "image/jpeg"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "A report's logo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The image",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found, or no logo",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -8502,6 +8741,41 @@
                 }
             }
         },
+        "branding.DTO": {
+            "type": "object",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "details": {
+                    "type": "string"
+                },
+                "logo_id": {
+                    "description": "LogoID changes with every new logo, so its address can be cached;\nnull without one.",
+                    "type": "string"
+                }
+            }
+        },
+        "branding.Request": {
+            "type": "object",
+            "properties": {
+                "color": {
+                    "description": "Color is \"#rrggbb\"; null or \"\" for none.",
+                    "type": "string"
+                },
+                "details": {
+                    "type": "string"
+                }
+            }
+        },
+        "branding.Response": {
+            "type": "object",
+            "properties": {
+                "branding": {
+                    "$ref": "#/definitions/branding.DTO"
+                }
+            }
+        },
         "clients.AcceptRequest": {
             "type": "object",
             "properties": {
@@ -9146,6 +9420,14 @@
         "reports.DTO": {
             "type": "object",
             "properties": {
+                "branding": {
+                    "description": "Branding is how the freelancer's report looks: its logo (at\n/reports/{id}/logo), accent color and business details.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/branding.DTO"
+                        }
+                    ]
+                },
                 "can_delete": {
                     "description": "CanDelete is true for the freelancer while the report is a draft.",
                     "type": "boolean"

@@ -812,6 +812,31 @@ definitions:
           type: string
         type: array
     type: object
+  branding.DTO:
+    properties:
+      color:
+        type: string
+      details:
+        type: string
+      logo_id:
+        description: |-
+          LogoID changes with every new logo, so its address can be cached;
+          null without one.
+        type: string
+    type: object
+  branding.Request:
+    properties:
+      color:
+        description: Color is "#rrggbb"; null or "" for none.
+        type: string
+      details:
+        type: string
+    type: object
+  branding.Response:
+    properties:
+      branding:
+        $ref: '#/definitions/branding.DTO'
+    type: object
   clients.AcceptRequest:
     properties:
       code:
@@ -1251,6 +1276,12 @@ definitions:
     type: object
   reports.DTO:
     properties:
+      branding:
+        allOf:
+        - $ref: '#/definitions/branding.DTO'
+        description: |-
+          Branding is how the freelancer's report looks: its logo (at
+          /reports/{id}/logo), accent color and business details.
       can_delete:
         description: CanDelete is true for the freelancer while the report is a draft.
         type: boolean
@@ -4441,6 +4472,139 @@ paths:
       summary: Choose what the bell shows you
       tags:
       - notifications
+  /me/branding:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/branding.Response'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not a freelancer
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: How your reports look
+      tags:
+      - branding
+    put:
+      consumes:
+      - application/json
+      description: The accent color ("#rrggbb", null for none) and the business details
+        printed at the end of a report. Drafts show them at once; sent reports keep
+        the ones they were sent with.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/branding.Request'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/branding.Response'
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not a freelancer
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Change how your reports look
+      tags:
+      - branding
+  /me/branding/logo:
+    delete:
+      description: Reports you sent keep theirs.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/branding.Response'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not a freelancer
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Take the logo off your reports
+      tags:
+      - branding
+    get:
+      produces:
+      - image/png
+      - image/jpeg
+      responses:
+        "200":
+          description: The image
+          schema:
+            type: file
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: No logo
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Your logo
+      tags:
+      - branding
+    put:
+      consumes:
+      - multipart/form-data
+      description: A PNG or JPEG of up to 512 KB and 4000 pixels a side, in place
+        of the one you had.
+      parameters:
+      - description: The logo
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/branding.Response'
+        "400":
+          description: Not an image
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not a freelancer
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "413":
+          description: Too large
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Put a logo on your reports
+      tags:
+      - branding
   /me/currency:
     put:
       consumes:
@@ -5689,6 +5853,34 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Rewrite a task's notes in a draft
+      tags:
+      - reports
+  /reports/{id}/logo:
+    get:
+      description: Its freelancer's while it's a draft; the one it was sent with after.
+      parameters:
+      - description: Report ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - image/png
+      - image/jpeg
+      responses:
+        "200":
+          description: The image
+          schema:
+            type: file
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found, or no logo
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A report's logo
       tags:
       - reports
   /reports/{id}/paid:

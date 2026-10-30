@@ -22,6 +22,7 @@ import (
 	"github.com/pmaxis/helpic/internal/attachments"
 	"github.com/pmaxis/helpic/internal/auth"
 	"github.com/pmaxis/helpic/internal/board"
+	"github.com/pmaxis/helpic/internal/branding"
 	"github.com/pmaxis/helpic/internal/clamav"
 	"github.com/pmaxis/helpic/internal/clients"
 	"github.com/pmaxis/helpic/internal/comments"
@@ -206,7 +207,9 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	if cfg.Location != nil {
 		zone = cfg.Location.String()
 	}
-	reportsSvc := reports.NewService(reports.NewRepository(pool), notifier, tasksSvc, zone)
+	brandingRepo := branding.NewRepository(pool)
+	brandingHandler := branding.NewHandler(branding.NewService(brandingRepo))
+	reportsSvc := reports.NewService(reports.NewRepository(pool), notifier, tasksSvc, brandingRepo, zone)
 	reportsHandler := reports.NewHandler(reportsSvc)
 
 	// --- the bot acts too: comments, the timer, sending work back, payments --
@@ -366,6 +369,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireRole(user.RoleFreelancer))
 					clientsHandler.FreelancerRoutes(r, byUser(lim.invites))
+					brandingHandler.Routes(r)
 				})
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireRole(user.RoleClient))

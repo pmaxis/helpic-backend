@@ -164,6 +164,9 @@ func (s *Service) Delete(ctx context.Context, userID string, bySupport bool, bef
 		`DELETE FROM email_notification_prefs WHERE user_id = $1`,
 		`DELETE FROM app_notification_prefs WHERE user_id = $1`,
 		`DELETE FROM user_activity WHERE user_id = $1`,
+		// How their reports looked: sent ones keep theirs, with the client.
+		`UPDATE users SET brand_logo_id = NULL, brand_color = NULL, business_details = '' WHERE id = $1`,
+		`DELETE FROM brand_logos l WHERE l.owner_id = $1 AND NOT EXISTS (SELECT 1 FROM reports r WHERE r.brand_logo_id = l.id)`,
 	} {
 		if _, err := tx.Exec(ctx, q, d.ID); err != nil {
 			return fmt.Errorf("delete account data: %w", err)
