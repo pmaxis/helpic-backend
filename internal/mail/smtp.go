@@ -122,18 +122,18 @@ func (s *SMTP) dial(ctx context.Context) (*smtp.Client, error) {
 	}
 	c, err := smtp.NewClient(conn, s.cfg.Host)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("smtp hello: %w", err)
 	}
 	if ok, _ := c.Extension("STARTTLS"); ok && s.cfg.Port != 465 {
 		if err := c.StartTLS(&tls.Config{ServerName: s.cfg.Host, MinVersion: tls.VersionTLS12}); err != nil {
-			c.Close()
+			_ = c.Close()
 			return nil, fmt.Errorf("smtp starttls: %w", err)
 		}
 	}
 	if s.cfg.Username != "" {
 		if err := c.Auth(smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)); err != nil {
-			c.Close()
+			_ = c.Close()
 			return nil, fmt.Errorf("smtp auth: %w", err)
 		}
 	}

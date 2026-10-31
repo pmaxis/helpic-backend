@@ -117,7 +117,7 @@ func writeChunks(w io.Writer, r io.Reader) error {
 	var size [4]byte
 	for {
 		n, err := io.ReadFull(r, buf)
-		if n > 0 {
+		if n > 0 && n <= chunkSize {
 			binary.BigEndian.PutUint32(size[:], uint32(n))
 			if _, werr := w.Write(size[:]); werr != nil {
 				return fmt.Errorf("clamd: %w", werr)

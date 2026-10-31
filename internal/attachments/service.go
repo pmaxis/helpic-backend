@@ -126,7 +126,8 @@ func (s *Service) Upload(ctx context.Context, userID, taskID, fileName, replaces
 		return Attachment{}, err
 	}
 	if s.scanner != nil {
-		go s.scanSoon(id)
+		// The check outlives the request: keep its values, drop its cancel.
+		go s.scanSoon(context.WithoutCancel(ctx), id)
 	}
 	added, err := s.repo.Get(ctx, id)
 	if err != nil {
@@ -234,8 +235,8 @@ const scanBatch = 20
 // unless another server already took it. Its context isn't the request's,
 // which ends with the upload; should the server stop first, Run takes the
 // file up later.
-func (s *Service) scanSoon(id string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+func (s *Service) scanSoon(ctx context.Context, id string) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 	ok, err := s.repo.ClaimOne(ctx, id)
 	if err != nil || !ok {
@@ -286,7 +287,7 @@ func (s *Service) check(ctx context.Context, a Attachment) error {
 		return err
 	}
 	threat, err := s.scanner.Scan(ctx, f)
-	f.Close()
+	_ = f.Close()
 	if err != nil {
 		if rerr := s.repo.ReleaseScan(ctx, a.ID); rerr != nil {
 			slog.Error("failed to hand back a file for its next check", "attachment_id", a.ID, "error", rerr)

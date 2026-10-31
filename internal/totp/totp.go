@@ -62,6 +62,9 @@ func Code(secret string, step int64) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("decode secret: %w", err)
 	}
+	if step < 0 {
+		return "", fmt.Errorf("step before the Unix epoch: %d", step)
+	}
 	var msg [8]byte
 	binary.BigEndian.PutUint64(msg[:], uint64(step))
 	mac := hmac.New(sha1.New, key)
