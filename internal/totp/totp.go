@@ -6,7 +6,7 @@ package totp
 import (
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 -- TOTP (RFC 6238) is HMAC-SHA1; authenticator apps expect it
 	"encoding/base32"
 	"encoding/binary"
 	"fmt"

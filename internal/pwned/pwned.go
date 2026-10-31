@@ -8,7 +8,7 @@ package pwned
 import (
 	"bufio"
 	"context"
-	"crypto/sha1" //nolint:gosec // the service's key, not a password hash
+	"crypto/sha1" // #nosec G505 -- the service's key, not a password hash
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -33,7 +33,7 @@ func NewClient(base string) *Client {
 
 // Breached reports whether the password has turned up in a breach.
 func (c *Client) Breached(ctx context.Context, password string) (bool, error) {
-	sum := sha1.Sum([]byte(password)) //nolint:gosec
+	sum := sha1.Sum([]byte(password)) // #nosec G401 -- the service's key, not a password hash
 	hash := strings.ToUpper(hex.EncodeToString(sum[:]))
 	prefix, suffix := hash[:5], hash[5:]
 

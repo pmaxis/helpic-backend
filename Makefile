@@ -3,7 +3,7 @@ COMPOSE := docker compose
 # The build the admin panel shows: the commit, marked when there are changes.
 export VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: help dev up up-clamav down build logs test test-unit test-integration migrate-up migrate-down psql fmt swagger
+.PHONY: help dev up up-clamav down build logs test test-unit test-integration migrate-up migrate-down psql fmt sec swagger
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -47,6 +47,9 @@ psql: ## Open a psql shell on the database
 
 fmt: ## Format Go code
 	go fmt ./...
+
+sec: ## Check the code for security issues (gosec); mark a reviewed false alarm with // #nosec Gxxx -- why
+	go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 -quiet ./...
 
 swagger: ## Regenerate the API docs (docs/) from the handlers' comments; served at /api/docs
 	go run github.com/swaggo/swag/cmd/swag@v1.16.2 init -g cmd/server/main.go -d ./ -o docs --parseInternal --outputTypes go,json,yaml

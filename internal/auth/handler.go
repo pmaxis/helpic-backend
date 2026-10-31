@@ -160,13 +160,13 @@ func (h *Handler) ConfirmSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Token == "" {
-		response.ValidationError(w, map[string]string{"token": "This link has expired or was already used. Ask for a new one."})
+		response.ValidationError(w, map[string]string{"token": "This link has expired or was already used. Ask for a new one."}) // #nosec G101 -- a message, not a credential
 		return
 	}
 
 	u, tokens, err := h.svc.ConfirmSignup(r.Context(), req.Token, ClientOf(r))
 	if errors.Is(err, ErrSignupInvalid) {
-		response.ValidationError(w, map[string]string{"token": "This link has expired or was already used. Ask for a new one."})
+		response.ValidationError(w, map[string]string{"token": "This link has expired or was already used. Ask for a new one."}) // #nosec G101 -- a message, not a credential
 		return
 	}
 	if errors.Is(err, ErrEmailExists) {
@@ -351,7 +351,7 @@ func (h *Handler) Reset(w http.ResponseWriter, r *http.Request) {
 	}
 	err := h.svc.ResetPassword(r.Context(), req.Token, req.Password)
 	if errors.Is(err, ErrResetInvalid) {
-		response.ValidationError(w, map[string]string{"token": "This link has expired or was already used. Ask for a new one."})
+		response.ValidationError(w, map[string]string{"token": "This link has expired or was already used. Ask for a new one."}) // #nosec G101 -- a message, not a credential
 		return
 	}
 	if err != nil {
@@ -695,6 +695,7 @@ func (c CookieConfig) write(w http.ResponseWriter, name, path, value string, exp
 	} else {
 		maxAge = int(time.Until(expiresAt).Seconds())
 	}
+	// #nosec G124 -- Secure comes from COOKIE_SECURE, which production requires
 	http.SetCookie(w, &http.Cookie{
 		Name:     name,
 		Value:    value,

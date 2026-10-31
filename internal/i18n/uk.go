@@ -3,7 +3,7 @@ package i18n
 // uk translates the English texts into Ukrainian. Verbs in the past tense
 // would say whether a man or a woman did it, which Helpic doesn't know, so
 // notifications avoid them ("Анна: статус “Logo” змінено на Done").
-var uk = map[string]string{
+var uk = map[string]string{ // #nosec G101 -- translations, not credentials
 	// --- notifications (email, Telegram) -------------------------------------
 	"%s accepted your invitation":              "%s: запрошення прийнято",
 	"%s added a task %s":                       "Нова задача від %s: %s",

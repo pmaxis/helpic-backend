@@ -142,7 +142,7 @@ func (h *Handler) ConfirmEmail(w http.ResponseWriter, r *http.Request) {
 	u, err := h.svc.ConfirmEmailChange(r.Context(), req.Token)
 	switch {
 	case errors.Is(err, ErrEmailChangeInvalid):
-		response.ValidationError(w, map[string]string{"token": "This link has expired or was already used. Change your email again in Settings."})
+		response.ValidationError(w, map[string]string{"token": "This link has expired or was already used. Change your email again in Settings."}) // #nosec G101 -- a message, not a credential
 	case errors.Is(err, auth.ErrEmailExists):
 		response.ValidationError(w, map[string]string{"token": "Another account has used this email since. Pick a different one in Settings."})
 	case err != nil:

@@ -14,7 +14,7 @@ import (
 // Error codes used across the API. Every error response carries one of these.
 const (
 	CodeValidation        = "VALIDATION_ERROR"
-	CodeInvalidCredential = "INVALID_CREDENTIALS"
+	CodeInvalidCredential = "INVALID_CREDENTIALS" // #nosec G101 -- an error code, not a credential
 	CodeEmailExists       = "EMAIL_ALREADY_EXISTS"
 	CodeTwoFactorRequired = "TWO_FACTOR_REQUIRED"
 	CodeAccountBlocked    = "ACCOUNT_BLOCKED"
