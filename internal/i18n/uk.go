@@ -291,6 +291,7 @@ var uk = map[string]string{ // #nosec G101 -- translations, not credentials
 	"Add a freelancer to the project first":                                                                    "Спершу додайте фрилансера до учасників проєкту",
 	"The task can't be changed in its current status":                                                          "У поточному статусі задачу не можна змінити",
 	"This status change isn't allowed":                                                                         "Таку зміну статусу не дозволено",
+	"A done task can't go to the backlog":                                                                      "Виконану задачу не можна повернути в беклог",
 	"A subtask can't have subtasks of its own":                                                                 "У підзадачі не може бути власних підзадач",
 	"The task has subtasks: delete them first":                                                                 "У задачі є підзадачі: спершу видаліть їх",
 	"A subtask stays in its parent's project: move the parent instead":                                         "Підзадача лишається в проєкті батьківської задачі: перенесіть батьківську",

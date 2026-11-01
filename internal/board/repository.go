@@ -218,10 +218,11 @@ func (r *Repository) PlaceAll(ctx context.Context, columnID string, taskIDs []st
 	return nil
 }
 
-// ColumnTaskIDs lists every task in a column, in its board order: ordered
-// cards first, then the rest the way task lists sort them.
+// ColumnTaskIDs lists every task on the board in a column, in its board
+// order: ordered cards first, then the rest the way task lists sort them.
+// The ones waiting in the backlog aren't in the column.
 func (r *Repository) ColumnTaskIDs(ctx context.Context, columnID string) ([]string, error) {
-	rows, err := r.db.Query(ctx, `SELECT id::text FROM tasks WHERE status_id = as_uuid($1) AND archived_at IS NULL
+	rows, err := r.db.Query(ctx, `SELECT id::text FROM tasks WHERE status_id = as_uuid($1) AND archived_at IS NULL AND NOT in_backlog
 		ORDER BY position NULLS LAST, due_on ASC NULLS LAST, created_at DESC`, columnID)
 	if err != nil {
 		return nil, fmt.Errorf("list column tasks: %w", err)

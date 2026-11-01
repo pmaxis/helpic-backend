@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"slices"
 	"time"
@@ -396,6 +397,12 @@ func (s *Service) Create(ctx context.Context, userID, role string, p Params) (Ta
 	if err != nil {
 		return Task{}, err
 	}
+	if p.Backlog {
+		// A task made straight into done stays on the board: SetBacklog refuses it.
+		if err := s.repo.SetBacklog(ctx, id, true); err != nil && !errors.Is(err, ErrTransition) {
+			return Task{}, err
+		}
+	}
 	t, err := s.repo.Get(ctx, userID, id)
 	if err == nil {
 		s.Record(ctx, t.ID, userID, EventCreated, nil)
@@ -747,6 +754,10 @@ func (s *Service) MoveTo(ctx context.Context, userID, role, id, statusID string)
 		return Task{}, ErrStatusMismatch
 	}
 	if statusID == t.StatusID {
+		if t.InBacklog {
+			// Out of the backlog into the column it already counts in.
+			return s.SetBacklog(ctx, userID, id, false)
+		}
 		return t, nil
 	}
 	cur, err := s.repo.Status(ctx, t.StatusID)
@@ -775,8 +786,39 @@ func (s *Service) MoveTo(ctx context.Context, userID, role, id, statusID string)
 	return t, err
 }
 
+// SetBacklog puts the task into its board's backlog, or back on the board in
+// the column of its status. It keeps its status either way, so anyone who
+// sees the task may, while it's open; a done or archived task can't
+// (ErrBacklogClosed, ErrArchived). Already where it was asked to be is a no-op.
+func (s *Service) SetBacklog(ctx context.Context, userID, id string, on bool) (Task, error) {
+	t, err := s.repo.Get(ctx, userID, id)
+	if err != nil {
+		return Task{}, err
+	}
+	if t.Archived() {
+		return Task{}, ErrArchived
+	}
+	if t.InBacklog == on {
+		return t, nil
+	}
+	if !CanBacklog(t) {
+		return Task{}, ErrBacklogClosed
+	}
+	if err := s.repo.SetBacklog(ctx, id, on); err != nil {
+		if errors.Is(err, ErrTransition) {
+			return Task{}, ErrBacklogClosed
+		}
+		return Task{}, err
+	}
+	s.Record(ctx, id, userID, EventBacklog, map[string]any{"in_backlog": on})
+	return s.repo.Get(ctx, userID, id)
+}
+
 // recordStatus records a move between workflow statuses, by name.
 func (s *Service) recordStatus(ctx context.Context, actorID string, before, after Task) {
+	if before.InBacklog && !after.InBacklog {
+		s.Record(ctx, after.ID, actorID, EventBacklog, map[string]any{"in_backlog": false})
+	}
 	if before.StatusID != after.StatusID {
 		data := change(before.StatusName, after.StatusName)
 		data["category"] = after.Status

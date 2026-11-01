@@ -33,6 +33,18 @@ func getBoard(t *testing.T, srv *httptest.Server, c *http.Client, query string) 
 	return out
 }
 
+// backlogTitles lists the titles of the tasks waiting in the user's backlogs, in order.
+func backlogTitles(t *testing.T, srv *httptest.Server, c *http.Client, query string) []string {
+	t.Helper()
+	resp := get(t, c, srv.URL+"/api/v1/tasks?backlog=1"+query)
+	wantStatus(t, resp, http.StatusOK)
+	out := []string{}
+	for _, tk := range decode(t, resp)["tasks"].([]any) {
+		out = append(out, tk.(map[string]any)["title"].(string))
+	}
+	return out
+}
+
 func column(b boardView, name string) boardColumn {
 	for _, c := range b.Columns {
 		if c.Name == name {
@@ -366,4 +378,103 @@ func TestBoard_ProjectsHaveTheirOwnWorkflow(t *testing.T) {
 	})
 	wantStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
+}
+
+func TestBoard_Backlog(t *testing.T) {
+	srv, _ := newAPI(t)
+	freelancer := signUpFreelancer(t, srv, "free@example.com")
+	client := acceptNew(t, srv, invite(t, srv, freelancer, "client@example.com"))
+	freelancerID, clientID := myID(t, srv, freelancer), myID(t, srv, client)
+	setBacklog := func(c *http.Client, id string, on bool) *http.Response {
+		return do(t, c, http.MethodPut, srv.URL+"/api/v1/tasks/"+id+"/backlog", map[string]bool{"in_backlog": on})
+	}
+
+	// A task made straight into the backlog keeps its status but sits off the columns.
+	idea := newTask(t, srv, client, map[string]any{"freelancer_id": freelancerID, "title": "Idea", "backlog": true})
+	if idea["in_backlog"] != true || idea["status"] != "new" || idea["can_backlog"] != true {
+		t.Fatalf("created in the backlog = %v", idea)
+	}
+	logo := newTask(t, srv, client, map[string]any{"freelancer_id": freelancerID, "title": "Logo"})
+	b := getBoard(t, srv, freelancer, "?with="+clientID)
+	if got := column(b, "New").Tasks; len(got) != 1 || got[0] != "Logo" {
+		t.Fatalf("New = %v", got)
+	}
+	if got := backlogTitles(t, srv, freelancer, "&with="+clientID); len(got) != 1 || got[0] != "Idea" {
+		t.Fatalf("backlog = %v", got)
+	}
+
+	// Either side puts a task into the backlog; it shows there for both.
+	resp := setBacklog(client, logo["id"].(string), true)
+	wantStatus(t, resp, http.StatusOK)
+	if got := field(decode(t, resp), "task"); got["in_backlog"] != true {
+		t.Fatalf("logo = %v", got)
+	}
+	if got := backlogTitles(t, srv, client, ""); len(got) != 2 {
+		t.Fatalf("backlog after putting Logo away = %v", got)
+	}
+	if got := column(getBoard(t, srv, freelancer, "?with="+clientID), "New").Tasks; len(got) != 0 {
+		t.Fatalf("New after putting Logo away = %v", got)
+	}
+
+	// The backlog lists the most urgent first; the whole list still has them all.
+	resp = do(t, freelancer, http.MethodPut, srv.URL+"/api/v1/tasks/"+idea["id"].(string)+"/priority", map[string]string{"priority": "high"})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	if got := backlogTitles(t, srv, freelancer, ""); len(got) != 2 || got[0] != "Idea" || got[1] != "Logo" {
+		t.Fatalf("backlog order = %v", got)
+	}
+	resp = get(t, client, srv.URL+"/api/v1/tasks")
+	wantStatus(t, resp, http.StatusOK)
+	if n := len(decode(t, resp)["tasks"].([]any)); n != 2 {
+		t.Fatalf("all tasks = %d, want 2", n)
+	}
+
+	// Moving a card into a column takes it out of the backlog, the same column included.
+	newCol := column(b, "New")
+	resp = post(t, client, srv.URL+"/api/v1/board/moves", map[string]string{"task_id": logo["id"].(string), "column_id": newCol.ID})
+	wantStatus(t, resp, http.StatusOK)
+	if got := field(decode(t, resp), "task"); got["in_backlog"] != false {
+		t.Fatalf("moved back = %v", got)
+	}
+	inProgress := column(b, "In progress")
+	resp = post(t, freelancer, srv.URL+"/api/v1/board/moves", map[string]string{"task_id": idea["id"].(string), "column_id": inProgress.ID})
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	got := getBoard(t, srv, client, "?with="+freelancerID)
+	if len(backlogTitles(t, srv, client, "")) != 0 || len(column(got, "New").Tasks) != 1 || len(column(got, "In progress").Tasks) != 1 {
+		t.Fatalf("after taking both out = %+v", got)
+	}
+
+	// Done work closes the backlog: a done task can't go there, and a task in
+	// the backlog that's marked done leaves it.
+	resp = setBacklog(freelancer, idea["id"].(string), true)
+	wantStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	resp = post(t, freelancer, srv.URL+"/api/v1/tasks/"+idea["id"].(string)+"/status", map[string]string{"status": "done"})
+	wantStatus(t, resp, http.StatusOK)
+	if got := field(decode(t, resp), "task"); got["in_backlog"] != false || got["can_backlog"] != false {
+		t.Fatalf("done = %v", got)
+	}
+	resp = setBacklog(freelancer, idea["id"].(string), true)
+	wantStatus(t, resp, http.StatusConflict)
+	resp.Body.Close()
+
+	// Someone who doesn't see the task can't move it.
+	other := signUpFreelancer(t, srv, "other@example.com")
+	resp = setBacklog(other, logo["id"].(string), true)
+	wantStatus(t, resp, http.StatusNotFound)
+	resp.Body.Close()
+
+	// The history keeps both moves.
+	resp = get(t, client, srv.URL+"/api/v1/tasks/"+logo["id"].(string)+"/history")
+	wantStatus(t, resp, http.StatusOK)
+	n := 0
+	for _, e := range decode(t, resp)["events"].([]any) {
+		if e.(map[string]any)["kind"] == "backlog" {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Fatalf("backlog events = %d, want 2", n)
+	}
 }

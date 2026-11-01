@@ -1721,6 +1721,14 @@ definitions:
       total:
         type: integer
     type: object
+  tasks.BacklogRequest:
+    properties:
+      in_backlog:
+        description: |-
+          InBacklog puts the task into its board's backlog (true) or back on the
+          board (false).
+        type: boolean
+    type: object
   tasks.DTO:
     properties:
       archived_at:
@@ -1751,6 +1759,8 @@ definitions:
         description: |-
           CanArchive is true on the viewer's own personal task, which they may
           put in the archive by hand.
+        type: boolean
+      can_backlog:
         type: boolean
       can_delete:
         type: boolean
@@ -1800,6 +1810,11 @@ definitions:
         type: integer
       id:
         type: string
+      in_backlog:
+        description: |-
+          InBacklog is true while the task waits in its board's backlog, off the
+          columns. CanBacklog says whether it may move in or out of it now.
+        type: boolean
       labels:
         items:
           $ref: '#/definitions/tasks.Label'
@@ -1950,6 +1965,11 @@ definitions:
     type: object
   tasks.Request:
     properties:
+      backlog:
+        description: |-
+          Backlog creates the task in its board's backlog (create only): with
+          its status, the first to-do column when status_id is left out.
+        type: boolean
       client_id:
         type: string
       created_at:
@@ -6517,7 +6537,8 @@ paths:
       - shares
   /tasks:
     get:
-      description: Open ones first, then by due date.
+      description: Open ones first, then by due date. backlog=1 keeps the tasks waiting
+        in a backlog, the most urgent first.
       parameters:
       - description: 'Comma-separated: new,in_progress,done'
         in: query
@@ -6531,6 +6552,10 @@ paths:
         in: query
         name: project
         type: string
+      - description: Only the backlog
+        in: query
+        name: backlog
+        type: boolean
       produces:
       - application/json
       responses:
@@ -6721,6 +6746,52 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Archive a personal task
+      tags:
+      - tasks
+  /tasks/{id}/backlog:
+    put:
+      consumes:
+      - application/json
+      description: 'Whoever sees the task, while it''s open: it keeps its status either
+        way.'
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/tasks.BacklogRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Done or archived
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Put a task into its board's backlog, or back on the board
       tags:
       - tasks
   /tasks/{id}/freelancer:

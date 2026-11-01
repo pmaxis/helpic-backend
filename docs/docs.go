@@ -6273,7 +6273,7 @@ const docTemplate = `{
         },
         "/tasks": {
             "get": {
-                "description": "Open ones first, then by due date.",
+                "description": "Open ones first, then by due date. backlog=1 keeps the tasks waiting in a backlog, the most urgent first.",
                 "produces": [
                     "application/json"
                 ],
@@ -6298,6 +6298,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "A project ID",
                         "name": "project",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Only the backlog",
+                        "name": "backlog",
                         "in": "query"
                     }
                 ],
@@ -6573,6 +6579,74 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Already archived",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks/{id}/backlog": {
+            "put": {
+                "description": "Whoever sees the task, while it's open: it keeps its status either way.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Put a task into its board's backlog, or back on the board",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/tasks.BacklogRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Done or archived",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorEnvelope"
                         }
@@ -10493,6 +10567,15 @@ const docTemplate = `{
                 }
             }
         },
+        "tasks.BacklogRequest": {
+            "type": "object",
+            "properties": {
+                "in_backlog": {
+                    "description": "InBacklog puts the task into its board's backlog (true) or back on the\nboard (false).",
+                    "type": "boolean"
+                }
+            }
+        },
         "tasks.DTO": {
             "type": "object",
             "properties": {
@@ -10517,6 +10600,9 @@ const docTemplate = `{
                 },
                 "can_archive": {
                     "description": "CanArchive is true on the viewer's own personal task, which they may\nput in the archive by hand.",
+                    "type": "boolean"
+                },
+                "can_backlog": {
                     "type": "boolean"
                 },
                 "can_delete": {
@@ -10584,6 +10670,10 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "string"
+                },
+                "in_backlog": {
+                    "description": "InBacklog is true while the task waits in its board's backlog, off the\ncolumns. CanBacklog says whether it may move in or out of it now.",
+                    "type": "boolean"
                 },
                 "labels": {
                     "type": "array",
@@ -10803,6 +10893,10 @@ const docTemplate = `{
         "tasks.Request": {
             "type": "object",
             "properties": {
+                "backlog": {
+                    "description": "Backlog creates the task in its board's backlog (create only): with\nits status, the first to-do column when status_id is left out.",
+                    "type": "boolean"
+                },
                 "client_id": {
                     "type": "string"
                 },

@@ -111,6 +111,14 @@ func MergedDTO(lanes []Lane, role, viewerID string) BoardDTO {
 	return out
 }
 
+// ViewDTO maps a board as it's shown.
+func ViewDTO(v View, role, viewerID string) BoardDTO {
+	if v.Merged {
+		return MergedDTO(v.Lanes, role, viewerID)
+	}
+	return LanesDTO(v.Pair, v.Lanes, role, viewerID)
+}
+
 // ColumnsDTO maps a board's columns without tasks.
 func ColumnsDTO(p Pair, cols []Column, viewerID string) BoardDTO {
 	out := BoardDTO{CanManage: CanManage(p, viewerID), Columns: make([]ColumnDTO, 0, len(cols))}

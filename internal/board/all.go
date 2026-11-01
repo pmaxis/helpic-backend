@@ -114,17 +114,17 @@ func mergeColumns(cols []Column) []Column {
 }
 
 // AllBoard returns the user's all board, optionally only some projects' tasks.
-func (s *Service) AllBoard(ctx context.Context, userID, role string, sc Scope) ([]Lane, error) {
+func (s *Service) AllBoard(ctx context.Context, userID, role string, sc Scope) (View, error) {
 	cols, err := s.allColumns(ctx, userID, role)
 	if err != nil {
-		return nil, err
+		return View{}, err
 	}
 	list, err := s.tasks.List(ctx, userID, role, tasks.Filter{})
 	if err != nil {
-		return nil, err
+		return View{}, err
 	}
 	list = filterProjects(list, sc.Projects)
-	return placeOnMerged(cols, list), nil
+	return View{Lanes: placeOnMerged(cols, list), Merged: true}, nil
 }
 
 // allColumns lists the columns the all board merges.

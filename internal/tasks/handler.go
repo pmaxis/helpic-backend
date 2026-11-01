@@ -35,6 +35,7 @@ func (h *Handler) Routes(r chi.Router, more ...func(chi.Router)) {
 		r.Post("/{id}/status", h.SetStatus)
 		r.Put("/{id}/price", h.SetPrice)
 		r.Put("/{id}/priority", h.SetPriority)
+		r.Put("/{id}/backlog", h.SetBacklog)
 		r.Put("/{id}/labels", h.SetLabels)
 		r.Get("/{id}/history", h.History)
 		r.Get("/{id}/subtasks", h.Subtasks)
@@ -50,15 +51,16 @@ func (h *Handler) Routes(r chi.Router, more ...func(chi.Router)) {
 	r.Get("/archive", h.ListArchive)
 }
 
-// List handles GET /api/v1/tasks?status=new,in_progress&with={userID|personal}&project={id}.
+// List handles GET /api/v1/tasks?status=new,in_progress&with={userID|personal}&project={id}&backlog=1.
 //
 //	@Summary		Your tasks
-//	@Description	Open ones first, then by due date.
+//	@Description	Open ones first, then by due date. backlog=1 keeps the tasks waiting in a backlog, the most urgent first.
 //	@Tags			tasks
 //	@Produce		json
 //	@Param			status	query		string					false	"Comma-separated: new,in_progress,done"
 //	@Param			with	query		string					false	"A counterpart's ID, or "personal""
 //	@Param			project	query		string					false	"A project ID"
+//	@Param			backlog	query		bool					false	"Only the backlog"
 //	@Success		200		{object}	map[string][]DTO		"tasks"
 //	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
 //	@Router			/tasks [get]
@@ -72,6 +74,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		Statuses:      ParseStatuses(q.Get("status")),
 		CounterpartID: q.Get("with"),
 		ProjectID:     q.Get("project"),
+		Backlog:       q.Get("backlog") == "1" || q.Get("backlog") == "true",
 	})
 	if err != nil {
 		response.Internal(w, err)
@@ -347,6 +350,34 @@ func (h *Handler) SetPriority(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := h.svc.SetPriority(r.Context(), userID, chi.URLParam(r, "id"), priority)
+	writeTask(w, http.StatusOK, t, role, userID, err)
+}
+
+// SetBacklog handles PUT /api/v1/tasks/{id}/backlog.
+//
+//	@Summary		Put a task into its board's backlog, or back on the board
+//	@Description	Whoever sees the task, while it's open: it keeps its status either way.
+//	@Tags			tasks
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Task ID"
+//	@Param			body	body		BacklogRequest			true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"task"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409		{object}	response.ErrorEnvelope	"Done or archived"
+//	@Router			/tasks/{id}/backlog [put]
+func (h *Handler) SetBacklog(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	var req BacklogRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	t, err := h.svc.SetBacklog(r.Context(), userID, chi.URLParam(r, "id"), req.InBacklog)
 	writeTask(w, http.StatusOK, t, role, userID, err)
 }
 
@@ -631,6 +662,8 @@ func writeTask(w http.ResponseWriter, status int, t Task, role, viewerID string,
 		response.Error(w, http.StatusConflict, response.CodeConflict, "A task outside a project needs a freelancer")
 	case errors.Is(err, ErrTransition):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "This status change isn't allowed")
+	case errors.Is(err, ErrBacklogClosed):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "A done task can't go to the backlog")
 	case errors.Is(err, ErrNestedSubtask):
 		response.ValidationError(w, map[string]string{"parent_id": "A subtask can't have subtasks of its own"})
 	case errors.Is(err, ErrHasSubtasks):

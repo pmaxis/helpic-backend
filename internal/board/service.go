@@ -102,14 +102,21 @@ func (s *Service) Columns(ctx context.Context, userID, role string, sc Scope) (P
 	return p, cols, err
 }
 
-// Board returns a board's columns with their tasks. A project scope is that
-// project's workflow. A pair scope is the pair's own workflow, unless one of
-// its projects has columns of its own: then the columns are merged by name,
-// the way the all board merges pairs, and merged is true.
-func (s *Service) Board(ctx context.Context, userID, role string, sc Scope) (Pair, []Lane, bool, error) {
+// View is a board as it's shown: its columns with their tasks. Merged is
+// true when the columns are lanes merged by name from several workflows.
+type View struct {
+	Pair   Pair
+	Lanes  []Lane
+	Merged bool
+}
+
+// Board returns a board's columns with their tasks. A project scope is that project's workflow. A pair scope is the pair's own
+// workflow, unless one of its projects has columns of its own: then the
+// columns are merged by name, the way the all board merges pairs.
+func (s *Service) Board(ctx context.Context, userID, role string, sc Scope) (View, error) {
 	p, cols, err := s.Columns(ctx, userID, role, sc)
 	if err != nil {
-		return Pair{}, nil, false, err
+		return View{}, err
 	}
 	// On a project the client sees every freelancer's tasks. A freelancer's list
 	// is already limited to their own.
@@ -119,19 +126,22 @@ func (s *Service) Board(ctx context.Context, userID, role string, sc Scope) (Pai
 	}
 	list, err := s.tasks.List(ctx, userID, role, filter)
 	if err != nil {
-		return Pair{}, nil, false, err
+		return View{}, err
 	}
 	list = filterProjects(list, sc.Projects)
+	v := View{Pair: p}
 	if p.ProjectID == "" {
 		extra, err := s.repo.ProjectColumns(ctx, p)
 		if err != nil {
-			return Pair{}, nil, false, err
+			return View{}, err
 		}
 		if len(extra) > 0 {
-			return p, placeOnMerged(append(cols, extra...), list), true, nil
+			v.Lanes, v.Merged = placeOnMerged(append(cols, extra...), list), true
+			return v, nil
 		}
 	}
-	return p, Arrange(cols, list), false, nil
+	v.Lanes = Arrange(cols, list)
+	return v, nil
 }
 
 // CreateColumn adds a column at the end of a board: a project's author on its

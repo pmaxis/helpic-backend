@@ -30,6 +30,9 @@ type Request struct {
 	ProjectID *string `json:"project_id"`
 	// StatusID creates the task straight in a board column (create only).
 	StatusID string `json:"status_id"`
+	// Backlog creates the task in its board's backlog (create only): with
+	// its status, the first to-do column when status_id is left out.
+	Backlog bool `json:"backlog"`
 	// ParentID makes the task a subtask of another (create only): it takes
 	// the parent's client and project, and a client may leave the freelancer
 	// out for the parent's.
@@ -56,6 +59,7 @@ type Params struct {
 	ClientID     string
 	ProjectID    *string
 	StatusID     string
+	Backlog      bool
 	ParentID     string
 	Title        string
 	Description  string
@@ -76,6 +80,7 @@ func (r Request) Validate(creatorRole string) (Params, map[string]string) {
 		ClientID:     strings.TrimSpace(r.ClientID),
 		ProjectID:    r.ProjectID,
 		StatusID:     strings.TrimSpace(r.StatusID),
+		Backlog:      r.Backlog && creatorRole != "",
 		Title:        strings.TrimSpace(r.Title),
 		Description:  strings.TrimSpace(r.Description),
 		Priority:     PriorityNone,
@@ -217,6 +222,13 @@ func (r LabelsRequest) Validate() ([]string, map[string]string) {
 	return ids, nil
 }
 
+// BacklogRequest is the JSON body for PUT /api/v1/tasks/{id}/backlog.
+type BacklogRequest struct {
+	// InBacklog puts the task into its board's backlog (true) or back on the
+	// board (false).
+	InBacklog bool `json:"in_backlog"`
+}
+
 // StatusRequest is the JSON body for POST /api/v1/tasks/{id}/status.
 type StatusRequest struct {
 	// Status moves the task to the first column of a category; StatusID to an
@@ -316,6 +328,10 @@ type DTO struct {
 	// Billed is true once the task is on a sent report: its time and an
 	// hourly price stay as they were billed.
 	Billed bool `json:"billed"`
+	// InBacklog is true while the task waits in its board's backlog, off the
+	// columns. CanBacklog says whether it may move in or out of it now.
+	InBacklog  bool `json:"in_backlog"`
+	CanBacklog bool `json:"can_backlog"`
 	// CanArchive is true on the viewer's own personal task, which they may
 	// put in the archive by hand.
 	CanArchive bool `json:"can_archive"`
@@ -376,6 +392,8 @@ func ToDTO(t Task, role, viewerID string) DTO {
 		CanSeePrice:   CanSeePrice(t, viewerID),
 		CanTrackTime:  CanTrackTime(t, viewerID),
 		Billed:        t.Billed,
+		InBacklog:     t.InBacklog,
+		CanBacklog:    CanBacklog(t),
 		CanArchive:    CanArchive(t, viewerID),
 		CanShare:      CanShare(t, viewerID),
 		CreatedAt:     t.CreatedAt,

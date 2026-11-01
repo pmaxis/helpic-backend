@@ -44,6 +44,9 @@ const (
 	// off.
 	EventShared   = "shared"
 	EventUnshared = "unshared"
+	// EventBacklog is the task put into its board's backlog ("in_backlog":
+	// true) or taken out of it onto the board (false).
+	EventBacklog = "backlog"
 )
 
 // Event is one change in a task's history.

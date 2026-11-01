@@ -40,7 +40,7 @@ const selectTask = `SELECT t.id, t.created_by, t.title, t.description, t.status,
 			FROM task_participants tp JOIN users u ON u.id = tp.user_id
 			WHERE tp.task_id = t.id), '[]'),
 		coalesce(f.role, ''), t.archived_at, ar.id, ar.title,
-		t.billing, task_seconds(t.id), task_billed(t.id),
+		t.billing, task_seconds(t.id), task_billed(t.id), t.in_backlog,
 		coalesce((SELECT pp.hourly_rate_cents FROM project_participants pp WHERE pp.project_id = t.project_id AND pp.user_id = t.freelancer_id),
 			f.hourly_rate_cents),
 		-- the parent and the subtasks, as far as the viewer ($1) sees them
@@ -75,7 +75,7 @@ func scanTask(row pgx.Row) (Task, error) {
 		&clientID, &clientName, &mail, &projectID, &projectName,
 		&t.Creator.Name, &t.Creator.Email, &participants,
 		&t.FreelancerRole, &t.ArchivedAt, &reportID, &reportTitle,
-		&t.Billing, &t.TrackedSeconds, &t.Billed, &t.HourlyRateCents,
+		&t.Billing, &t.TrackedSeconds, &t.Billed, &t.InBacklog, &t.HourlyRateCents,
 		&t.ParentID, &parent, &subtasks)
 	if err != nil {
 		return t, err
@@ -317,7 +317,8 @@ func (r *Repository) RemoveParticipant(ctx context.Context, taskID, userID strin
 }
 
 // List returns the user's tasks on the boards, archived ones left out: open
-// ones first, then by due date and newest.
+// ones first, then by due date and newest. The backlog alone comes the most
+// urgent first.
 func (r *Repository) List(ctx context.Context, userID, role string, f Filter) ([]Task, error) {
 	own, other := ownerColumns(role)
 	q := selectTask + ` WHERE ` + own + ` AND t.archived_at IS NULL
@@ -325,12 +326,14 @@ func (r *Repository) List(ctx context.Context, userID, role string, f Filter) ([
 		AND ($3 = '' OR (t.client_id IS NOT NULL AND ` + other + ` = as_uuid($3))
 			OR ($3 = '` + PersonalFilter + `' AND t.client_id IS NULL))
 		AND ($4 = '' OR t.project_id = as_uuid($4))
-		ORDER BY t.status = 'done', t.due_on ASC NULLS LAST, t.created_at DESC`
+		AND (NOT $5 OR t.in_backlog)
+		ORDER BY CASE WHEN $5 THEN array_position($6::text[], t.priority) END DESC NULLS LAST,
+			t.status = 'done', t.due_on ASC NULLS LAST, t.created_at DESC`
 	statuses := f.Statuses
 	if statuses == nil {
 		statuses = []string{}
 	}
-	rows, err := r.db.Query(ctx, q, userID, statuses, f.CounterpartID, f.ProjectID)
+	rows, err := r.db.Query(ctx, q, userID, statuses, f.CounterpartID, f.ProjectID, f.Backlog, Priorities)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
 	}
@@ -751,7 +754,7 @@ func (r *Repository) SetStatus(ctx context.Context, id, from, to string) error {
 	if err != nil {
 		return fmt.Errorf("find status: %w", err)
 	}
-	tag, err := r.db.Exec(ctx, `UPDATE tasks SET status = $3, status_id = $4, position = NULL,
+	tag, err := r.db.Exec(ctx, `UPDATE tasks SET status = $3, status_id = $4, position = NULL, in_backlog = false,
 			completed_at = CASE WHEN $3 = 'done' THEN coalesce(completed_at, now()) END
 		WHERE id = $1 AND status = $2`, id, from, to, *statusID)
 	if err != nil {
@@ -767,12 +770,27 @@ func (r *Repository) SetStatus(ctx context.Context, id, from, to string) error {
 // is still in the status the caller checked; a concurrent change yields
 // ErrTransition.
 func (r *Repository) MoveTo(ctx context.Context, id, fromStatusID, toStatusID, category string) error {
-	tag, err := r.db.Exec(ctx, `UPDATE tasks SET status_id = $3, status = $4,
+	tag, err := r.db.Exec(ctx, `UPDATE tasks SET status_id = $3, status = $4, in_backlog = false,
 			completed_at = CASE WHEN $4 = 'done' THEN coalesce(completed_at, now()) END
 		WHERE id = $1 AND status_id = $2`,
 		id, fromStatusID, toStatusID, category)
 	if err != nil {
 		return fmt.Errorf("move task: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrTransition
+	}
+	return nil
+}
+
+// SetBacklog puts a task into its board's backlog, or back on the board.
+// Only a task that is still open and on the boards moves: anything else
+// yields ErrTransition. On the board it goes to the top of its column.
+func (r *Repository) SetBacklog(ctx context.Context, id string, on bool) error {
+	tag, err := r.db.Exec(ctx, `UPDATE tasks SET in_backlog = $2, position = NULL
+		WHERE id = $1 AND in_backlog <> $2 AND status <> 'done' AND archived_at IS NULL`, id, on)
+	if err != nil {
+		return fmt.Errorf("set backlog: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrTransition

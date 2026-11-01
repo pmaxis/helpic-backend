@@ -85,6 +85,9 @@ var (
 	// ErrSubtaskProject is returned for moving a subtask to another project
 	// than its parent's: it moves with its parent.
 	ErrSubtaskProject = errors.New("a subtask stays in its parent's project")
+	// ErrBacklogClosed is returned for putting a done task into the backlog,
+	// or moving one there that has been done since.
+	ErrBacklogClosed = errors.New("a done task isn't in the backlog")
 	// ErrDueBeforeCreated is returned for moving a task's due date to a day
 	// before the one it was created on.
 	ErrDueBeforeCreated = errors.New("the due date is before the creation date")
@@ -227,6 +230,13 @@ func CanArchive(t Task, viewerID string) bool {
 	return !t.Archived() && t.Client == nil && t.Freelancer.ID == viewerID
 }
 
+// CanBacklog reports whether the task may move between its board's backlog
+// and its columns: while it's open and on the boards. It keeps its status
+// either way, so whoever sees the task may.
+func CanBacklog(t Task) bool {
+	return !t.Archived() && t.Status != StatusDone
+}
+
 // CanShare reports whether the viewer may turn the task's public link on
 // or off: whoever may edit it — its creator or its freelancer. Archived
 // work can be shown too, and a link already out can always be taken back.
@@ -315,8 +325,11 @@ type Task struct {
 	HourlyRateCents *int64
 	// Billed is whether the task is on a report that was sent: its time is
 	// billed and stays as it is.
-	Billed   bool
-	Priority string
+	Billed bool
+	// InBacklog is whether the task waits in its board's backlog: it keeps
+	// its status, but isn't in a column until someone puts it on the board.
+	InBacklog bool
+	Priority  string
 	// Labels are sorted by name.
 	Labels    []Label
 	CreatedAt time.Time
@@ -348,6 +361,9 @@ type Filter struct {
 	CounterpartID string
 	// ProjectID keeps one project's tasks.
 	ProjectID string
+	// Backlog keeps only the tasks waiting in their boards' backlogs, the
+	// most urgent first.
+	Backlog bool
 }
 
 // IsSubtask reports whether the task belongs to a parent task.

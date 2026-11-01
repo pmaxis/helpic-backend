@@ -60,25 +60,20 @@ func (h *Handler) Board(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sc := scopeOf(r)
+	var (
+		v   View
+		err error
+	)
 	if sc.With == AllWith && sc.ProjectID == "" {
-		lanes, err := h.svc.AllBoard(r.Context(), userID, role, sc)
-		if err != nil {
-			writeErr(w, err)
-			return
-		}
-		response.JSON(w, http.StatusOK, MergedDTO(lanes, role, userID))
-		return
+		v, err = h.svc.AllBoard(r.Context(), userID, role, sc)
+	} else {
+		v, err = h.svc.Board(r.Context(), userID, role, sc)
 	}
-	p, lanes, merged, err := h.svc.Board(r.Context(), userID, role, sc)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	if merged {
-		response.JSON(w, http.StatusOK, MergedDTO(lanes, role, userID))
-		return
-	}
-	response.JSON(w, http.StatusOK, LanesDTO(p, lanes, role, userID))
+	response.JSON(w, http.StatusOK, ViewDTO(v, role, userID))
 }
 
 // Columns handles GET /api/v1/board/columns with the same query as Board.
@@ -275,6 +270,8 @@ func writeErr(w http.ResponseWriter, err error) {
 		response.Error(w, http.StatusConflict, response.CodeConflict, "A board needs at least one column")
 	case errors.Is(err, tasks.ErrArchived):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "This task is archived: it's closed and stays as it is")
+	case errors.Is(err, tasks.ErrBacklogClosed):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "A done task can't go to the backlog")
 	case errors.Is(err, tasks.ErrTransition):
 		response.Error(w, http.StatusConflict, response.CodeConflict, "You can't move this task to that column")
 	case errors.Is(err, tasks.ErrNotFound):

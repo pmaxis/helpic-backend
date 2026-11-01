@@ -16,7 +16,8 @@ func TestArrange(t *testing.T) {
 		{ID: "b", StatusID: "todo", Position: pos(0)}, // ordered cards come first
 		{ID: "c", StatusID: "review"},
 		{ID: "d", StatusID: "todo", Position: pos(1)},
-		{ID: "x", StatusID: "elsewhere"}, // not on this board
+		{ID: "x", StatusID: "elsewhere"},             // not on this board
+		{ID: "w", StatusID: "todo", InBacklog: true}, // waits in the backlog
 	}
 
 	want := map[string][]string{"todo": {"b", "d", "a"}, "review": {"c"}, "done": {}}
