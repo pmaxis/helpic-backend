@@ -47,6 +47,7 @@ func (h *Handler) PublicRoutes(r chi.Router) {
 // invitations sent, each an email to an address the freelancer types.
 func (h *Handler) FreelancerRoutes(r chi.Router, guard func(http.Handler) http.Handler) {
 	r.Get("/clients", h.ListClients)
+	r.Delete("/clients/{id}", h.EndClient)
 	r.Route("/invitations", func(r chi.Router) {
 		r.Get("/", h.ListInvitations)
 		r.With(guard).Post("/", h.Invite)
@@ -58,6 +59,7 @@ func (h *Handler) FreelancerRoutes(r chi.Router, guard func(http.Handler) http.H
 // invitations sent, each an email to an address the client types.
 func (h *Handler) ClientRoutes(r chi.Router, guard func(http.Handler) http.Handler) {
 	r.Get("/freelancers", h.ListFreelancers)
+	r.Delete("/freelancers/{id}", h.EndFreelancer)
 	r.Route("/freelancer-invitations", func(r chi.Router) {
 		r.Get("/", h.ListFreelancerInvitations)
 		r.With(guard).Post("/", h.InviteFreelancer)
@@ -541,4 +543,71 @@ func (h *Handler) lookupFreelancer(w http.ResponseWriter, r *http.Request, token
 
 func writeNotOwner(w http.ResponseWriter) {
 	response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the company's owner invites freelancers")
+}
+
+// EndClient handles DELETE /api/v1/clients/{id}.
+//
+//	@Summary		Stop working with a client
+//	@Description	Freelancers only. Refused while you take part in a task of theirs that isn't done, or a report you sent them isn't paid. You leave their projects; one you started passes to them. What you did together stays readable for both, and either can invite the other again.
+//	@Tags			people
+//	@Param			id	path	string	true	"Client ID"
+//	@Success		204	"No content"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not your client"
+//	@Failure		409	{object}	response.ErrorEnvelope	"Open tasks or unpaid reports"
+//	@Router			/clients/{id} [delete]
+func (h *Handler) EndClient(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	err := h.svc.EndClient(r.Context(), userID, chi.URLParam(r, "id"))
+	if errors.Is(err, ErrNotFound) {
+		response.Error(w, http.StatusNotFound, response.CodeNotFound, "Client not found")
+		return
+	}
+	writeEnded(w, err)
+}
+
+// EndFreelancer handles DELETE /api/v1/freelancers/{id}.
+//
+//	@Summary		Stop working with a freelancer
+//	@Description	Clients only, and not a company's members: the owner chooses who it works with. Refused while the freelancer takes part in a task of yours that isn't done, or a report they sent isn't paid. They leave your projects; one they started passes to you. What you did together stays readable for both, and either can invite the other again.
+//	@Tags			people
+//	@Param			id	path	string	true	"Freelancer ID"
+//	@Success		204	"No content"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not your freelancer"
+//	@Failure		409	{object}	response.ErrorEnvelope	"Open tasks or unpaid reports"
+//	@Router			/freelancers/{id} [delete]
+func (h *Handler) EndFreelancer(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	err := h.svc.EndFreelancer(r.Context(), userID, chi.URLParam(r, "id"))
+	switch {
+	case errors.Is(err, ErrNotOwner):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the company's owner decides who it works with")
+	case errors.Is(err, ErrNotFound):
+		response.Error(w, http.StatusNotFound, response.CodeNotFound, "Freelancer not found")
+	default:
+		writeEnded(w, err)
+	}
+}
+
+// writeEnded answers an ended work: refused for what's still open, or done.
+func writeEnded(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ErrOpenTasks):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "There are open tasks between you: finish them first")
+	case errors.Is(err, ErrUnpaidReports):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "There are sent reports between you that aren't paid yet")
+	case err != nil:
+		response.Internal(w, err)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
 }

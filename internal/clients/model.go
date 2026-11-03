@@ -35,6 +35,12 @@ var (
 	// ErrNotOwner is returned when a member of a client's company invites a
 	// freelancer: the company's owner chooses who it works with.
 	ErrNotOwner = errors.New("only the company's owner invites freelancers")
+	// ErrOpenTasks is returned when ending work with someone who still takes
+	// part in a task of the client's that isn't done.
+	ErrOpenTasks = errors.New("they still take part in open tasks")
+	// ErrUnpaidReports is returned when ending work while a report between
+	// the two was sent and isn't paid.
+	ErrUnpaidReports = errors.New("a sent report between them isn't paid")
 )
 
 // Invitation is a freelancer's pending offer for a client to join.
@@ -86,4 +92,7 @@ type Link struct {
 	Party
 	LinkedAt  time.Time
 	OpenTasks int
+	// CanEnd: the viewer may end the work now — nothing open holds it, and
+	// on a client's side they're the company's owner.
+	CanEnd bool
 }

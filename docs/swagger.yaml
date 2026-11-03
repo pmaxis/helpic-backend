@@ -4122,6 +4122,40 @@ paths:
       summary: Your clients
       tags:
       - people
+  /clients/{id}:
+    delete:
+      description: Freelancers only. Refused while you take part in a task of theirs
+        that isn't done, or a report you sent them isn't paid. You leave their projects;
+        one you started passes to them. What you did together stays readable for both,
+        and either can invite the other again.
+      parameters:
+      - description: Client ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not your client
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Open tasks or unpaid reports
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Stop working with a client
+      tags:
+      - people
   /comments:
     get:
       description: Oldest first.
@@ -4506,6 +4540,41 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Your freelancers
+      tags:
+      - people
+  /freelancers/{id}:
+    delete:
+      description: 'Clients only, and not a company''s members: the owner chooses
+        who it works with. Refused while the freelancer takes part in a task of yours
+        that isn''t done, or a report they sent isn''t paid. They leave your projects;
+        one they started passes to you. What you did together stays readable for both,
+        and either can invite the other again.'
+      parameters:
+      - description: Freelancer ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No content
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not your freelancer
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Open tasks or unpaid reports
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Stop working with a freelancer
       tags:
       - people
   /invitations:

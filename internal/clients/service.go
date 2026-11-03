@@ -342,3 +342,39 @@ func (s *Service) AcceptExistingFreelancer(ctx context.Context, l FreelancerLook
 	s.freelancerJoined(ctx, l, u.ID)
 	return Session{User: u, Tokens: tokens}, nil
 }
+
+// EndClient ends the freelancer's work with their client, and tells the
+// client. See Repository.Unlink for what it refuses and what changes.
+func (s *Service) EndClient(ctx context.Context, freelancerID, clientID string) error {
+	if err := s.repo.Unlink(ctx, freelancerID, clientID); err != nil {
+		return err
+	}
+	s.notify.Notify(ctx, notifications.Notification{
+		UserID:  clientID,
+		ActorID: freelancerID,
+		Kind:    notifications.KindFreelancerLeft,
+	})
+	return nil
+}
+
+// EndFreelancer ends the client's work with a freelancer, and tells the
+// freelancer. Only a client acting for themselves does: a member of a company
+// gets ErrNotOwner, as its owner chooses who it works with.
+func (s *Service) EndFreelancer(ctx context.Context, clientID, freelancerID string) error {
+	member, err := s.repo.IsTeamMember(ctx, clientID)
+	if err != nil {
+		return err
+	}
+	if member {
+		return ErrNotOwner
+	}
+	if err := s.repo.Unlink(ctx, freelancerID, clientID); err != nil {
+		return err
+	}
+	s.notify.Notify(ctx, notifications.Notification{
+		UserID:  freelancerID,
+		ActorID: clientID,
+		Kind:    notifications.KindClientLeft,
+	})
+	return nil
+}

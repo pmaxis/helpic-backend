@@ -19,6 +19,10 @@ const (
 	KindClientJoined   = "client_joined"
 	// KindFreelancerJoined: a freelancer accepted the client's invitation.
 	KindFreelancerJoined = "freelancer_joined"
+	// KindClientLeft: the client ended their work with the freelancer;
+	// KindFreelancerLeft: the freelancer ended theirs with the client.
+	KindClientLeft     = "client_left"
+	KindFreelancerLeft = "freelancer_left"
 	// KindMemberJoined: someone joined the client's company.
 	KindMemberJoined = "member_joined"
 	KindReportSent   = "report_sent"

@@ -6,6 +6,7 @@ package i18n
 var uk = map[string]string{ // #nosec G101 -- translations, not credentials
 	// --- notifications (email, Telegram) -------------------------------------
 	"%s accepted your invitation":              "%s: запрошення прийнято",
+	"%s stopped working with you":              "%s: співпрацю завершено",
 	"%s added a task %s":                       "Нова задача від %s: %s",
 	"%s attached “%s” to %s":                   "%s: файл “%s” додано до %s",
 	"%s approved “%s” on %s":                   "%s: файл “%s” у %s погоджено",
@@ -247,6 +248,11 @@ var uk = map[string]string{ // #nosec G101 -- translations, not credentials
 	"Contractors can't start projects":                                 "Підрядники не створюють проєкти",
 	"Only the company's owner manages the team":                        "Командою керує лише власник компанії",
 	"Only the company's owner invites freelancers":                     "Фрилансерів запрошує лише власник компанії",
+	"Only the company's owner decides who it works with":               "З ким працювати, вирішує лише власник компанії",
+	"Client not found":                                                 "Замовника не знайдено",
+	"Freelancer not found":                                             "Фрилансера не знайдено",
+	"There are open tasks between you: finish them first":              "У вас є незакриті спільні задачі: спершу завершіть їх",
+	"There are sent reports between you that aren't paid yet":          "У вас є надіслані звіти, які ще не оплачено",
 	"The name is too long":                                             "Назва задовга",
 
 	// --- API errors: tasks, projects, boards -----------------------------------------

@@ -183,12 +183,13 @@ func (r *Repository) Accept(ctx context.Context, invitationID, clientID string) 
 }
 
 // ListClients returns the freelancer's clients with their open task counts,
-// most recently linked first.
+// most recently linked first, and whether the work can be ended now.
 func (r *Repository) ListClients(ctx context.Context, freelancerID string) ([]Link, error) {
 	return r.listLinks(ctx, `SELECT u.id, u.name, u.email, fc.created_at,
 			(SELECT count(*) FROM tasks t
 			 WHERE t.freelancer_id = fc.freelancer_id AND t.client_id = fc.client_id
-			   AND t.status IN ('new', 'in_progress'))
+			   AND t.status IN ('new', 'in_progress')),
+			NOT (`+openTasksSQL+` OR `+unpaidReportsSQL+`)
 		FROM freelancer_clients fc
 		JOIN users u ON u.id = fc.client_id AND u.deleted_at IS NULL
 		WHERE fc.freelancer_id = $1
@@ -196,17 +197,88 @@ func (r *Repository) ListClients(ctx context.Context, freelancerID string) ([]Li
 }
 
 // ListFreelancers returns the freelancers the client works with — for a
-// company member, the company owner's — counting the open tasks they see.
+// company member, the company owner's — counting the open tasks they see,
+// and whether the work can be ended now (by the owner alone).
 func (r *Repository) ListFreelancers(ctx context.Context, clientID string) ([]Link, error) {
 	return r.listLinks(ctx, `SELECT u.id, u.name, u.email, fc.created_at,
 			(SELECT count(*) FROM tasks t
 			 WHERE t.freelancer_id = fc.freelancer_id AND t.client_id = fc.client_id
 			   AND t.status IN ('new', 'in_progress')
-			   AND sees_task($1, t.id, t.freelancer_id, t.client_id))
+			   AND sees_task($1, t.id, t.freelancer_id, t.client_id)),
+			fc.client_id = $1 AND NOT (`+openTasksSQL+` OR `+unpaidReportsSQL+`)
 		FROM freelancer_clients fc
 		JOIN users u ON u.id = fc.freelancer_id AND u.deleted_at IS NULL
 		WHERE fc.client_id = acting_client($1)
 		ORDER BY fc.created_at DESC`, clientID)
+}
+
+// What holds a freelancer–client link fc from being ended: the freelancer
+// takes part in a task of the client's that isn't done, or a report between
+// them is sent and unpaid.
+const (
+	openTasksSQL = `EXISTS (SELECT 1 FROM tasks t
+		WHERE t.client_id = fc.client_id AND t.status <> 'done' AND t.archived_at IS NULL
+		  AND (t.freelancer_id = fc.freelancer_id
+		       OR EXISTS (SELECT 1 FROM task_participants tp WHERE tp.task_id = t.id AND tp.user_id = fc.freelancer_id)))`
+	unpaidReportsSQL = `EXISTS (SELECT 1 FROM reports r
+		WHERE r.freelancer_id = fc.freelancer_id AND r.client_id = fc.client_id AND r.status = 'sent')`
+)
+
+// Unlink ends the work between the freelancer and the client, atomically. It
+// refuses while the freelancer takes part in a task of the client's that
+// isn't done (ErrOpenTasks), or a report between them is sent and unpaid
+// (ErrUnpaidReports); ErrNotFound means they weren't linked. The freelancer
+// leaves the client's projects; one they started passes to the client, who
+// joins it, so it keeps an author. What they did together stays, for both to
+// read: tasks, comments, files and reports.
+func (r *Repository) Unlink(ctx context.Context, freelancerID, clientID string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// Locking the link keeps a second unlink, or a repeat, from racing this one.
+	var openTasks, unpaid bool
+	err = tx.QueryRow(ctx, `SELECT `+openTasksSQL+`, `+unpaidReportsSQL+` FROM freelancer_clients fc
+		WHERE fc.freelancer_id = as_uuid($1) AND fc.client_id = as_uuid($2) FOR UPDATE`,
+		freelancerID, clientID).Scan(&openTasks, &unpaid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("check open work: %w", err)
+	}
+	if openTasks {
+		return ErrOpenTasks
+	}
+	if unpaid {
+		return ErrUnpaidReports
+	}
+
+	if _, err := tx.Exec(ctx, `INSERT INTO project_participants (project_id, user_id, invited_by)
+		SELECT id, client_id, client_id FROM projects
+		WHERE client_id = as_uuid($2) AND created_by = as_uuid($1)
+		ON CONFLICT DO NOTHING`, freelancerID, clientID); err != nil {
+		return fmt.Errorf("add client to projects: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE projects SET created_by = client_id
+		WHERE client_id = as_uuid($2) AND created_by = as_uuid($1)`, freelancerID, clientID); err != nil {
+		return fmt.Errorf("hand projects over: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM project_participants pp USING projects p
+		WHERE pp.project_id = p.id AND p.client_id = as_uuid($2) AND pp.user_id = as_uuid($1)`,
+		freelancerID, clientID); err != nil {
+		return fmt.Errorf("leave projects: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM freelancer_clients
+		WHERE freelancer_id = as_uuid($1) AND client_id = as_uuid($2)`, freelancerID, clientID); err != nil {
+		return fmt.Errorf("unlink: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
 }
 
 func (r *Repository) listLinks(ctx context.Context, q, userID string) ([]Link, error) {
@@ -216,7 +288,7 @@ func (r *Repository) listLinks(ctx context.Context, q, userID string) ([]Link, e
 	}
 	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Link, error) {
 		var l Link
-		err := row.Scan(&l.ID, &l.Name, &l.Email, &l.LinkedAt, &l.OpenTasks)
+		err := row.Scan(&l.ID, &l.Name, &l.Email, &l.LinkedAt, &l.OpenTasks, &l.CanEnd)
 		return l, err
 	})
 	if err != nil {

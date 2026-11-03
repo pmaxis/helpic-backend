@@ -134,12 +134,15 @@ type LinkDTO struct {
 	PartyDTO
 	LinkedAt  time.Time `json:"linked_at"`
 	OpenTasks int       `json:"open_tasks"`
+	// CanEnd: no open task or unpaid report holds the work, and the viewer
+	// may end it; the app offers to only then.
+	CanEnd bool `json:"can_end"`
 }
 
 func toLinkDTOs(links []Link) []LinkDTO {
 	out := make([]LinkDTO, 0, len(links))
 	for _, l := range links {
-		out = append(out, LinkDTO{PartyDTO: toPartyDTO(l.Party), LinkedAt: l.LinkedAt, OpenTasks: l.OpenTasks})
+		out = append(out, LinkDTO{PartyDTO: toPartyDTO(l.Party), LinkedAt: l.LinkedAt, OpenTasks: l.OpenTasks, CanEnd: l.CanEnd})
 	}
 	return out
 }
