@@ -453,4 +453,6 @@ var uk = map[string]string{ // #nosec G101 -- translations, not credentials
 	"An admin account can't be deleted from the settings":                                                                                               "Акаунт адміністратора не можна видалити з налаштувань",
 	"Your company still has people in it. Remove them under Team first, so they don't lose its work without warning.":                                   "У вашій компанії ще є люди. Спершу приберіть їх у розділі «Команда», щоб вони не втратили доступ до її роботи без попередження.",
 	"Their company still has people in it. They have to be removed from the team first.":                                                                "У компанії цього акаунта ще є люди. Спершу їх треба прибрати з команди.",
+	"Enter a public web address":     "Вкажіть публічну вебадресу",
+	"Couldn't read the page's title": "Не вдалося прочитати назву сторінки",
 }

@@ -3360,6 +3360,64 @@
                 }
             }
         },
+        "/link-preview": {
+            "post": {
+                "description": "For naming a link after the page it leads to: the page's og:title, twitter:title or \u003ctitle\u003e. Only public http(s) addresses on ports 80 and 443; the server reads the page for up to 5 seconds, its first 512 KB. Titles are remembered for an hour.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "links"
+                ],
+                "summary": "A web page's title",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/linkpreview.Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/linkpreview.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Not a web address",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "422": {
+                        "description": "The page couldn't be read or has no title",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many pages asked for",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/me": {
             "get": {
                 "produces": [
@@ -9604,6 +9662,24 @@
                             "$ref": "#/definitions/comments.PinRequest"
                         }
                     ]
+                }
+            }
+        },
+        "linkpreview.Request": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "example": "https://example.com/docs"
+                }
+            }
+        },
+        "linkpreview.Response": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "example": "Example Domain"
                 }
             }
         },

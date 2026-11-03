@@ -28,6 +28,7 @@ import (
 	"github.com/pmaxis/helpic/internal/comments"
 	"github.com/pmaxis/helpic/internal/config"
 	"github.com/pmaxis/helpic/internal/jobs"
+	"github.com/pmaxis/helpic/internal/linkpreview"
 	"github.com/pmaxis/helpic/internal/mail"
 	"github.com/pmaxis/helpic/internal/middleware"
 	"github.com/pmaxis/helpic/internal/notifications"
@@ -209,6 +210,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 	}
 	brandingRepo := branding.NewRepository(pool)
 	brandingHandler := branding.NewHandler(branding.NewService(brandingRepo))
+	linkPreviewHandler := linkpreview.NewHandler(linkpreview.New(linkpreview.Options{}))
 	reportsSvc := reports.NewService(reports.NewRepository(pool), notifier, tasksSvc, brandingRepo, zone)
 	reportsHandler := reports.NewHandler(reportsSvc)
 
@@ -365,6 +367,7 @@ func New(cfg config.Config, pool *pgxpool.Pool) (*App, error) {
 				emailPrefsHandler.Routes(r)
 				telegramHandler.Routes(r)
 				reportsHandler.Routes(r)
+				linkPreviewHandler.Routes(r, byUser(lim.linkPreviews))
 
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireRole(user.RoleFreelancer))

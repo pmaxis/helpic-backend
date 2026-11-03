@@ -1034,6 +1034,18 @@ definitions:
           Pin puts a new comment on a spot of one of the task's images; an
           edit keeps the comment where it was.
     type: object
+  linkpreview.Request:
+    properties:
+      url:
+        example: https://example.com/docs
+        type: string
+    type: object
+  linkpreview.Response:
+    properties:
+      title:
+        example: Example Domain
+        type: string
+    type: object
   notifications.ActorDTO:
     properties:
       email:
@@ -4575,6 +4587,47 @@ paths:
       summary: Look up a client invitation
       tags:
       - invitations
+  /link-preview:
+    post:
+      consumes:
+      - application/json
+      description: 'For naming a link after the page it leads to: the page''s og:title,
+        twitter:title or <title>. Only public http(s) addresses on ports 80 and 443;
+        the server reads the page for up to 5 seconds, its first 512 KB. Titles are
+        remembered for an hour.'
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/linkpreview.Request'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/linkpreview.Response'
+        "400":
+          description: Not a web address
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "422":
+          description: The page couldn't be read or has no title
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "429":
+          description: Too many pages asked for
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: A web page's title
+      tags:
+      - links
   /me:
     delete:
       consumes:
