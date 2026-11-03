@@ -34,6 +34,10 @@ func (h *Handler) Routes(r chi.Router, more ...func(chi.Router)) {
 		r.Delete("/{id}", h.Delete)
 		r.Post("/{id}/status", h.SetStatus)
 		r.Put("/{id}/price", h.SetPrice)
+		r.Put("/{id}/estimate-time", h.SetEstimateTime)
+		r.Post("/{id}/estimate", h.SendEstimate)
+		r.Delete("/{id}/estimate", h.WithdrawEstimate)
+		r.Put("/{id}/estimate/review", h.ReviewEstimate)
 		r.Put("/{id}/priority", h.SetPriority)
 		r.Put("/{id}/backlog", h.SetBacklog)
 		r.Put("/{id}/labels", h.SetLabels)
@@ -318,6 +322,117 @@ func (h *Handler) SetPrice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := h.svc.SetPrice(r.Context(), userID, chi.URLParam(r, "id"), billing, cents)
+	writeTask(w, http.StatusOK, t, role, userID, err)
+}
+
+// SetEstimateTime handles PUT /api/v1/tasks/{id}/estimate-time.
+//
+//	@Summary		Estimate a task's time
+//	@Description	The task's freelancer only. Null clears it. A sent estimate it changes goes out of date.
+//	@Tags			tasks
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Task ID"
+//	@Param			body	body		EstimateTimeRequest		true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"task"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Router			/tasks/{id}/estimate-time [put]
+func (h *Handler) SetEstimateTime(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	var req EstimateTimeRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	seconds, fields := req.Validate()
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	t, err := h.svc.SetEstimateSeconds(r.Context(), userID, chi.URLParam(r, "id"), seconds)
+	writeTask(w, http.StatusOK, t, role, userID, err)
+}
+
+// SendEstimate handles POST /api/v1/tasks/{id}/estimate.
+//
+//	@Summary		Send a task's estimate to its client to approve
+//	@Description	The task's freelancer, on shared work: the price at a fixed price, the estimated time at the rate by the hour, as they are now. Sending again after the client asked for changes, or after the task changed, starts their review over.
+//	@Tags			tasks
+//	@Produce		json
+//	@Param			id	path		string					true	"Task ID"
+//	@Success		200	{object}	map[string]DTO			"task"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409	{object}	response.ErrorEnvelope	"Nothing to send, or already sent"
+//	@Router			/tasks/{id}/estimate [post]
+func (h *Handler) SendEstimate(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	t, err := h.svc.SendEstimate(r.Context(), userID, chi.URLParam(r, "id"))
+	writeTask(w, http.StatusOK, t, role, userID, err)
+}
+
+// WithdrawEstimate handles DELETE /api/v1/tasks/{id}/estimate.
+//
+//	@Summary		Take back a task's estimate
+//	@Description	The task's freelancer, while the client hasn't answered it.
+//	@Tags			tasks
+//	@Produce		json
+//	@Param			id	path		string					true	"Task ID"
+//	@Success		200	{object}	map[string]DTO			"task"
+//	@Failure		401	{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403	{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure		404	{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409	{object}	response.ErrorEnvelope	"No estimate waiting for an answer"
+//	@Router			/tasks/{id}/estimate [delete]
+func (h *Handler) WithdrawEstimate(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	t, err := h.svc.WithdrawEstimate(r.Context(), userID, chi.URLParam(r, "id"))
+	writeTask(w, http.StatusOK, t, role, userID, err)
+}
+
+// ReviewEstimate handles PUT /api/v1/tasks/{id}/estimate/review.
+//
+//	@Summary		Approve a task's estimate, or ask for changes
+//	@Description	The task's client, while the estimate is what the task still says. Asking for changes needs a note saying what.
+//	@Tags			tasks
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Task ID"
+//	@Param			body	body		EstimateReviewRequest	true	"Request body"
+//	@Success		200		{object}	map[string]DTO			"task"
+//	@Failure		400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure		401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure		403		{object}	response.ErrorEnvelope	"Not the client"
+//	@Failure		404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure		409		{object}	response.ErrorEnvelope	"No estimate, or it's out of date"
+//	@Router			/tasks/{id}/estimate/review [put]
+func (h *Handler) ReviewEstimate(w http.ResponseWriter, r *http.Request) {
+	userID, role, ok := request.UserRole(w, r)
+	if !ok {
+		return
+	}
+	var req EstimateReviewRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	review, note, fields := req.Validate()
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	t, err := h.svc.ReviewEstimate(r.Context(), userID, chi.URLParam(r, "id"), review, note)
 	writeTask(w, http.StatusOK, t, role, userID, err)
 }
 
@@ -670,6 +785,20 @@ func writeTask(w http.ResponseWriter, status int, t Task, role, viewerID string,
 		response.Error(w, http.StatusConflict, response.CodeConflict, "The task has subtasks: delete them first")
 	case errors.Is(err, ErrSubtaskProject):
 		response.ValidationError(w, map[string]string{"project_id": "A subtask stays in its parent's project: move the parent instead"})
+	case errors.Is(err, ErrEstimateNotAllowed):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the freelancer estimates the task")
+	case errors.Is(err, ErrNoClient):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "A personal task has no client to approve its estimate")
+	case errors.Is(err, ErrNothingToEstimate):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "Set a price, or the estimated time when billing by the hour, first")
+	case errors.Is(err, ErrEstimateSent):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "The estimate is already sent as it is")
+	case errors.Is(err, ErrNoEstimate):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "There is no estimate waiting for an answer")
+	case errors.Is(err, ErrNotEstimateReviewer):
+		response.Error(w, http.StatusForbidden, response.CodeForbidden, "Only the client approves the estimate")
+	case errors.Is(err, ErrEstimateOutdated):
+		response.Error(w, http.StatusConflict, response.CodeConflict, "The task changed since the estimate was sent. Reload the page")
 	case errors.Is(err, ErrDueBeforeCreated):
 		response.ValidationError(w, map[string]string{"due_on": "Can't be before the creation date"})
 	case err != nil:

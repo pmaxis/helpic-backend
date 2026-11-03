@@ -6705,6 +6705,258 @@
                 }
             }
         },
+        "/tasks/{id}/estimate": {
+            "post": {
+                "description": "The task's freelancer, on shared work: the price at a fixed price, the estimated time at the rate by the hour, as they are now. Sending again after the client asked for changes, or after the task changed, starts their review over.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Send a task's estimate to its client to approve",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Nothing to send, or already sent",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "The task's freelancer, while the client hasn't answered it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Take back a task's estimate",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "No estimate waiting for an answer",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks/{id}/estimate-time": {
+            "put": {
+                "description": "The task's freelancer only. Null clears it. A sent estimate it changes goes out of date.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Estimate a task's time",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/tasks.EstimateTimeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/tasks/{id}/estimate/review": {
+            "put": {
+                "description": "The task's client, while the estimate is what the task still says. Asking for changes needs a note saying what.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tasks"
+                ],
+                "summary": "Approve a task's estimate, or ask for changes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/tasks.EstimateReviewRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "task",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/tasks.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not the client",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "No estimate, or it's out of date",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/tasks/{id}/freelancer": {
             "put": {
                 "description": "An empty freelancer_id takes the assignee off. The task's author stays a participant.",
@@ -10680,8 +10932,17 @@
                 "can_edit": {
                     "type": "boolean"
                 },
+                "can_estimate": {
+                    "type": "boolean"
+                },
+                "can_review_estimate": {
+                    "type": "boolean"
+                },
                 "can_see_price": {
                     "description": "CanSeePrice is false for a member of the client's team: the price is\nleft out for them.",
+                    "type": "boolean"
+                },
+                "can_send_estimate": {
                     "type": "boolean"
                 },
                 "can_set_price": {
@@ -10693,6 +10954,9 @@
                 },
                 "can_track_time": {
                     "description": "CanTrackTime is true for the task's freelancer, who writes time on it.",
+                    "type": "boolean"
+                },
+                "can_withdraw_estimate": {
                     "type": "boolean"
                 },
                 "client": {
@@ -10725,6 +10989,18 @@
                 },
                 "due_on": {
                     "type": "string"
+                },
+                "estimate": {
+                    "description": "Estimate is what the freelancer sent the client to approve: null while\nthey haven't, and for whoever doesn't see the price.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/tasks.EstimateDTO"
+                        }
+                    ]
+                },
+                "estimate_seconds": {
+                    "description": "EstimateSeconds is the time the freelancer expects the task to take,\nnull while it isn't estimated; CanEstimate says whether the viewer may\nset it.",
+                    "type": "integer"
                 },
                 "freelancer": {
                     "description": "Freelancer is null while the task has no assignee.",
@@ -10814,6 +11090,74 @@
                 },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "tasks.EstimateDTO": {
+            "type": "object",
+            "properties": {
+                "billing": {
+                    "description": "Billing, Seconds, Cents and Currency are the task's as they were when\nsent: the fixed price, or the time at the rate (null without one).",
+                    "type": "string"
+                },
+                "cents": {
+                    "type": "integer"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "outdated": {
+                    "description": "Outdated is true once the task's billing, estimated time or fixed price\nchanged since: the freelancer sends it again for the client to answer.",
+                    "type": "boolean"
+                },
+                "reviewed_at": {
+                    "type": "string"
+                },
+                "reviewer": {
+                    "$ref": "#/definitions/tasks.PartyDTO"
+                },
+                "seconds": {
+                    "type": "integer"
+                },
+                "sent_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Status is \"pending\" until the client answers, then \"approved\" or\n\"changes_requested\", with what they wrote in Note.",
+                    "type": "string",
+                    "enum": [
+                        "pending",
+                        "approved",
+                        "changes_requested"
+                    ]
+                }
+            }
+        },
+        "tasks.EstimateReviewRequest": {
+            "type": "object",
+            "properties": {
+                "note": {
+                    "description": "Note says what to change; asking for changes needs one.",
+                    "type": "string"
+                },
+                "review": {
+                    "type": "string",
+                    "enum": [
+                        "approved",
+                        "changes_requested"
+                    ]
+                }
+            }
+        },
+        "tasks.EstimateTimeRequest": {
+            "type": "object",
+            "properties": {
+                "seconds": {
+                    "description": "Seconds is the time the task is expected to take; null clears it.",
+                    "type": "integer"
                 }
             }
         },

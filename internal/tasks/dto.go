@@ -222,6 +222,52 @@ func (r LabelsRequest) Validate() ([]string, map[string]string) {
 	return ids, nil
 }
 
+// EstimateTimeRequest is the JSON body for PUT /api/v1/tasks/{id}/estimate-time.
+type EstimateTimeRequest struct {
+	// Seconds is the time the task is expected to take; null clears it.
+	Seconds *int64 `json:"seconds"`
+}
+
+// Validate returns the estimated time and per-field errors.
+func (r EstimateTimeRequest) Validate() (*int64, map[string]string) {
+	if r.Seconds == nil {
+		return nil, nil
+	}
+	if *r.Seconds < 60 || *r.Seconds > MaxEstimateSeconds {
+		return nil, map[string]string{"seconds": "Enter a time from a minute to 10,000 hours"}
+	}
+	return r.Seconds, nil
+}
+
+// EstimateReviewRequest is the JSON body for PUT /api/v1/tasks/{id}/estimate/review.
+type EstimateReviewRequest struct {
+	Review string `json:"review" enums:"approved,changes_requested"`
+	// Note says what to change; asking for changes needs one.
+	Note string `json:"note"`
+}
+
+// maxEstimateNote caps what the client writes about an estimate.
+const maxEstimateNote = 5000
+
+// Validate returns the review, the trimmed note and per-field errors.
+func (r EstimateReviewRequest) Validate() (string, string, map[string]string) {
+	note := strings.TrimSpace(r.Note)
+	switch r.Review {
+	case EstimateApproved:
+		return r.Review, "", nil
+	case EstimateChangesRequested:
+	default:
+		return "", "", map[string]string{"review": "Approve the estimate or ask for changes"}
+	}
+	switch {
+	case note == "":
+		return "", "", map[string]string{"note": "Say what to change"}
+	case utf8.RuneCountInString(note) > maxEstimateNote:
+		return "", "", map[string]string{"note": "The comment is too long"}
+	}
+	return r.Review, note, nil
+}
+
 // BacklogRequest is the JSON body for PUT /api/v1/tasks/{id}/backlog.
 type BacklogRequest struct {
 	// InBacklog puts the task into its board's backlog (true) or back on the
@@ -354,6 +400,55 @@ type DTO struct {
 	// CanAddSubtask is true while the task can be split: it's on the boards
 	// and isn't a subtask itself.
 	CanAddSubtask bool `json:"can_add_subtask"`
+	// EstimateSeconds is the time the freelancer expects the task to take,
+	// null while it isn't estimated; CanEstimate says whether the viewer may
+	// set it.
+	EstimateSeconds *int64 `json:"estimate_seconds"`
+	CanEstimate     bool   `json:"can_estimate"`
+	// Estimate is what the freelancer sent the client to approve: null while
+	// they haven't, and for whoever doesn't see the price.
+	Estimate            *EstimateDTO `json:"estimate"`
+	CanSendEstimate     bool         `json:"can_send_estimate"`
+	CanWithdrawEstimate bool         `json:"can_withdraw_estimate"`
+	CanReviewEstimate   bool         `json:"can_review_estimate"`
+}
+
+// EstimateDTO is a task's estimate as sent to its client.
+type EstimateDTO struct {
+	// Billing, Seconds, Cents and Currency are the task's as they were when
+	// sent: the fixed price, or the time at the rate (null without one).
+	Billing  string    `json:"billing"`
+	Seconds  *int64    `json:"seconds"`
+	Cents    *int64    `json:"cents"`
+	Currency string    `json:"currency"`
+	SentAt   time.Time `json:"sent_at"`
+	// Status is "pending" until the client answers, then "approved" or
+	// "changes_requested", with what they wrote in Note.
+	Status     string     `json:"status" enums:"pending,approved,changes_requested"`
+	Note       string     `json:"note"`
+	ReviewedAt *time.Time `json:"reviewed_at"`
+	Reviewer   *PartyDTO  `json:"reviewer"`
+	// Outdated is true once the task's billing, estimated time or fixed price
+	// changed since: the freelancer sends it again for the client to answer.
+	Outdated bool `json:"outdated"`
+}
+
+// toEstimateDTO maps the task's estimate.
+func toEstimateDTO(t Task) *EstimateDTO {
+	e := t.Estimate
+	if e == nil {
+		return nil
+	}
+	d := &EstimateDTO{Billing: e.Billing, Seconds: e.Seconds, Cents: e.Cents, Currency: e.Currency, SentAt: e.SentAt,
+		Status: e.Review, Note: e.Note, ReviewedAt: e.ReviewedAt, Outdated: EstimateOutdated(t)}
+	if d.Status == "" {
+		d.Status = "pending"
+	}
+	if e.Reviewer != nil {
+		r := PartyDTO(*e.Reviewer)
+		d.Reviewer = &r
+	}
+	return d
 }
 
 // ParentDTO names the task a subtask belongs to.
@@ -401,6 +496,12 @@ func ToDTO(t Task, role, viewerID string) DTO {
 		ArchivedAt:    t.ArchivedAt,
 		Subtasks:      t.Subtasks,
 		CanAddSubtask: CanAddSubtask(t),
+
+		EstimateSeconds:     t.EstimateSeconds,
+		CanEstimate:         CanEstimate(t, viewerID),
+		CanSendEstimate:     CanSendEstimate(t, viewerID),
+		CanWithdrawEstimate: CanWithdrawEstimate(t, viewerID),
+		CanReviewEstimate:   CanReviewEstimate(t, viewerID),
 	}
 	if t.ParentID != "" {
 		id := t.ParentID
@@ -425,6 +526,7 @@ func ToDTO(t Task, role, viewerID string) DTO {
 	}
 	if d.CanSeePrice {
 		d.TrackedSeconds, d.HourlyRateCents = t.TrackedSeconds, t.HourlyRateCents
+		d.Estimate = toEstimateDTO(t)
 	} else {
 		d.PriceCents, d.Currency = nil, ""
 	}

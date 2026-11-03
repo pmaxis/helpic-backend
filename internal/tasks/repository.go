@@ -48,7 +48,13 @@ const selectTask = `SELECT t.id, t.created_by, t.title, t.description, t.status,
 		(SELECT json_build_object('id', p.id, 'title', p.title) FROM tasks p
 			WHERE p.id = t.parent_id AND sees_task($1, p.id, p.freelancer_id, p.client_id)),
 		(SELECT json_build_object('total', count(*), 'done', count(*) FILTER (WHERE s.status = 'done' OR s.archived_at IS NOT NULL))
-			FROM tasks s WHERE s.parent_id = t.id AND sees_task($1, s.id, s.freelancer_id, s.client_id))
+			FROM tasks s WHERE s.parent_id = t.id AND sees_task($1, s.id, s.freelancer_id, s.client_id)),
+		-- the time estimated, and the estimate sent to the client
+		t.estimate_seconds,
+		(SELECT json_build_object('billing', e.billing, 'seconds', e.seconds, 'cents', e.cents, 'currency', e.currency,
+				'sent_at', e.sent_at, 'review', coalesce(e.review, ''), 'note', e.note, 'reviewed_at', e.reviewed_at,
+				'reviewer', CASE WHEN ru.id IS NULL THEN NULL ELSE json_build_object('id', ru.id, 'name', ru.name, 'email', ru.email) END)
+			FROM task_estimates e LEFT JOIN users ru ON ru.id = e.reviewed_by WHERE e.task_id = t.id)
 	FROM tasks t
 	JOIN workflow_statuses ws ON ws.id = t.status_id
 	LEFT JOIN users f ON f.id = t.freelancer_id
@@ -68,6 +74,7 @@ func scanTask(row pgx.Row) (Task, error) {
 		reportID, reportTitle                         *string
 		parent                                        []byte
 		subtasks                                      []byte
+		estimate                                      []byte
 	)
 	err := row.Scan(&t.ID, &t.CreatedBy, &t.Title, &t.Description, &t.Status, &t.StatusID, &t.StatusName, &t.Position,
 		&t.DueOn, &t.PriceCents, &t.Currency, &t.Priority, &labels, &t.CreatedAt, &t.UpdatedAt,
@@ -76,9 +83,15 @@ func scanTask(row pgx.Row) (Task, error) {
 		&t.Creator.Name, &t.Creator.Email, &participants,
 		&t.FreelancerRole, &t.ArchivedAt, &reportID, &reportTitle,
 		&t.Billing, &t.TrackedSeconds, &t.Billed, &t.InBacklog, &t.HourlyRateCents,
-		&t.ParentID, &parent, &subtasks)
+		&t.ParentID, &parent, &subtasks, &t.EstimateSeconds, &estimate)
 	if err != nil {
 		return t, err
+	}
+	if estimate != nil {
+		t.Estimate = &Estimate{}
+		if err := json.Unmarshal(estimate, t.Estimate); err != nil {
+			return t, fmt.Errorf("decode estimate: %w", err)
+		}
 	}
 	if parent != nil {
 		var ref struct{ ID, Title string }
@@ -268,9 +281,15 @@ func (r *Repository) AssignFreelancer(ctx context.Context, taskID, freelancerID 
 	if err != nil {
 		return fmt.Errorf("read task assignee: %w", err)
 	}
-	// The price was the previous freelancer's, in their currency.
+	// The price was the previous freelancer's, in their currency, and so was
+	// the estimate they sent.
 	if _, err := tx.Exec(ctx, `UPDATE tasks SET freelancer_id = NULLIF($2, '')::uuid, price_cents = NULL WHERE id = $1`, taskID, freelancerID); err != nil {
 		return fmt.Errorf("assign freelancer: %w", err)
+	}
+	if old != freelancerID {
+		if _, err := tx.Exec(ctx, `DELETE FROM task_estimates WHERE task_id = $1`, taskID); err != nil {
+			return fmt.Errorf("drop estimate: %w", err)
+		}
 	}
 	if freelancerID != "" {
 		if _, err := tx.Exec(ctx, `SELECT note_participant($1, $2::uuid, now())`, taskID, freelancerID); err != nil {

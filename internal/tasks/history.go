@@ -47,6 +47,15 @@ const (
 	// EventBacklog is the task put into its board's backlog ("in_backlog":
 	// true) or taken out of it onto the board (false).
 	EventBacklog = "backlog"
+	// EventEstimate is the estimated time changed; from and to are seconds.
+	EventEstimate = "estimate"
+	// EventEstimateSent is the estimate sent to the client: billing, seconds,
+	// cents and currency, as sent. EventEstimateWithdrawn is it taken back
+	// before they answered.
+	EventEstimateSent      = "estimate_sent"
+	EventEstimateWithdrawn = "estimate_withdrawn"
+	// EventEstimateReviewed carries "review": "approved" or "changes_requested".
+	EventEstimateReviewed = "estimate_reviewed"
 )
 
 // Event is one change in a task's history.
@@ -123,10 +132,11 @@ func (s *Service) History(ctx context.Context, userID, taskID string) ([]Event, 
 	if err != nil || CanSeePrice(t, userID) {
 		return events, err
 	}
-	// A team member doesn't see the price, so not its changes either.
+	// A team member doesn't see the price, so not its changes either, nor
+	// the estimate sent with it.
 	out := events[:0]
 	for _, e := range events {
-		if e.Kind != EventPrice {
+		if e.Kind != EventPrice && e.Kind != EventEstimateSent && e.Kind != EventEstimateWithdrawn && e.Kind != EventEstimateReviewed {
 			out = append(out, e)
 		}
 	}

@@ -323,6 +323,11 @@ type Task struct {
 	// project's, or their own; nil without one.
 	TrackedSeconds  *int64
 	HourlyRateCents *int64
+	// EstimateSeconds is the time the freelancer expects the task to take;
+	// nil while it isn't estimated. Estimate is what they sent the client to
+	// approve, nil while they haven't.
+	EstimateSeconds *int64
+	Estimate        *Estimate
 	// Billed is whether the task is on a report that was sent: its time is
 	// billed and stays as it is.
 	Billed bool

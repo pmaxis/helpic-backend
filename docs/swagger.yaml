@@ -1778,10 +1778,16 @@ definitions:
         type: boolean
       can_edit:
         type: boolean
+      can_estimate:
+        type: boolean
+      can_review_estimate:
+        type: boolean
       can_see_price:
         description: |-
           CanSeePrice is false for a member of the client's team: the price is
           left out for them.
+        type: boolean
+      can_send_estimate:
         type: boolean
       can_set_price:
         type: boolean
@@ -1793,6 +1799,8 @@ definitions:
       can_track_time:
         description: CanTrackTime is true for the task's freelancer, who writes time
           on it.
+        type: boolean
+      can_withdraw_estimate:
         type: boolean
       client:
         allOf:
@@ -1814,6 +1822,18 @@ definitions:
         type: string
       due_on:
         type: string
+      estimate:
+        allOf:
+        - $ref: '#/definitions/tasks.EstimateDTO'
+        description: |-
+          Estimate is what the freelancer sent the client to approve: null while
+          they haven't, and for whoever doesn't see the price.
+      estimate_seconds:
+        description: |-
+          EstimateSeconds is the time the freelancer expects the task to take,
+          null while it isn't estimated; CanEstimate says whether the viewer may
+          set it.
+        type: integer
       freelancer:
         allOf:
         - $ref: '#/definitions/tasks.PartyDTO'
@@ -1882,6 +1902,60 @@ definitions:
         type: integer
       updated_at:
         type: string
+    type: object
+  tasks.EstimateDTO:
+    properties:
+      billing:
+        description: |-
+          Billing, Seconds, Cents and Currency are the task's as they were when
+          sent: the fixed price, or the time at the rate (null without one).
+        type: string
+      cents:
+        type: integer
+      currency:
+        type: string
+      note:
+        type: string
+      outdated:
+        description: |-
+          Outdated is true once the task's billing, estimated time or fixed price
+          changed since: the freelancer sends it again for the client to answer.
+        type: boolean
+      reviewed_at:
+        type: string
+      reviewer:
+        $ref: '#/definitions/tasks.PartyDTO'
+      seconds:
+        type: integer
+      sent_at:
+        type: string
+      status:
+        description: |-
+          Status is "pending" until the client answers, then "approved" or
+          "changes_requested", with what they wrote in Note.
+        enum:
+        - pending
+        - approved
+        - changes_requested
+        type: string
+    type: object
+  tasks.EstimateReviewRequest:
+    properties:
+      note:
+        description: Note says what to change; asking for changes needs one.
+        type: string
+      review:
+        enum:
+        - approved
+        - changes_requested
+        type: string
+    type: object
+  tasks.EstimateTimeRequest:
+    properties:
+      seconds:
+        description: Seconds is the time the task is expected to take; null clears
+          it.
+        type: integer
     type: object
   tasks.EventDTO:
     properties:
@@ -6845,6 +6919,178 @@ paths:
           schema:
             $ref: '#/definitions/response.ErrorEnvelope'
       summary: Put a task into its board's backlog, or back on the board
+      tags:
+      - tasks
+  /tasks/{id}/estimate:
+    delete:
+      description: The task's freelancer, while the client hasn't answered it.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: No estimate waiting for an answer
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Take back a task's estimate
+      tags:
+      - tasks
+    post:
+      description: 'The task''s freelancer, on shared work: the price at a fixed price,
+        the estimated time at the rate by the hour, as they are now. Sending again
+        after the client asked for changes, or after the task changed, starts their
+        review over.'
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: Nothing to send, or already sent
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Send a task's estimate to its client to approve
+      tags:
+      - tasks
+  /tasks/{id}/estimate-time:
+    put:
+      consumes:
+      - application/json
+      description: The task's freelancer only. Null clears it. A sent estimate it
+        changes goes out of date.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/tasks.EstimateTimeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not allowed
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Estimate a task's time
+      tags:
+      - tasks
+  /tasks/{id}/estimate/review:
+    put:
+      consumes:
+      - application/json
+      description: The task's client, while the estimate is what the task still says.
+        Asking for changes needs a note saying what.
+      parameters:
+      - description: Task ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/tasks.EstimateReviewRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: task
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/tasks.DTO'
+            type: object
+        "400":
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "403":
+          description: Not the client
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+        "409":
+          description: No estimate, or it's out of date
+          schema:
+            $ref: '#/definitions/response.ErrorEnvelope'
+      summary: Approve a task's estimate, or ask for changes
       tags:
       - tasks
   /tasks/{id}/freelancer:

@@ -36,6 +36,10 @@ var uk = map[string]string{ // #nosec G101 -- translations, not credentials
 	"…and %d more in the app.":                 "…і ще %d у застосунку.",
 	"You get these emails for your Helpic notifications. Choose which in Settings → Notifications.": "Ви отримуєте ці листи про сповіщення Helpic. Обрати, які саме, можна в Налаштування → Сповіщення.",
 
+	"%s sent you the estimate of %s to approve":  "%s: оцінка %s чекає на ваше погодження",
+	"%s approved the estimate of %s":             "%s: оцінку %s погоджено",
+	"%s asked for changes to the estimate of %s": "%s: просить змінити оцінку %s",
+
 	// --- email layout ----------------------------------------------------------
 	"Or open this link:": "Або відкрийте посилання:",
 	"You got this email because of your Helpic account. Freelancers and their clients, on the same page.": "Ви отримали цей лист, бо маєте акаунт у Helpic. Фрилансери та їхні замовники — на одній сторінці.",
@@ -315,6 +319,15 @@ var uk = map[string]string{ // #nosec G101 -- translations, not credentials
 	"Approve the report or ask for changes":                                  "Погодьте звіт або попросіть правки",
 	"Say what to change":                                                     "Напишіть, що треба змінити",
 	"Say why it stays as it is":                                              "Поясніть, чому звіт лишається без змін",
+	"Approve the estimate or ask for changes":                                "Погодьте оцінку або попросіть змін",
+	"Enter a time from a minute to 10,000 hours":                             "Вкажіть час від хвилини до 10 000 годин",
+	"Only the freelancer estimates the task":                                 "Оцінює задачу лише фрилансер",
+	"Only the client approves the estimate":                                  "Погоджує оцінку лише замовник",
+	"A personal task has no client to approve its estimate":                  "В особистої задачі немає замовника, який погодив би оцінку",
+	"Set a price, or the estimated time when billing by the hour, first":     "Спершу вкажіть ціну або, якщо оплата погодинна, оцінку часу",
+	"The estimate is already sent as it is":                                  "Оцінку вже надіслано в такому вигляді",
+	"There is no estimate waiting for an answer":                             "Немає оцінки, яка чекає на відповідь",
+	"The task changed since the estimate was sent. Reload the page":          "Задача змінилася після того, як оцінку надіслали. Оновіть сторінку",
 	"The comment is too long":                                                "Коментар задовгий",
 	"Only the author can change a comment":                                   "Змінювати коментар може лише автор",
 	"Choose a file to upload":                                                "Оберіть файл для завантаження",

@@ -21,6 +21,9 @@ var Kinds = []string{
 	KindAttachmentAdded,
 	KindFileApproved,
 	KindFileChangesRequested,
+	KindEstimateSent,
+	KindEstimateApproved,
+	KindEstimateChangesRequested,
 	KindProjectCreated,
 	KindProjectInvited,
 	KindReportSent,
@@ -48,6 +51,9 @@ var DefaultKinds = []string{
 	KindCommentMention,
 	KindFileApproved,
 	KindFileChangesRequested,
+	KindEstimateSent,
+	KindEstimateApproved,
+	KindEstimateChangesRequested,
 	KindReportSent,
 	KindReportPaid,
 	KindReportComment,
@@ -159,6 +165,12 @@ func Phrase(n Notification, locale, who, subject, detail string) string {
 		return t("%s approved “%s” on %s", who, detail, subject)
 	case KindFileChangesRequested:
 		return t("%s asked for changes to “%s” on %s", who, detail, subject)
+	case KindEstimateSent:
+		return t("%s sent you the estimate of %s to approve", who, subject)
+	case KindEstimateApproved:
+		return t("%s approved the estimate of %s", who, subject)
+	case KindEstimateChangesRequested:
+		return t("%s asked for changes to the estimate of %s", who, subject)
 	default:
 		return t("%s changed %s", who, subject)
 	}
@@ -167,7 +179,7 @@ func Phrase(n Notification, locale, who, subject, detail string) string {
 // Quotes reports whether the notification's detail is a comment's text,
 // quoted under it.
 func Quotes(n Notification) bool {
-	return (n.Kind == KindCommentAdded || n.Kind == KindCommentMention || n.Kind == KindReportComment || n.Kind == KindReportChangesRequested || n.Kind == KindReportChangesDeclined) && n.Detail != ""
+	return (n.Kind == KindCommentAdded || n.Kind == KindCommentMention || n.Kind == KindReportComment || n.Kind == KindReportChangesRequested || n.Kind == KindReportChangesDeclined || n.Kind == KindEstimateChangesRequested) && n.Detail != ""
 }
 
 // DueDate shows a reminder's YYYY-MM-DD due date: "17 Oct 2026", "17 жовтня 2026".

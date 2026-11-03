@@ -44,6 +44,13 @@ const (
 	// file's name.
 	KindFileApproved         = "file_approved"
 	KindFileChangesRequested = "file_changes_requested"
+	// KindEstimateSent: the freelancer sent the client a task's estimate to
+	// approve. KindEstimateApproved: the client approved it;
+	// KindEstimateChangesRequested: they asked for changes to it, Detail is
+	// the start of what they wrote.
+	KindEstimateSent             = "estimate_sent"
+	KindEstimateApproved         = "estimate_approved"
+	KindEstimateChangesRequested = "estimate_changes_requested"
 	// KindCommentAdded: a comment on a task; Detail is its start.
 	KindCommentAdded = "comment_added"
 	// KindCommentMention: a comment on a task mentions the user, who isn't
