@@ -75,7 +75,10 @@ func (r *Repository) HasPricedTasks(ctx context.Context, userID string) (bool, e
 	var priced bool
 	err := r.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tasks WHERE freelancer_id = $1 AND price_cents IS NOT NULL)
 		OR EXISTS (SELECT 1 FROM users WHERE id = $1 AND hourly_rate_cents IS NOT NULL)
-		OR EXISTS (SELECT 1 FROM project_participants WHERE user_id = $1 AND hourly_rate_cents IS NOT NULL)`, userID).Scan(&priced)
+		OR EXISTS (SELECT 1 FROM project_participants WHERE user_id = $1 AND hourly_rate_cents IS NOT NULL)
+		-- an expense on a report still open follows the currency as a price does
+		OR EXISTS (SELECT 1 FROM report_items i JOIN reports r ON r.id = i.report_id
+			WHERE r.freelancer_id = $1 AND i.expense AND r.status <> 'paid')`, userID).Scan(&priced)
 	if err != nil {
 		return false, fmt.Errorf("check priced tasks: %w", err)
 	}

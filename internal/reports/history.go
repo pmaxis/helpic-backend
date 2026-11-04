@@ -12,17 +12,20 @@ import (
 
 // Kinds of report history event.
 const (
-	EventCreated     = "created"
-	EventTitle       = "title"        // from, to
-	EventSummary     = "summary"      // the summary changed
-	EventKind        = "kind"         // from, to: basic / detailed
-	EventItemNotes   = "item_notes"   // task: the task's notes changed
-	EventItemRemoved = "item_removed" // task: dropped from the report
-	EventSent        = "sent"
-	EventPaid        = "paid"     // tasks: how many it archived
-	EventQuestion    = "question" // task: the client asked about the line
-	EventResolved    = "resolved" // task: the question on the line was resolved
-	EventRecalled    = "recalled" // the freelancer took it back to correct it
+	EventCreated        = "created"
+	EventTitle          = "title"           // from, to
+	EventSummary        = "summary"         // the summary changed
+	EventKind           = "kind"            // from, to: basic / detailed
+	EventItemNotes      = "item_notes"      // task: the task's notes changed
+	EventItemRemoved    = "item_removed"    // task: dropped from the report
+	EventExpenseAdded   = "expense_added"   // expense: added to the report
+	EventExpenseChanged = "expense_changed" // expense: its title, day or amount changed
+	EventExpenseRemoved = "expense_removed" // expense: dropped from the report
+	EventSent           = "sent"
+	EventPaid           = "paid"     // tasks: how many it archived
+	EventQuestion       = "question" // task: the client asked about the line
+	EventResolved       = "resolved" // task: the question on the line was resolved
+	EventRecalled       = "recalled" // the freelancer took it back to correct it
 	// EventApproved: the client approved it; EventChangesRequested: they
 	// asked for changes to it.
 	EventApproved         = "approved"

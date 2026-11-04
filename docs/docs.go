@@ -5714,6 +5714,159 @@ const docTemplate = `{
                 }
             }
         },
+        "/reports/{id}/expenses": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Add an expense to a draft",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/reports.ExpenseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/reports.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Already sent",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/reports/{id}/expenses/{itemID}": {
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Rewrite an expense in a draft",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Report ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Report item ID",
+                        "name": "itemID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/reports.ExpenseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "report",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/reports.DTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Already sent",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
         "/reports/{id}/history": {
             "get": {
                 "description": "Its client sees only the sending and the payment.",
@@ -9849,6 +10002,10 @@ const docTemplate = `{
         "clients.LinkDTO": {
             "type": "object",
             "properties": {
+                "can_end": {
+                    "description": "CanEnd: no open task or unpaid report holds the work, and the viewer\nmay end it; the app offers to only then.",
+                    "type": "boolean"
+                },
                 "email": {
                     "type": "string"
                 },
@@ -10564,6 +10721,10 @@ const docTemplate = `{
                 "currency": {
                     "type": "string"
                 },
+                "expenses_cents": {
+                    "description": "ExpensesCents is the expenses' part of the total, on a list too: what\nthe client pays back rather than what the freelancer earned.",
+                    "type": "integer"
+                },
                 "freelancer": {
                     "$ref": "#/definitions/reports.PartyDTO"
                 },
@@ -10645,7 +10806,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "total_cents": {
-                    "description": "TotalCents sums the items' prices, on a list too; null when none\nhas a price.",
+                    "description": "TotalCents sums the items' prices, expenses included, on a list too;\nnull when none has a price.",
                     "type": "integer"
                 },
                 "updated_at": {
@@ -10670,6 +10831,23 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "kind": {
+                    "type": "string"
+                }
+            }
+        },
+        "reports.ExpenseRequest": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "description": "Amount is like \"1200.50\", in the report's currency.",
+                    "type": "string"
+                },
+                "spent_on": {
+                    "description": "SpentOn is the day it was spent: YYYY-MM-DD.",
+                    "type": "string"
+                },
+                "title": {
+                    "description": "Title says what the money went on.",
                     "type": "string"
                 }
             }
@@ -10699,6 +10877,10 @@ const docTemplate = `{
                 },
                 "completed_on": {
                     "type": "string"
+                },
+                "expense": {
+                    "description": "Expense marks a line for what the work cost: no task behind it,\ncompleted_on is the day it was spent.",
+                    "type": "boolean"
                 },
                 "id": {
                     "type": "string"

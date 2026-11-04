@@ -76,6 +76,10 @@ type Item struct {
 	// be resolved; Comments counts what was said about it.
 	QuestionOpen bool
 	Comments     int
+	// Expense marks a line for what the work cost, written in the draft: it
+	// has no task, its Title says what it was, CompletedOn when it was spent
+	// and PriceCents how much.
+	Expense bool
 }
 
 // ProjectRef is a project a report covers, named as it was when the report
@@ -118,10 +122,13 @@ type Report struct {
 	// Branding is the freelancer's look: live while it's a draft, kept as
 	// it was once sent.
 	Branding branding.Branding
-	// ItemCount and ListTotal (the sum of the prices, nil when none has one)
-	// are filled whenever a report is read; Items when loading one report.
-	ItemCount int
-	ListTotal *int64
+	// ItemCount (the tasks), ListTotal (the sum of the prices, expenses
+	// included, nil when none has one) and ExpensesCents (the expenses' part
+	// of it) are filled whenever a report is read; Items, tasks and expenses,
+	// when loading one report.
+	ItemCount     int
+	ListTotal     *int64
+	ExpensesCents int64
 	// OpenQuestions counts the lines with a question waiting; Comments is
 	// the whole discussion.
 	OpenQuestions int

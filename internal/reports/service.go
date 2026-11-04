@@ -227,7 +227,7 @@ func (s *Service) SetItemNotes(ctx context.Context, freelancerID, id, itemID, no
 		return Report{}, err
 	}
 	item, ok := findItem(r, itemID)
-	if !ok {
+	if !ok || item.Expense {
 		return Report{}, ErrNotFound
 	}
 	if err := s.repo.SetItemNotes(ctx, id, itemID, notes); err != nil {
@@ -239,7 +239,38 @@ func (s *Service) SetItemNotes(ctx context.Context, freelancerID, id, itemID, no
 	return s.read(ctx, freelancerID, id)
 }
 
-// RemoveItem drops a task from a draft.
+// AddExpense adds what the work cost to a draft.
+func (s *Service) AddExpense(ctx context.Context, freelancerID, id string, p ExpenseParams) (Report, error) {
+	if _, err := s.owned(ctx, freelancerID, id); err != nil {
+		return Report{}, err
+	}
+	if _, err := s.repo.AddExpense(ctx, id, p); err != nil {
+		return Report{}, err
+	}
+	s.record(ctx, id, freelancerID, EventExpenseAdded, map[string]any{"expense": p.Title})
+	return s.read(ctx, freelancerID, id)
+}
+
+// UpdateExpense rewrites one of a draft's expenses.
+func (s *Service) UpdateExpense(ctx context.Context, freelancerID, id, itemID string, p ExpenseParams) (Report, error) {
+	r, err := s.owned(ctx, freelancerID, id)
+	if err != nil {
+		return Report{}, err
+	}
+	item, ok := findItem(r, itemID)
+	if !ok || !item.Expense {
+		return Report{}, ErrNotFound
+	}
+	if err := s.repo.UpdateExpense(ctx, id, itemID, p); err != nil {
+		return Report{}, err
+	}
+	if item.Title != p.Title || !item.CompletedOn.Equal(p.SpentOn) || item.PriceCents == nil || *item.PriceCents != p.AmountCents {
+		s.record(ctx, id, freelancerID, EventExpenseChanged, map[string]any{"expense": p.Title})
+	}
+	return s.read(ctx, freelancerID, id)
+}
+
+// RemoveItem drops a task or an expense from a draft.
 func (s *Service) RemoveItem(ctx context.Context, freelancerID, id, itemID string) (Report, error) {
 	r, err := s.owned(ctx, freelancerID, id)
 	if err != nil {
@@ -252,7 +283,11 @@ func (s *Service) RemoveItem(ctx context.Context, freelancerID, id, itemID strin
 	if err := s.repo.RemoveItem(ctx, id, itemID); err != nil {
 		return Report{}, err
 	}
-	s.record(ctx, id, freelancerID, EventItemRemoved, map[string]any{"task": item.Title})
+	if item.Expense {
+		s.record(ctx, id, freelancerID, EventExpenseRemoved, map[string]any{"expense": item.Title})
+	} else {
+		s.record(ctx, id, freelancerID, EventItemRemoved, map[string]any{"task": item.Title})
+	}
 	return s.read(ctx, freelancerID, id)
 }
 

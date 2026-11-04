@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/pmaxis/helpic/internal/branding"
+	"github.com/pmaxis/helpic/internal/money"
 )
 
 const (
@@ -133,6 +134,46 @@ func (r ItemRequest) Validate() (string, map[string]string) {
 	return notes, nil
 }
 
+// ExpenseRequest is the JSON body for POST /api/v1/reports/{id}/expenses and
+// PUT /api/v1/reports/{id}/expenses/{itemID}.
+type ExpenseRequest struct {
+	// Title says what the money went on.
+	Title string `json:"title"`
+	// SpentOn is the day it was spent: YYYY-MM-DD.
+	SpentOn string `json:"spent_on"`
+	// Amount is like "1200.50", in the report's currency.
+	Amount string `json:"amount"`
+}
+
+// ExpenseParams is the validated input for an expense.
+type ExpenseParams struct {
+	Title       string
+	SpentOn     time.Time
+	AmountCents int64
+}
+
+// Validate checks the payload and returns per-field error messages.
+func (r ExpenseRequest) Validate() (ExpenseParams, map[string]string) {
+	fields := map[string]string{}
+	p := ExpenseParams{Title: strings.TrimSpace(r.Title)}
+	switch {
+	case p.Title == "":
+		fields["title"] = "Say what it was spent on"
+	case utf8.RuneCountInString(p.Title) > maxTitle:
+		fields["title"] = "Title is too long"
+	}
+	var err error
+	if p.SpentOn, err = time.Parse(dateLayout, strings.TrimSpace(r.SpentOn)); err != nil {
+		fields["spent_on"] = "Enter a valid date (YYYY-MM-DD)"
+	}
+	if p.AmountCents, err = money.ParsePrice(r.Amount); err != nil {
+		fields["amount"] = "Enter an amount like 1200 or 99.50"
+	} else if p.AmountCents == 0 {
+		fields["amount"] = "An expense needs an amount"
+	}
+	return p, fields
+}
+
 // CommentRequest is the JSON body for POST /api/v1/reports/{id}/comments.
 type CommentRequest struct {
 	// ItemID is the line it's about; "" for the report as a whole.
@@ -240,6 +281,9 @@ type ItemDTO struct {
 	QuestionOpen bool `json:"question_open"`
 	// CommentCount is what was said about the line.
 	CommentCount int `json:"comment_count"`
+	// Expense marks a line for what the work cost: no task behind it,
+	// completed_on is the day it was spent.
+	Expense bool `json:"expense"`
 }
 
 // DTO is a report as the viewer sees it. Items are present on a single report.
@@ -278,9 +322,12 @@ type DTO struct {
 	// Branding is how the freelancer's report looks: its logo (at
 	// /reports/{id}/logo), accent color and business details.
 	Branding branding.DTO `json:"branding"`
-	// TotalCents sums the items' prices, on a list too; null when none
-	// has a price.
+	// TotalCents sums the items' prices, expenses included, on a list too;
+	// null when none has a price.
 	TotalCents *int64 `json:"total_cents"`
+	// ExpensesCents is the expenses' part of the total, on a list too: what
+	// the client pays back rather than what the freelancer earned.
+	ExpensesCents int64 `json:"expenses_cents"`
 	// InUAH is the total in hryvnias at the NBU's official rate, on a single
 	// report in another currency; null otherwise, or when no rate is known.
 	InUAH *InUAHDTO `json:"in_uah"`
@@ -353,6 +400,7 @@ func ToDTO(r Report, viewerID string) DTO {
 		OpenQuestions: r.OpenQuestions,
 		CommentCount:  r.Comments,
 		TotalCents:    r.ListTotal,
+		ExpensesCents: r.ExpensesCents,
 		CreatedAt:     r.CreatedAt,
 		UpdatedAt:     r.UpdatedAt,
 	}
@@ -374,7 +422,7 @@ func ToDTO(r Report, viewerID string) DTO {
 		for _, it := range r.Items {
 			item := ItemDTO{ID: it.ID, Title: it.Title, ParentTitle: it.ParentTitle, ProjectName: it.ProjectName, StatusName: it.StatusName,
 				CompletedOn: it.CompletedOn.Format(dateLayout), PriceCents: it.PriceCents, PriceInUAHCents: it.PriceInUAH, Seconds: it.Seconds, Notes: it.Notes,
-				QuestionOpen: it.QuestionOpen, CommentCount: it.Comments}
+				QuestionOpen: it.QuestionOpen, CommentCount: it.Comments, Expense: it.Expense}
 			if it.TaskID != "" {
 				id := it.TaskID
 				item.TaskID = &id

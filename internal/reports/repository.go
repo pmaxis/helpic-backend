@@ -31,12 +31,14 @@ const selectReport = `SELECT r.id, r.title, r.summary, r.kind, r.period_from, r.
 		CASE WHEN r.status = 'draft' THEN f.brand_color ELSE r.brand_color END,
 		CASE WHEN r.status = 'draft' THEN f.business_details ELSE coalesce(r.business_details, '') END,
 		coalesce(CASE WHEN r.status = 'draft' THEN f.brand_logo_id ELSE r.brand_logo_id END::text, ''),
-		(SELECT count(*) FROM report_items i WHERE i.report_id = r.id),
+		(SELECT count(*) FROM report_items i WHERE i.report_id = r.id AND NOT i.expense),
 		(SELECT count(*) FROM report_items i WHERE i.report_id = r.id AND i.question_open),
 		(SELECT count(*) FROM report_comments c WHERE c.report_id = r.id),
-		-- the sum of its prices: live while a draft, frozen once sent; NULL when none has one
-		(SELECT sum(CASE WHEN r.status = 'draft' THEN t.price_cents ELSE i.price_cents END)
-			FROM report_items i LEFT JOIN tasks t ON t.id = i.task_id WHERE i.report_id = r.id)
+		-- the sum of its prices: a task's live while a draft, frozen once sent, an
+		-- expense's its own; NULL when none has one
+		(SELECT sum(CASE WHEN r.status = 'draft' AND NOT i.expense THEN t.price_cents ELSE i.price_cents END)
+			FROM report_items i LEFT JOIN tasks t ON t.id = i.task_id WHERE i.report_id = r.id),
+		(SELECT coalesce(sum(i.price_cents), 0)::bigint FROM report_items i WHERE i.report_id = r.id AND i.expense)
 	FROM reports r
 	JOIN users f ON f.id = r.freelancer_id
 	LEFT JOIN users c ON c.id = r.client_id`
@@ -53,7 +55,7 @@ func scanReport(row pgx.Row) (Report, error) {
 	err := row.Scan(&r.ID, &r.Title, &r.Summary, &r.Kind, &r.From, &r.To, &r.Status, &r.SentAt, &r.PaidAt,
 		&r.RecalledAt, &r.Review, &r.ReviewedAt, &r.ReviewNote, &r.ReviewAnswer, &r.CreatedAt, &r.UpdatedAt, &projects,
 		&r.Freelancer.ID, &r.Freelancer.Name, &r.Freelancer.Email,
-		&clientID, &cName, &cEmail, &r.Currency, &r.Branding.Color, &r.Branding.Details, &r.Branding.LogoID, &r.ItemCount, &r.OpenQuestions, &r.Comments, &r.ListTotal)
+		&clientID, &cName, &cEmail, &r.Currency, &r.Branding.Color, &r.Branding.Details, &r.Branding.LogoID, &r.ItemCount, &r.OpenQuestions, &r.Comments, &r.ListTotal, &r.ExpensesCents)
 	if err != nil {
 		return r, err
 	}
@@ -89,10 +91,11 @@ func (r *Repository) Get(ctx context.Context, userID, id string) (Report, error)
 	if err != nil {
 		return Report{}, fmt.Errorf("get report: %w", err)
 	}
-	// A draft shows the tasks' current prices and time; a sent report its frozen ones.
+	// A draft shows the tasks' current prices and time; a sent report its
+	// frozen ones. An expense always shows its own amount.
 	rows, err := r.db.Query(ctx, `SELECT i.id, coalesce(i.task_id::text, ''), i.title, i.parent_title, i.project_name, i.status_name, i.completed_on, i.notes,
-			i.question_open, (SELECT count(*) FROM report_comments c WHERE c.item_id = i.id),
-			CASE WHEN $2 = 'draft' THEN t.price_cents ELSE i.price_cents END,
+			i.question_open, (SELECT count(*) FROM report_comments c WHERE c.item_id = i.id), i.expense,
+			CASE WHEN $2 = 'draft' AND NOT i.expense THEN t.price_cents ELSE i.price_cents END,
 			CASE WHEN $2 = 'draft' THEN CASE WHEN t.billing = 'hourly' THEN task_seconds(t.id) END ELSE i.seconds END
 		FROM report_items i LEFT JOIN tasks t ON t.id = i.task_id
 		WHERE i.report_id = $1 ORDER BY i.position`, rep.ID, rep.Status)
@@ -102,7 +105,7 @@ func (r *Repository) Get(ctx context.Context, userID, id string) (Report, error)
 	rep.Items, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (Item, error) {
 		var it Item
 		err := row.Scan(&it.ID, &it.TaskID, &it.Title, &it.ParentTitle, &it.ProjectName, &it.StatusName, &it.CompletedOn, &it.Notes,
-			&it.QuestionOpen, &it.Comments, &it.PriceCents, &it.Seconds)
+			&it.QuestionOpen, &it.Comments, &it.Expense, &it.PriceCents, &it.Seconds)
 		return it, err
 	})
 	if err != nil {
@@ -214,7 +217,40 @@ func (r *Repository) SetItemNotes(ctx context.Context, reportID, itemID, notes s
 	return nil
 }
 
-// RemoveItem drops a task from a draft.
+// AddExpense adds an expense after a draft's other lines, or ErrSent once
+// it's sent. It returns the line's ID.
+func (r *Repository) AddExpense(ctx context.Context, reportID string, p ExpenseParams) (string, error) {
+	var id string
+	err := r.db.QueryRow(ctx, `INSERT INTO report_items (report_id, expense, title, completed_on, price_cents, position)
+		SELECT r.id, true, $2, $3, $4,
+			coalesce((SELECT max(i.position) + 1 FROM report_items i WHERE i.report_id = r.id), 0)
+		FROM reports r WHERE r.id = $1 AND r.status = 'draft'
+		RETURNING id`, reportID, p.Title, p.SpentOn, p.AmountCents).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrSent
+	}
+	if err != nil {
+		return "", fmt.Errorf("add expense: %w", err)
+	}
+	return id, nil
+}
+
+// UpdateExpense rewrites an expense in a draft, or ErrSent once it's sent.
+func (r *Repository) UpdateExpense(ctx context.Context, reportID, itemID string, p ExpenseParams) error {
+	tag, err := r.db.Exec(ctx, `UPDATE report_items i SET title = $3, completed_on = $4, price_cents = $5
+		FROM reports r
+		WHERE r.id = i.report_id AND r.status = 'draft' AND i.report_id = $1 AND i.id = as_uuid($2) AND i.expense`,
+		reportID, itemID, p.Title, p.SpentOn, p.AmountCents)
+	if err != nil {
+		return fmt.Errorf("update expense: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrSent
+	}
+	return nil
+}
+
+// RemoveItem drops a task or an expense from a draft.
 func (r *Repository) RemoveItem(ctx context.Context, reportID, itemID string) error {
 	tag, err := r.db.Exec(ctx, `DELETE FROM report_items WHERE id = as_uuid($2) AND report_id = $1`, reportID, itemID)
 	if err != nil {

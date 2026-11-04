@@ -365,6 +365,8 @@ var uk = map[string]string{ // #nosec G101 -- translations, not credentials
 
 	// --- API errors: reports ------------------------------------------------------------
 	"Report not found":                                                    "Звіт не знайдено",
+	"Say what it was spent on":                                            "Вкажіть, на що витрачено",
+	"An expense needs an amount":                                          "Вкажіть суму витрати",
 	"Choose the first day":                                                "Оберіть перший день",
 	"Choose the last day":                                                 "Оберіть останній день",
 	"The period ends before it starts":                                    "Період закінчується раніше, ніж починається",

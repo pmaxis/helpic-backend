@@ -44,6 +44,8 @@ func (h *Handler) Routes(r chi.Router) {
 			r.Delete("/{id}", h.Delete)
 			r.Put("/{id}/items/{itemID}", h.UpdateItem)
 			r.Delete("/{id}/items/{itemID}", h.RemoveItem)
+			r.Post("/{id}/expenses", h.AddExpense)
+			r.Put("/{id}/expenses/{itemID}", h.UpdateExpense)
 			r.Post("/{id}/send", h.Send)
 			r.Post("/{id}/recall", h.Recall)
 			r.Post("/{id}/keep", h.Keep)
@@ -199,6 +201,73 @@ func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rep, err := h.svc.SetItemNotes(r.Context(), userID, chi.URLParam(r, "id"), chi.URLParam(r, "itemID"), notes)
+	writeReport(w, http.StatusOK, rep, userID, err)
+}
+
+// AddExpense handles POST /api/v1/reports/{id}/expenses.
+//
+//	@Summary	Add an expense to a draft
+//	@Tags		reports
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		string					true	"Report ID"
+//	@Param		body	body		ExpenseRequest			true	"Request body"
+//	@Success	201		{object}	map[string]DTO			"report"
+//	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure	404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure	409		{object}	response.ErrorEnvelope	"Already sent"
+//	@Router		/reports/{id}/expenses [post]
+func (h *Handler) AddExpense(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req ExpenseRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	p, fields := req.Validate()
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	rep, err := h.svc.AddExpense(r.Context(), userID, chi.URLParam(r, "id"), p)
+	writeReport(w, http.StatusCreated, rep, userID, err)
+}
+
+// UpdateExpense handles PUT /api/v1/reports/{id}/expenses/{itemID}.
+//
+//	@Summary	Rewrite an expense in a draft
+//	@Tags		reports
+//	@Accept		json
+//	@Produce	json
+//	@Param		id		path		string					true	"Report ID"
+//	@Param		itemID	path		string					true	"Report item ID"
+//	@Param		body	body		ExpenseRequest			true	"Request body"
+//	@Success	200		{object}	map[string]DTO			"report"
+//	@Failure	400		{object}	response.ErrorEnvelope	"Invalid input"
+//	@Failure	401		{object}	response.ErrorEnvelope	"Not signed in"
+//	@Failure	403		{object}	response.ErrorEnvelope	"Not allowed"
+//	@Failure	404		{object}	response.ErrorEnvelope	"Not found"
+//	@Failure	409		{object}	response.ErrorEnvelope	"Already sent"
+//	@Router		/reports/{id}/expenses/{itemID} [put]
+func (h *Handler) UpdateExpense(w http.ResponseWriter, r *http.Request) {
+	userID, ok := request.User(w, r)
+	if !ok {
+		return
+	}
+	var req ExpenseRequest
+	if !request.Decode(w, r, &req) {
+		return
+	}
+	p, fields := req.Validate()
+	if len(fields) > 0 {
+		response.ValidationError(w, fields)
+		return
+	}
+	rep, err := h.svc.UpdateExpense(r.Context(), userID, chi.URLParam(r, "id"), chi.URLParam(r, "itemID"), p)
 	writeReport(w, http.StatusOK, rep, userID, err)
 }
 
